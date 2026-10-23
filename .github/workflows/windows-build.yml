@@ -26,6 +26,8 @@ jobs:
     name: Build with Unity
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: write   # Reading a draft release needs write access
     steps:
       - name: Check Unity secrets
         env:
@@ -71,6 +73,39 @@ jobs:
           path: ${{ env.PROJECT_PATH }}/Library
           key: Library-win64-${{ hashFiles('Moonscraper Chart Editor/Assets/**', 'Moonscraper Chart Editor/Packages/**', 'Moonscraper Chart Editor/ProjectSettings/**') }}
           restore-keys: Library-win64-
+
+      # Duet Mode room codes use Epic Online Services. Epic's SDK can't go in this public repo, so it's kept as
+      # eos-sdk-ci.zip in a draft release named eos-sdk-private, which only people with write access can see.
+      # The keys come from the EOS_* secrets. Without either, the build only offers Direct IP.
+      - name: Add Epic Online Services for room codes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EOS_PRODUCT_ID: ${{ secrets.EOS_PRODUCT_ID }}
+          EOS_SANDBOX_ID: ${{ secrets.EOS_SANDBOX_ID }}
+          EOS_DEPLOYMENT_ID: ${{ secrets.EOS_DEPLOYMENT_ID }}
+          EOS_CLIENT_ID: ${{ secrets.EOS_CLIENT_ID }}
+          EOS_CLIENT_SECRET: ${{ secrets.EOS_CLIENT_SECRET }}
+        run: |
+          asset=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '.[] | select(.draft and .tag_name == "eos-sdk-private") | .assets[] | select(.name == "eos-sdk-ci.zip") | .id' | head -n 1)
+          if [ -z "$asset" ]; then
+            echo "::warning::No eos-sdk-ci.zip in an eos-sdk-private draft release, so this build has no room codes"
+            exit 0
+          fi
+          if [ -z "$EOS_PRODUCT_ID" ] || [ -z "$EOS_SANDBOX_ID" ] || [ -z "$EOS_DEPLOYMENT_ID" ] || [ -z "$EOS_CLIENT_ID" ] || [ -z "$EOS_CLIENT_SECRET" ]; then
+            echo "::warning::Missing EOS_* secrets, so this build has no room codes"
+            exit 0
+          fi
+
+          gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$asset" > "$RUNNER_TEMP/eos-sdk-ci.zip"
+          unzip -q -o "$RUNNER_TEMP/eos-sdk-ci.zip" -d "$PROJECT_PATH"
+          test -f "$PROJECT_PATH/EOS/EOSSDK-Win64-Shipping.dll"
+          test -d "$PROJECT_PATH/Assets/Plugins/EOS/Source"
+
+          printf 'ProductId=%s\nSandboxId=%s\nDeploymentId=%s\nClientId=%s\nClientSecret=%s\n' \
+            "$EOS_PRODUCT_ID" "$EOS_SANDBOX_ID" "$EOS_DEPLOYMENT_ID" "$EOS_CLIENT_ID" "$EOS_CLIENT_SECRET" > "$PROJECT_PATH/EOS/credentials.txt"
+          printf -- '-define:DUET_EOS\n-define:EOS_DYNAMIC_BINDINGS\n' > "$PROJECT_PATH/Assets/csc.rsp"
+          echo "Room codes enabled"
 
       - name: Build Windows x64
         uses: game-ci/unity-builder@v4
