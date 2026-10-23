@@ -44,15 +44,26 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      # The Windows file dialog DLLs are only enabled for the Windows editor, but the
-      # build runs in a Linux editor, which still compiles UNITY_STANDALONE_WIN code.
-      # Enable them for any editor OS in this checkout only.
-      - name: Enable Windows-only editor plugins on Linux
+      # The build runs in a Linux editor, which still compiles UNITY_STANDALONE_WIN code,
+      # but the managed Windows DLLs are only enabled for the Windows editor. In this
+      # checkout only, enable them for any editor OS, and swap the Linux Bass.Net wrapper
+      # (which lacks the Windows-only EncoderOGG) for the Windows x64 one.
+      - name: Use Windows managed plugins in the Linux editor
         run: |
+          plugins="$PROJECT_PATH/Assets/Plugins"
           sed -i 's/OS: Windows$/OS: AnyOS/' \
-            "$PROJECT_PATH/Assets/Plugins/Native File Explorer/Windows/System.Windows.Forms.dll.meta" \
-            "$PROJECT_PATH/Assets/Plugins/Native File Explorer/Windows/Ookii.Dialogs.dll.meta"
-          git diff --stat
+            "$plugins/Native File Explorer/Windows/System.Windows.Forms.dll.meta" \
+            "$plugins/Native File Explorer/Windows/Ookii.Dialogs.dll.meta" \
+            "$plugins/Bass Audio/Windows/x64/Bass.Net.dll.meta"
+          python3 - "$plugins/Bass Audio/Linux/Bass.Net.Linux.dll.meta" <<'PY'
+          import sys
+          path = sys.argv[1]
+          text = open(path).read()
+          old = "      Editor: Editor\n    second:\n      enabled: 1\n"
+          assert old in text, "Bass.Net.Linux editor entry not found"
+          open(path, "w").write(text.replace(old, old.replace("enabled: 1", "enabled: 0")))
+          PY
+          git diff
 
       - name: Cache Unity Library folder
         uses: actions/cache@v4
