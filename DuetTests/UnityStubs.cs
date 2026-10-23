@@ -58,7 +58,8 @@ namespace UnityEngine
 
     // Just enough of Unity's immediate-mode GUI for the Duet panel to compile
     public struct Vector2 { public float x, y; public Vector2(float x, float y) { this.x = x; this.y = y; } }
-    public struct Vector3 { public float x, y, z; }
+    public struct Vector3 { public float x, y, z; public Vector3(float x, float y, float z) { this.x = x; this.y = y; this.z = z; } }
+    public struct Matrix4x4 { public static Matrix4x4 Scale(Vector3 v) { return new Matrix4x4(); } }
     public struct Rect
     {
         public float x, y, width, height;
@@ -72,7 +73,7 @@ namespace UnityEngine
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
     public class GUIStyle { }
     public class GUISkin { public GUIStyle button = new GUIStyle(); }
-    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static void DragWindow() { } }
+    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static void DragWindow() { } }
     public static class GUILayout
     {
         public static Rect Window(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }

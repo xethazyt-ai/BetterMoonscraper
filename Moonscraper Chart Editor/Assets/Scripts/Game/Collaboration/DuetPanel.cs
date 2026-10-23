@@ -29,8 +29,15 @@ public class DuetPanel : MonoBehaviour
         if (s_instance == null || !s_instance.m_visible)
             return false;
 
-        Vector2 pointer = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+        float scale = GuiScale;
+        Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
         return s_instance.m_windowRect.Contains(pointer);
+    }
+
+    // IMGUI draws in screen pixels, so scale it up on screens taller than 1080 pixels to keep text readable
+    static float GuiScale
+    {
+        get { return Mathf.Max(1f, Screen.height / 1080f); }
     }
 
     ChartEditor m_editor;
@@ -99,9 +106,12 @@ public class DuetPanel : MonoBehaviour
         if (!m_visible)
             return;
 
+        float scale = GuiScale;
+        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+
         if (!m_windowPlaced)
         {
-            m_windowRect.x = Screen.width - m_windowRect.width - 20;
+            m_windowRect.x = Screen.width / scale - m_windowRect.width - 20;
             m_windowRect.y = 60;
             m_windowPlaced = true;
         }
