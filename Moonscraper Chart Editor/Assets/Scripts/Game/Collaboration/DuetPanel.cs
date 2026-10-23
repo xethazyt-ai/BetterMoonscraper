@@ -17,6 +17,7 @@ public class DuetPanel : MonoBehaviour
     const string PrefPort = "Duet.Port";
     const string PrefAddress = "Duet.Address";
     const string PrefAudioFolder = "Duet.AudioFolder";
+    const string PrefUseRooms = "Duet.UseRooms";
 
     static DuetPanel s_instance;
 
@@ -28,8 +29,15 @@ public class DuetPanel : MonoBehaviour
         if (s_instance == null || !s_instance.m_visible)
             return false;
 
-        Vector2 pointer = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+        float scale = GuiScale;
+        Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
         return s_instance.m_windowRect.Contains(pointer);
+    }
+
+    // IMGUI draws in screen pixels, so scale it up on screens taller than 1080 pixels to keep text readable
+    static float GuiScale
+    {
+        get { return Mathf.Max(1f, Screen.height / 1080f); }
     }
 
     ChartEditor m_editor;
@@ -44,6 +52,9 @@ public class DuetPanel : MonoBehaviour
     string m_portText;
     string m_address;
     string m_audioFolder;
+    string m_roomCodeInput = string.Empty;
+    bool m_useRooms = true;
+    bool m_sessionIsRoom = false;
     string m_error = null;
     List<string> m_localAddresses = null;
 
@@ -58,7 +69,10 @@ public class DuetPanel : MonoBehaviour
         m_portText = PlayerPrefs.GetInt(PrefPort, DuetSession.DefaultPort).ToString();
         m_address = PlayerPrefs.GetString(PrefAddress, string.Empty);
         m_audioFolder = PlayerPrefs.GetString(PrefAudioFolder, string.Empty);
+        m_useRooms = PlayerPrefs.GetInt(PrefUseRooms, 1) != 0;
     }
+
+    bool useRooms { get { return m_useRooms && DuetRooms.isAvailable; } }
 
     void OnDestroy()
     {
@@ -92,9 +106,12 @@ public class DuetPanel : MonoBehaviour
         if (!m_visible)
             return;
 
+        float scale = GuiScale;
+        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+
         if (!m_windowPlaced)
         {
-            m_windowRect.x = Screen.width - m_windowRect.width - 20;
+            m_windowRect.x = Screen.width / scale - m_windowRect.width - 20;
             m_windowRect.y = 60;
             m_windowPlaced = true;
         }
@@ -125,9 +142,35 @@ public class DuetPanel : MonoBehaviour
         GUILayout.Label("Your name (shown to the other person)");
         m_username = GUILayout.TextField(m_username, 24);
 
-        GUILayout.Space(8);
-        GUILayout.Label("Port");
-        m_portText = GUILayout.TextField(m_portText, 5);
+        if (DuetRooms.isAvailable)
+        {
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            bool rooms = GUILayout.Toggle(m_useRooms, "Room code", GUI.skin.button);
+            bool direct = GUILayout.Toggle(!m_useRooms, "Direct IP", GUI.skin.button);
+            GUILayout.EndHorizontal();
+
+            // The two buttons act as tabs: clicking the other one switches, clicking the current one does nothing
+            bool chosen = m_useRooms;
+            if (rooms && !m_useRooms)
+                chosen = true;
+            else if (direct && m_useRooms)
+                chosen = false;
+
+            if (chosen != m_useRooms)
+            {
+                m_useRooms = chosen;
+                PlayerPrefs.SetInt(PrefUseRooms, m_useRooms ? 1 : 0);
+                m_error = null;
+            }
+        }
+
+        if (!useRooms)
+        {
+            GUILayout.Space(8);
+            GUILayout.Label("Port");
+            m_portText = GUILayout.TextField(m_portText, 5);
+        }
 
         GUILayout.Space(8);
         GUILayout.Label("HOST: share the chart that's open now");
@@ -136,8 +179,16 @@ public class DuetPanel : MonoBehaviour
 
         GUILayout.Space(8);
         GUILayout.Label("JOIN: get the host's chart");
-        GUILayout.Label("Host's address (IP or name)");
-        m_address = GUILayout.TextField(m_address, 128);
+        if (useRooms)
+        {
+            GUILayout.Label("Room code from the host");
+            m_roomCodeInput = GUILayout.TextField(m_roomCodeInput, 12);
+        }
+        else
+        {
+            GUILayout.Label("Host's address (IP or name)");
+            m_address = GUILayout.TextField(m_address, 128);
+        }
 
         GUILayout.Label("Your folder with this song's audio (optional)");
         GUILayout.BeginHorizontal();
@@ -155,6 +206,9 @@ public class DuetPanel : MonoBehaviour
 
         if (!string.IsNullOrEmpty(m_error))
             GUILayout.Label(m_error);
+
+        if (useRooms)
+            GUILayout.Label(DuetRooms.provider.status);
     }
 
     void DrawSession()
@@ -170,11 +224,26 @@ public class DuetPanel : MonoBehaviour
                 GUILayout.Label("Connected. Receiving the host's chart...");
                 break;
             default:
-                GUILayout.Label(isHost ? "Hosting on port " + m_session.port : "Joined. Edit number " + m_session.lastSeq);
+                GUILayout.Label(isHost ? (m_sessionIsRoom ? "Hosting an online room" : "Hosting on port " + m_session.port) : "Joined. Edit number " + m_session.lastSeq);
                 break;
         }
 
-        if (isHost)
+        if (isHost && m_sessionIsRoom)
+        {
+            string code = m_session.roomCode;
+            if (code == null)
+            {
+                GUILayout.Label("Opening an online room...  " + DuetRooms.provider.status);
+            }
+            else
+            {
+                GUILayout.Label("Room code:  " + code.Substring(0, 3) + " " + code.Substring(3));
+                if (GUILayout.Button("Copy room code"))
+                    GUIUtility.systemCopyBuffer = code;
+                GUILayout.Label("Your buddy picks Room code in their Duet window, types this in and joins. Works from any network.");
+            }
+        }
+        else if (isHost)
         {
             if (m_localAddresses == null)
                 m_localAddresses = LocalAddresses();
@@ -211,12 +280,7 @@ public class DuetPanel : MonoBehaviour
     bool TryReadSettings(out int port)
     {
         m_error = null;
-
-        if (!int.TryParse(m_portText, out port) || port < 1 || port > 65535)
-        {
-            m_error = "The port must be a number from 1 to 65535.";
-            return false;
-        }
+        port = 0;
 
         m_username = m_username.Trim();
         if (m_username.Length == 0)
@@ -224,8 +288,16 @@ public class DuetPanel : MonoBehaviour
             m_error = "Enter a name first.";
             return false;
         }
-
         PlayerPrefs.SetString(PrefUsername, m_username);
+
+        if (useRooms)
+            return true;
+
+        if (!int.TryParse(m_portText, out port) || port < 1 || port > 65535)
+        {
+            m_error = "The port must be a number from 1 to 65535.";
+            return false;
+        }
         PlayerPrefs.SetInt(PrefPort, port);
         return true;
     }
@@ -235,6 +307,13 @@ public class DuetPanel : MonoBehaviour
         int port;
         if (!TryReadSettings(out port))
             return;
+
+        m_sessionIsRoom = useRooms;
+        if (m_sessionIsRoom)
+        {
+            m_session = DuetSession.Host(m_song, m_username, DuetRooms.provider.CreateRoom(), "Opening an online room");
+            return;
+        }
 
         try
         {
@@ -253,8 +332,14 @@ public class DuetPanel : MonoBehaviour
         if (!TryReadSettings(out port))
             return;
 
+        string code = DuetRooms.NormalizeCode(m_roomCodeInput);
         m_address = m_address.Trim();
-        if (m_address.Length == 0)
+        if (useRooms && code.Length == 0)
+        {
+            m_error = "Enter the room code from the host.";
+            return;
+        }
+        if (!useRooms && m_address.Length == 0)
         {
             m_error = "Enter the host's address.";
             return;
@@ -263,10 +348,19 @@ public class DuetPanel : MonoBehaviour
         if (!m_editor.EditCheck())
             return;     // The user cancelled when asked about unsaved changes
 
-        PlayerPrefs.SetString(PrefAddress, m_address);
         PlayerPrefs.SetString(PrefAudioFolder, m_audioFolder);
         m_song.localAudioFolder = m_audioFolder.Trim();
-        m_session = DuetSession.Join(m_song, m_username, m_address, port);
+
+        m_sessionIsRoom = useRooms;
+        if (m_sessionIsRoom)
+        {
+            m_session = DuetSession.Join(m_song, m_username, DuetRooms.provider.JoinRoom(code), "Looking for room " + code);
+        }
+        else
+        {
+            PlayerPrefs.SetString(PrefAddress, m_address);
+            m_session = DuetSession.Join(m_song, m_username, m_address, port);
+        }
     }
 
     static List<string> LocalAddresses()

@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using MoonscraperChartEditor.Song;
 
 /// <summary>
@@ -62,6 +61,9 @@ public class DuetSession
     public State state { get; private set; }
     public string endReason { get; private set; }
     public int port { get; private set; }
+
+    // The room code to share when hosting an online room, once the room exists
+    public string roomCode { get { return m_listener != null ? m_listener.roomCode : null; } }
     public List<DuetUser> users { get; private set; }
     public List<string> log { get; private set; }
 
@@ -69,17 +71,15 @@ public class DuetSession
     public int lastSeq { get; private set; }
 
     // Hosting
-    DuetListener m_listener;
-    readonly List<DuetConnection> m_clients = new List<DuetConnection>();
-    readonly HashSet<DuetConnection> m_joinedClients = new HashSet<DuetConnection>();
-    readonly Dictionary<DuetConnection, Dictionary<string, object>> m_heldMessages = new Dictionary<DuetConnection, Dictionary<string, object>>();
+    IDuetListener m_listener;
+    readonly List<IDuetLink> m_clients = new List<IDuetLink>();
+    readonly HashSet<IDuetLink> m_joinedClients = new HashSet<IDuetLink>();
+    readonly Dictionary<IDuetLink, Dictionary<string, object>> m_heldMessages = new Dictionary<IDuetLink, Dictionary<string, object>>();
     int m_nextUserId = HostUserId + 1;
 
     // Joining
-    DuetConnection m_host;
-    Thread m_connectThread;
-    volatile DuetConnection m_connectResult;
-    volatile string m_connectError;
+    IDuetLink m_host;
+    IDuetConnector m_connector;
     Dictionary<string, object> m_heldHostMessage;
     int m_nextEditId = 1;
     readonly HashSet<int> m_unacknowledgedEdits = new HashSet<int>();
@@ -97,37 +97,38 @@ public class DuetSession
         log = new List<string>();
     }
 
+    // Hosts on a port that others connect to directly by address
     public static DuetSession Host(IDuetSongHost song, string username, int port)
     {
+        DuetListener listener = new DuetListener(port);
+        DuetSession session = Host(song, username, listener, "Hosting on port " + listener.port);
+        session.port = listener.port;
+        return session;
+    }
+
+    public static DuetSession Host(IDuetSongHost song, string username, IDuetListener listener, string logLine)
+    {
         DuetSession session = new DuetSession(song, username, Role.Host);
-        session.m_listener = new DuetListener(port);
-        session.port = session.m_listener.port;
+        session.m_listener = listener;
         session.state = State.Connected;
         session.users.Add(new DuetUser { id = HostUserId, name = session.m_username });
-        session.Log("Hosting on port " + session.port);
+        session.Log(logLine);
         return session;
     }
 
     public static DuetSession Join(IDuetSongHost song, string username, string address, int port)
     {
-        DuetSession session = new DuetSession(song, username, Role.Client);
+        DuetSession session = Join(song, username, new DuetTcpConnector(address, port), "Connecting to " + address + ":" + port);
         session.port = port;
+        return session;
+    }
+
+    public static DuetSession Join(IDuetSongHost song, string username, IDuetConnector connector, string logLine)
+    {
+        DuetSession session = new DuetSession(song, username, Role.Client);
+        session.m_connector = connector;
         session.state = State.Connecting;
-        session.Log("Connecting to " + address + ":" + port);
-
-        session.m_connectThread = new Thread(() =>
-        {
-            try
-            {
-                session.m_connectResult = DuetConnection.Connect(address, port, 8000);
-            }
-            catch (Exception e)
-            {
-                session.m_connectError = e.Message;
-            }
-        }) { IsBackground = true, Name = "Duet connect" };
-        session.m_connectThread.Start();
-
+        session.Log(logLine);
         return session;
     }
 
@@ -189,7 +190,13 @@ public class DuetSession
 
     void UpdateHost()
     {
-        DuetConnection accepted;
+        if (m_listener.error != null)
+        {
+            End(m_listener.error);
+            return;
+        }
+
+        IDuetLink accepted;
         while (m_listener.TryAccept(out accepted))
         {
             m_clients.Add(accepted);
@@ -197,7 +204,7 @@ public class DuetSession
 
         for (int i = m_clients.Count - 1; i >= 0; --i)
         {
-            DuetConnection client = m_clients[i];
+            IDuetLink client = m_clients[i];
 
             ProcessHostMessages(client);
 
@@ -217,7 +224,7 @@ public class DuetSession
         }
     }
 
-    void ProcessHostMessages(DuetConnection client)
+    void ProcessHostMessages(IDuetLink client)
     {
         while (!m_song.isBusy)
         {
@@ -247,7 +254,7 @@ public class DuetSession
         }
     }
 
-    void HandleHostMessage(DuetConnection client, Dictionary<string, object> message)
+    void HandleHostMessage(IDuetLink client, Dictionary<string, object> message)
     {
         string type = DuetJson.GetString(message, "type");
         bool joined = m_joinedClients.Contains(client);
@@ -315,14 +322,14 @@ public class DuetSession
         return unique;
     }
 
-    void BroadcastApply(int seq, int authorId, IList<SongEditChange> changes, DuetConnection except)
+    void BroadcastApply(int seq, int authorId, IList<SongEditChange> changes, IDuetLink except)
     {
         Dictionary<string, object> message = Message("apply",
             "seq", (double)seq,
             "author", (double)authorId,
             "changes", DuetSerialization.ToJson(changes));
 
-        foreach (DuetConnection client in m_joinedClients)
+        foreach (IDuetLink client in m_joinedClients)
         {
             if (client != except)
                 client.Send(message);
@@ -332,7 +339,7 @@ public class DuetSession
     void BroadcastUsers()
     {
         Dictionary<string, object> message = Message("users", "users", UsersJson());
-        foreach (DuetConnection client in m_joinedClients)
+        foreach (IDuetLink client in m_joinedClients)
             client.Send(message);
     }
 
@@ -364,16 +371,19 @@ public class DuetSession
     {
         if (state == State.Connecting)
         {
-            if (m_connectError != null)
+            IDuetLink link;
+            string error;
+            if (!m_connector.TryFinish(out link, out error))
+                return;
+
+            if (link == null)
             {
-                End("Couldn't connect: " + m_connectError);
+                End("Couldn't connect: " + error);
                 return;
             }
 
-            if (m_connectResult == null)
-                return;
-
-            m_host = m_connectResult;
+            m_host = link;
+            m_connector = null;
             state = State.Joining;
             m_host.Send(Message("hello", "protocol", (double)ProtocolVersion, "name", m_username));
             Log("Connected, waiting for the host's chart");
@@ -523,15 +533,15 @@ public class DuetSession
         if (m_listener != null)
             m_listener.Stop();
 
-        foreach (DuetConnection client in m_clients)
+        foreach (IDuetLink client in m_clients)
             client.Close("The host ended the session");
         m_clients.Clear();
         m_joinedClients.Clear();
 
         if (m_host != null)
             m_host.Close(reason);
-        else if (m_connectResult != null)
-            m_connectResult.Close(reason);
+        else if (m_connector != null)
+            m_connector.Cancel();
     }
 
     void Log(string line)

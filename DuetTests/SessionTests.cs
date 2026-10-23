@@ -14,7 +14,7 @@ using MoonscraperChartEditor.Song.IO;
 public static class SessionTests
 {
     // A song in memory standing in for the editor
-    class TestSong : IDuetSongHost
+    public class TestSong : IDuetSongHost
     {
         public Song song = new Song();
         public string name;
@@ -182,7 +182,7 @@ public static class SessionTests
         return ChartText(song, "editor") == ChartText(testSong.song, testSong.name);
     }
 
-    static SongEditChange Add(SongObject songObject)
+    public static SongEditChange Add(SongObject songObject)
     {
         return new SongEditChange { type = SongEditChange.Type.Add, location = LocationOf(songObject), after = songObject };
     }
@@ -213,7 +213,7 @@ public static class SessionTests
     }
 
     // Updates every session until the condition holds, or gives up after a few seconds
-    static void Pump(List<DuetSession> sessions, Func<bool> condition)
+    public static void Pump(List<DuetSession> sessions, Func<bool> condition)
     {
         Stopwatch timer = Stopwatch.StartNew();
         while (timer.ElapsedMilliseconds < 5000)
@@ -228,7 +228,7 @@ public static class SessionTests
         }
     }
 
-    static bool Same(TestSong a, TestSong b)
+    public static bool Same(TestSong a, TestSong b)
     {
         return ChartText(a.song, a.name) == ChartText(b.song, b.name);
     }

@@ -282,6 +282,14 @@ public class BuildManager  {
             FileUtil.CopyFileOrDirectory("Assets/Custom Resources", Path.Combine(path, "Custom Resources"));
         }
 
+#if DUET_EOS
+        if (Directory.Exists("EOS"))
+        {
+            // Duet Mode online rooms load the EOS DLL and credentials from an EOS folder beside the game
+            FileUtil.CopyFileOrDirectory("EOS", Path.Combine(path, "EOS"));
+        }
+#endif
+
         if (Directory.Exists("Assets/Documentation"))
         {
             // Copy a file from the project folder to the build folder, alongside the built game.
