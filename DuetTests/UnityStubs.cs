@@ -108,6 +108,8 @@ public class ChartEditor : UnityEngine.MonoBehaviour
     public ErrorManager errorManager = new ErrorManager();
     public EditorObjectToolManager toolManager = new EditorObjectToolManager();
 
+    public WindowHandleManager windowHandleManager = new WindowHandleManager();
+
     public void FillUndoRedoSnapInfo(uint tick, Globals.ViewMode viewMode) { }
     public static float TimeToWorldYPosition(float time) { return time; }
     public static float WorldYPositionToTime(float position) { return position; }
@@ -115,3 +117,13 @@ public class ChartEditor : UnityEngine.MonoBehaviour
 
 public static class Snapable { public static uint TickToSnappedTick(uint tick, int step, Song song) { return tick; } }
 public static class Utility { public static bool validateExtension(string path, string[] extensions) { return true; } }
+
+public class NativeWindow { }
+public class WindowHandleManager { public NativeWindow nativeWindow = new NativeWindow(); }
+
+public static class NativeMessageBox
+{
+    public enum Type { OK }
+    public enum Result { OK = 1 }
+    public static Result Show(string text, string caption, Type type, NativeWindow childWindow) { System.Console.WriteLine(caption + ": " + text); return Result.OK; }
+}

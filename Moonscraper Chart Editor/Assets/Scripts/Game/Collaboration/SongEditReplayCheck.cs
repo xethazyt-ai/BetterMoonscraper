@@ -108,7 +108,7 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
 
         if (m_replayedSong == null)
         {
-            editor.errorManager.QueueErrorMessage("Duet replay check: no snapshot yet. Load a chart and try again.");
+            ShowResult("No snapshot yet. Load a chart and try again.");
             return;
         }
 
@@ -151,7 +151,12 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
             Debug.LogError(report.ToString());
         }
 
-        editor.errorManager.QueueErrorMessage(report.ToString());
+        ShowResult(report.ToString());
+    }
+
+    static void ShowResult(string message)
+    {
+        NativeMessageBox.Show(message, "Duet replay check", NativeMessageBox.Type.OK, ChartEditor.Instance.windowHandleManager.nativeWindow);
     }
 
     static void Write(Song song, string path)
