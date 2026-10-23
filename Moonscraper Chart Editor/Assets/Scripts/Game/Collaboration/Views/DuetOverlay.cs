@@ -83,12 +83,6 @@ public class DuetOverlay : MonoBehaviour
         ShowGhostNotes(session);
     }
 
-    void LateUpdate()
-    {
-        if (m_ghostNotes != null)
-            m_ghostNotes.LateUpdate();
-    }
-
     void ShowGhostNotes(DuetSession session)
     {
         if (m_ghostNotes == null)
@@ -102,9 +96,8 @@ public class DuetOverlay : MonoBehaviour
                 if (!m_localPresence.IsOnSameChart(pair.Value))
                     continue;
 
-                Color color = DuetPresence.GetColor(pair.Value.color);
                 foreach (DuetPresence.Ghost ghost in pair.Value.ghosts)
-                    m_ghostNotes.Show(ghost, color);
+                    m_ghostNotes.Show(ghost);
             }
         }
         m_ghostNotes.End();
