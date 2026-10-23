@@ -40,12 +40,15 @@ public class DuetPanel : MonoBehaviour
     // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
     public static bool isMouseHeldOnPanel { get; private set; }
 
-    // Closing Moonscraper during a session asks here rather than with a Windows pop-up. May be called off the main thread.
+    // Closing Moonscraper asks here rather than with a Windows pop-up, which would freeze the editor and drop a Duet
+    // session. Nothing to ask when there's no session and nothing unsaved. May be called off the main thread.
     static volatile bool s_quitPromptOpen = false;
 
     public static bool RequestQuitConfirmation()
     {
-        if (s_instance == null || activeSession == null)
+        if (s_instance == null)
+            return false;
+        if (activeSession == null && (!ChartEditor.isDirty || isGuest))
             return false;
 
         s_quitPromptOpen = true;
@@ -201,6 +204,8 @@ public class DuetPanel : MonoBehaviour
     }
 
     const int QuitPromptId = 0x4477;
+    const float QuitPromptWidth = 400;
+    const float QuitPromptHeight = 130;
 
     void DrawQuitPrompt()
     {
@@ -208,18 +213,22 @@ public class DuetPanel : MonoBehaviour
 
         float scale = GuiScale;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
-        Rect rect = new Rect((Screen.width / scale - 380) / 2, (Screen.height / scale - 140) / 2, 380, 140);
-        GUILayout.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit Moonscraper?");
+        Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - QuitPromptHeight) / 2, QuitPromptWidth, QuitPromptHeight);
+        GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit Moonscraper?");
     }
 
     void DrawQuitPromptWindow(int id)
     {
-        bool hosting = m_session != null && m_session.role == DuetSession.Role.Host;
-        bool askToSave = hosting && ChartEditor.isDirty;
+        bool inSession = activeSession != null;
+        bool askToSave = !isGuest && ChartEditor.isDirty;
 
-        GUILayout.Label(hosting ? "Everyone in your Duet session will be disconnected." : "You'll leave the Duet session.");
+        // A plain modal window doesn't lay out its contents, so keep them clear of the title and edges
+        GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, QuitPromptHeight - 34));
+
+        if (inSession)
+            GUILayout.Label(isGuest ? "You'll leave the Duet session." : "Everyone in your Duet session will be disconnected.");
         if (askToSave)
-            GUILayout.Label("Do you want to save your changes first?");
+            GUILayout.Label("You have unsaved changes. Do you want to save them first?");
 
         GUILayout.FlexibleSpace();
         GUILayout.BeginHorizontal();
@@ -237,6 +246,7 @@ public class DuetPanel : MonoBehaviour
         if (GUILayout.Button("Cancel"))
             CloseQuitPrompt();
         GUILayout.EndHorizontal();
+        GUILayout.EndArea();
     }
 
     void CloseQuitPrompt()

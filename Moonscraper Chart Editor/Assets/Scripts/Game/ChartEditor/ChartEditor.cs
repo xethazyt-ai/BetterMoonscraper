@@ -401,7 +401,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (quittingCheckPassed)
             return true;
 
-        // In a Duet session, ask inside the editor instead: a Windows pop-up freezes Moonscraper and drops the session
+        // Ask inside the editor rather than with a Windows pop-up, which freezes Moonscraper and drops a Duet session
         if (DuetPanel.RequestQuitConfirmation())
             return false;
 
