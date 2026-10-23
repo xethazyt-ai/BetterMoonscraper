@@ -10,11 +10,13 @@ using UnityEngine;
 /// </summary>
 public class DuetPresence
 {
+    // A note the person would place if they clicked now. Sent as the note itself, so everyone draws it with their own
+    // skin and lane layout, and works out strum or HOPO from their copy of the chart.
     public struct Ghost
     {
-        public float x;     // World position across the highway
         public uint tick;
-        public bool isOpen;
+        public int rawNote;
+        public int flags;   // Note.Flags, e.g. tap or forced
     }
 
     public int color;
@@ -74,7 +76,7 @@ public class DuetPresence
         {
             List<object> list = new List<object>();
             foreach (Ghost ghost in ghosts)
-                list.Add(new List<object> { (double)ghost.x, (double)ghost.tick, ghost.isOpen });
+                list.Add(new List<object> { (double)ghost.tick, (double)ghost.rawNote, (double)ghost.flags });
             json["ghosts"] = list;
         }
 
@@ -103,12 +105,19 @@ public class DuetPresence
             foreach (object item in ghosts)
             {
                 List<object> ghost = item as List<object>;
-                if (ghost != null && ghost.Count >= 3 && ghost[0] is double && ghost[1] is double)
-                    presence.ghosts.Add(new Ghost { x = (float)(double)ghost[0], tick = ToTick((double)ghost[1]), isOpen = ghost[2] is bool && (bool)ghost[2] });
+                if (ghost != null && ghost.Count >= 3 && ghost[0] is double && ghost[1] is double && ghost[2] is double)
+                    presence.ghosts.Add(new Ghost { tick = ToTick((double)ghost[0]), rawNote = ToSmallInt((double)ghost[1]), flags = ToSmallInt((double)ghost[2]) });
             }
         }
 
         return presence;
+    }
+
+    static int ToSmallInt(double value)
+    {
+        if (double.IsNaN(value) || value < 0 || value > ushort.MaxValue)
+            return 0;
+        return (int)value;
     }
 
     static uint ToTick(double value)

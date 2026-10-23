@@ -24,14 +24,14 @@ public static class PresenceTests
 
         // The host is already pointing somewhere before Alex joins
         DuetPresence robert = new DuetPresence { color = 4, viewTick = 768, instrument = "Guitar", difficulty = "Expert", hasPointer = true, pointerX = -1.5f, pointerTick = 960 };
-        robert.ghosts.Add(new DuetPresence.Ghost { x = -1f, tick = 960, isOpen = false });
+        robert.ghosts.Add(new DuetPresence.Ghost { tick = 960, rawNote = 2, flags = 4 });
         host.SetLocalPresence(robert);
 
         SessionTests.Pump(all, () => alice.state == DuetSession.State.Connected && alice.presences.ContainsKey(0));
         DuetPresence seen;
         alice.presences.TryGetValue(0, out seen);
         Expect("a joiner sees the host's cursor straight away", seen != null && seen.hasPointer && seen.pointerTick == 960 && seen.pointerX == -1.5f && seen.color == 4);
-        Expect("a joiner sees the host's ghost note", seen != null && seen.ghosts.Count == 1 && seen.ghosts[0].tick == 960 && !seen.ghosts[0].isOpen);
+        Expect("a joiner sees the host's ghost note", seen != null && seen.ghosts.Count == 1 && seen.ghosts[0].tick == 960 && seen.ghosts[0].rawNote == 2 && seen.ghosts[0].flags == 4);
         Expect("a joiner gets the song's details, custom ini settings included",
             aliceSong.song.name == "Through the Fire and Flames" && aliceSong.song.metaData.artist == "DragonForce"
             && SongIniFunctions.IniTextFromSongProperties(aliceSong.song.iniProperties).Contains("Hold on tight"));
