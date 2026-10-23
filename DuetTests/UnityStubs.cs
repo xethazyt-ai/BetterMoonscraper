@@ -196,3 +196,11 @@ public static class DuetChat
     public static bool isTyping { get { return false; } }
     public static bool IsPointerOver() { return false; }
 }
+
+// The real window is drawn by the editor; the tests only need what DuetPanel asks of it
+public class DuetWindow
+{
+    public UnityEngine.Rect rect;
+    public DuetWindow(int id, string prefKey, UnityEngine.Rect initial, UnityEngine.Vector2 minSize, bool fixedHeight, bool scrollWhenSized) { rect = initial; }
+    public void Draw(string title, UnityEngine.GUI.WindowFunction content, float scale) { }
+}

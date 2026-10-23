@@ -15,13 +15,14 @@ public class DuetChat : MonoBehaviour
     const string PrefX = "Duet.ChatX";
     const string PrefY = "Duet.ChatY";
     const float Width = 340;
-    const float MessagesHeight = 170;
+    const float Height = 300;
 
     static DuetChat s_instance;
 
     ChartEditor m_editor;
-    Rect m_windowRect = new Rect(0, 0, Width, 10);    // In GUI units, before scaling
+    readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Chat", new Rect(0, 0, Width, Height), new Vector2(220, 150), true, false);
     bool m_windowPlaced = false;
+    Vector2 m_savedPosition;
     Vector2 m_scroll;
     int m_seenChatCount = -1;
     string m_text = string.Empty;
@@ -41,7 +42,7 @@ public class DuetChat : MonoBehaviour
 
         float scale = DuetPanel.GuiScale;
         Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
-        return s_instance.m_windowRect.Contains(pointer);
+        return s_instance.m_window.rect.Contains(pointer);
     }
 
     bool isShown
@@ -100,25 +101,26 @@ public class DuetChat : MonoBehaviour
 
         if (!m_windowPlaced)
         {
-            m_windowRect.x = PlayerPrefs.GetFloat(PrefX, 20);
-            m_windowRect.y = PlayerPrefs.GetFloat(PrefY, Screen.height / scale - MessagesHeight - 150);
+            m_window.rect.x = PlayerPrefs.GetFloat(PrefX, 20);
+            m_window.rect.y = PlayerPrefs.GetFloat(PrefY, Screen.height / scale - m_window.rect.height - 60);
+            m_savedPosition = m_window.rect.position;
             m_windowPlaced = true;
         }
 
         // Clicking outside the window while writing stops writing
-        if (m_writing && UnityEngine.Event.current.type == EventType.MouseDown && !m_windowRect.Contains(UnityEngine.Event.current.mousePosition))
+        if (m_writing && UnityEngine.Event.current.type == EventType.MouseDown && !m_window.rect.Contains(UnityEngine.Event.current.mousePosition))
             StopWriting();
 
-        Rect before = m_windowRect;
-        m_windowRect = GUILayout.Window(WindowId, m_windowRect, DrawWindow, "Chat");
+        m_window.Draw("Chat", DrawWindow, scale);
 
         // Keep it on screen, and remember where it was put
-        m_windowRect.x = Mathf.Clamp(m_windowRect.x, 0, Mathf.Max(0, Screen.width / scale - m_windowRect.width));
-        m_windowRect.y = Mathf.Clamp(m_windowRect.y, 0, Mathf.Max(0, Screen.height / scale - m_windowRect.height));
-        if (m_windowRect.position != before.position && UnityEngine.Event.current.type == EventType.MouseUp)
+        m_window.rect.x = Mathf.Clamp(m_window.rect.x, 0, Mathf.Max(0, Screen.width / scale - m_window.rect.width));
+        m_window.rect.y = Mathf.Clamp(m_window.rect.y, 0, Mathf.Max(0, Screen.height / scale - m_window.rect.height));
+        if (m_window.rect.position != m_savedPosition && !Input.GetMouseButton(0))
         {
-            PlayerPrefs.SetFloat(PrefX, m_windowRect.x);
-            PlayerPrefs.SetFloat(PrefY, m_windowRect.y);
+            m_savedPosition = m_window.rect.position;
+            PlayerPrefs.SetFloat(PrefX, m_savedPosition.x);
+            PlayerPrefs.SetFloat(PrefY, m_savedPosition.y);
         }
     }
 
@@ -134,7 +136,7 @@ public class DuetChat : MonoBehaviour
             m_scroll.y = float.MaxValue;
         }
 
-        m_scroll = GUILayout.BeginScrollView(m_scroll, GUILayout.Height(MessagesHeight));
+        m_scroll = GUILayout.BeginScrollView(m_scroll, GUILayout.ExpandHeight(true));
         if (session.chat.Count == 0)
             GUILayout.Label("No messages yet.", m_typingStyle);
         foreach (DuetChatLine line in session.chat)
@@ -181,8 +183,6 @@ public class DuetChat : MonoBehaviour
         }
 
         GUILayout.Label(m_writing ? "Enter to send, Escape to stop" : "Press Enter to chat", m_typingStyle);
-
-        GUI.DragWindow();
     }
 
     string TypingText(DuetSession session)

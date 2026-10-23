@@ -90,6 +90,14 @@ public static class PresenceTests
         SessionTests.Pump(all, () => carol.state == DuetSession.State.Connected && carol.chat.Count == 2);
         Expect("someone joining later sees what was said", carol.chat.Count == 2 && carol.chat[0].name == "Alex" && carol.chat[1].text == "sure");
 
+        // A locked session turns new people away but keeps everyone already in
+        host.isLocked = true;
+        DuetSession dave = DuetSession.Join(new SessionTests.TestSong("presence-dave"), "Dev", "127.0.0.1", host.port);
+        all.Add(dave);
+        SessionTests.Pump(all, () => !dave.isActive);
+        Expect("nobody new can join a locked session", !dave.isActive && dave.endReason.Contains("locked") && carol.isActive && host.users.Count == 3);
+        host.isLocked = false;
+
         host.Leave();
         SessionTests.Pump(all, () => !bob.isActive && !carol.isActive);
 

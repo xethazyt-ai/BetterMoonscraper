@@ -89,6 +89,9 @@ public class DuetSession
     public string endReason { get; private set; }
     public int port { get; private set; }
 
+    // Hosting: while locked, nobody new can join. People already in stay.
+    public bool isLocked { get; set; }
+
     // The room code to share when hosting an online room, once the room exists
     public string roomCode { get { return m_listener != null ? m_listener.roomCode : null; } }
     public List<DuetUser> users { get; private set; }
@@ -509,6 +512,14 @@ public class DuetSession
             {
                 client.Send(Message("rejected", "reason", string.Format("Version mismatch: the host has Duet Mode version {0} and you have version {1}. You both need the same build.", ProtocolVersion, protocol)));
                 client.CloseAfterSending("Version mismatch");
+                return;
+            }
+
+            if (isLocked)
+            {
+                client.Send(Message("rejected", "reason", "The host has locked this session, so nobody new can join right now."));
+                client.CloseAfterSending("Session locked");
+                Log("Someone tried to join, but the session is locked");
                 return;
             }
 

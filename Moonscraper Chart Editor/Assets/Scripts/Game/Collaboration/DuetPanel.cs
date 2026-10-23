@@ -60,7 +60,7 @@ public class DuetPanel : MonoBehaviour
 
         float scale = GuiScale;
         Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
-        return s_instance.m_windowRect.Contains(pointer);
+        return s_instance.m_window.rect.Contains(pointer);
     }
 
     // IMGUI draws in screen pixels, so scale it up on screens taller than 1080 pixels to keep text readable
@@ -74,7 +74,7 @@ public class DuetPanel : MonoBehaviour
     DuetSession m_session;
 
     bool m_visible = false;
-    Rect m_windowRect = new Rect(0, 0, 360, 10);
+    readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Window", new Rect(0, 0, 360, 10), new Vector2(280, 160), false, true);
     bool m_windowPlaced = false;
 
     string m_username;
@@ -170,16 +170,16 @@ public class DuetPanel : MonoBehaviour
 
         if (!m_windowPlaced)
         {
-            m_windowRect.x = Screen.width / scale - m_windowRect.width - 20;
-            m_windowRect.y = 60;
+            m_window.rect.x = Screen.width / scale - m_window.rect.width - 20;
+            m_window.rect.y = 60;
             m_windowPlaced = true;
         }
 
         // Clicking anywhere outside the window gives keyboard input back to the editor
-        if (Event.current.type == EventType.MouseDown && !m_windowRect.Contains(Event.current.mousePosition) && !DuetChat.IsPointerOver())
+        if (Event.current.type == EventType.MouseDown && !m_window.rect.Contains(Event.current.mousePosition) && !DuetChat.IsPointerOver())
             GUIUtility.keyboardControl = 0;
 
-        m_windowRect = GUILayout.Window(WindowId, m_windowRect, DrawWindow, "Duet Mode  (F10 to hide)");
+        m_window.Draw("Duet Mode  (F10 to hide)", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
     }
 
@@ -189,8 +189,6 @@ public class DuetPanel : MonoBehaviour
             DrawSetup();
         else
             DrawSession();
-
-        GUI.DragWindow();
     }
 
     void DrawSetup()
@@ -307,8 +305,15 @@ public class DuetPanel : MonoBehaviour
             GUILayout.Label("Over the internet they need your public IP with port " + m_session.port + " forwarded, or a shared Tailscale, ZeroTier or Radmin VPN network.");
         }
 
+        if (isHost)
+        {
+            bool locked = GUILayout.Toggle(m_session.isLocked, " Lock the session (nobody new can join)");
+            if (locked != m_session.isLocked)
+                m_session.isLocked = locked;
+        }
+
         GUILayout.Space(8);
-        GUILayout.Label("In this session:");
+        GUILayout.Label("In this session:" + (m_session.isLocked ? "  (locked)" : string.Empty));
         foreach (DuetUser user in m_session.users)
             GUILayout.Label("    " + user.name + (user.id == 0 ? " (host)" : string.Empty));
 
