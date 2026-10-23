@@ -48,11 +48,39 @@ public class DuetPresence
 
     public static int ColorCount { get { return s_colors.Length; } }
 
-    public static Color GetColor(int index)
+    // A color is either one of the presets above, by its number, or any color at all: this flag plus 0xRRGGBB
+    public const int CustomColorFlag = 0x1000000;
+
+    public static bool IsCustomColor(int color) { return (color & CustomColorFlag) != 0; }
+
+    public static int MakeCustomColor(Color color)
     {
-        if (index < 0 || index >= s_colors.Length)
-            index = 0;
-        return s_colors[index];
+        int r = Mathf.Clamp(Mathf.RoundToInt(color.r * 255), 0, 255);
+        int g = Mathf.Clamp(Mathf.RoundToInt(color.g * 255), 0, 255);
+        int b = Mathf.Clamp(Mathf.RoundToInt(color.b * 255), 0, 255);
+        return CustomColorFlag | (r << 16) | (g << 8) | b;
+    }
+
+    public static Color GetColor(int color)
+    {
+        if (IsCustomColor(color))
+            return new Color(((color >> 16) & 0xFF) / 255f, ((color >> 8) & 0xFF) / 255f, (color & 0xFF) / 255f);
+
+        if (color < 0 || color >= s_colors.Length)
+            color = 0;
+        return s_colors[color];
+    }
+
+    public static string GetColorName(int color)
+    {
+        if (!IsCustomColor(color))
+            return ColorNames[color >= 0 && color < ColorNames.Length ? color : 0];
+        return "#" + (color & 0xFFFFFF).ToString("X6");
+    }
+
+    public static bool IsValidColor(int color)
+    {
+        return IsCustomColor(color) ? (color & ~(CustomColorFlag | 0xFFFFFF)) == 0 : color >= 0 && color < s_colors.Length;
     }
 
     public bool IsOnSameChart(DuetPresence other)

@@ -112,6 +112,14 @@ public static class PresenceTests
         host.Leave();
         SessionTests.Pump(all, () => !bob.isActive && !carol.isActive);
 
+        int pink = DuetPresence.MakeCustomColor(new UnityEngine.Color(1f, 0.5f, 0.25f));
+        UnityEngine.Color back = DuetPresence.GetColor(pink);
+        Expect("a custom color comes back the same", DuetPresence.IsCustomColor(pink) && back.r == 1f && Math.Abs(back.g - 128 / 255f) < 0.001f && Math.Abs(back.b - 64 / 255f) < 0.001f);
+        Expect("a custom color is named by its hex code", DuetPresence.GetColorName(pink) == "#FF8040" && DuetPresence.GetColorName(2) == "Yellow");
+        Expect("presets and custom colors are valid, nonsense isn't", DuetPresence.IsValidColor(pink) && DuetPresence.IsValidColor(7) && !DuetPresence.IsValidColor(8) && !DuetPresence.IsValidColor(-1));
+        DuetPresence customRound = DuetPresence.FromJson((Dictionary<string, object>)DuetJson.Read(DuetJson.Write(new DuetPresence { color = pink }.ToJson())));
+        Expect("a custom color survives being sent", customRound.color == pink);
+
         DuetPresence round = DuetPresence.FromJson((Dictionary<string, object>)DuetJson.Read(DuetJson.Write(robert.ToJson())));
         Expect("presence survives being written and read", DuetJson.Write(round.ToJson()) == DuetJson.Write(robert.ToJson()));
 

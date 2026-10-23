@@ -98,6 +98,8 @@ public class DuetPanel : MonoBehaviour
     bool m_sessionIsRoom = false;
     bool m_unloadedAfterSession = false;
     int m_color = 0;
+    string m_hexInput = string.Empty;
+    bool m_showCustomColor = false;
     bool m_showGhosts = true;
     string m_error = null;
     List<string> m_localAddresses = null;
@@ -118,7 +120,10 @@ public class DuetPanel : MonoBehaviour
         // A random color the first time, so two people who never pick one still look different
         if (!PlayerPrefs.HasKey(PrefColor))
             PlayerPrefs.SetInt(PrefColor, new System.Random().Next(DuetPresence.ColorCount));
-        m_color = Mathf.Clamp(PlayerPrefs.GetInt(PrefColor, 0), 0, DuetPresence.ColorCount - 1);
+        m_color = PlayerPrefs.GetInt(PrefColor, 0);
+        if (!DuetPresence.IsValidColor(m_color))
+            m_color = 0;
+        m_hexInput = HexOf(m_color);
     }
 
     bool useRooms { get { return m_useRooms && DuetRooms.isAvailable; } }
@@ -438,23 +443,72 @@ public class DuetPanel : MonoBehaviour
             m_session.Leave();
     }
 
+    void SetColor(int color, bool updateHex = true)
+    {
+        m_color = color;
+        PlayerPrefs.SetInt(PrefColor, m_color);
+        if (updateHex)
+            m_hexInput = HexOf(m_color);
+    }
+
+    static string HexOf(int color)
+    {
+        return "#" + ColorUtility.ToHtmlStringRGB(DuetPresence.GetColor(color));
+    }
+
+    static float ColorSlider(string label, float value)
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Label(label, GUILayout.Width(50));
+        float result = GUILayout.HorizontalSlider(value, 0f, 1f);
+        GUILayout.EndHorizontal();
+        return Mathf.Round(result * 255) / 255f;
+    }
+
     // Your color for your name, cursor and song bar marker, and whether to show other people's ghost notes
     void DrawColorPicker()
     {
-        GUILayout.Label("Your color: " + DuetPresence.ColorNames[m_color]);
+        GUILayout.Label("Your color: " + DuetPresence.GetColorName(m_color));
         GUILayout.BeginHorizontal();
         Color background = GUI.backgroundColor;
         for (int i = 0; i < DuetPresence.ColorCount; ++i)
         {
             GUI.backgroundColor = DuetPresence.GetColor(i);
             if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", GUI.skin.button, GUILayout.Width(36)) && i != m_color)
-            {
-                m_color = i;
-                PlayerPrefs.SetInt(PrefColor, m_color);
-            }
+                SetColor(i);
         }
         GUI.backgroundColor = background;
         GUILayout.EndHorizontal();
+
+        // Any color at all, by sliders or by typing its hex code
+        bool custom = DuetPresence.IsCustomColor(m_color);
+        GUILayout.BeginHorizontal();
+        GUI.backgroundColor = custom ? DuetPresence.GetColor(m_color) : background;
+        m_showCustomColor = GUILayout.Toggle(m_showCustomColor, custom ? "* Custom color" : "Custom color", GUI.skin.button);
+        GUI.backgroundColor = background;
+        GUILayout.EndHorizontal();
+
+        if (m_showCustomColor)
+        {
+            Color current = DuetPresence.GetColor(m_color);
+            float r = ColorSlider("Red", current.r);
+            float g = ColorSlider("Green", current.g);
+            float b = ColorSlider("Blue", current.b);
+            if (r != current.r || g != current.g || b != current.b)
+                SetColor(DuetPresence.MakeCustomColor(new Color(r, g, b)));
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Hex", GUILayout.Width(50));
+            string hex = GUILayout.TextField(m_hexInput, 7);
+            GUILayout.EndHorizontal();
+            if (hex != m_hexInput)
+            {
+                m_hexInput = hex;
+                Color typed;
+                if (ColorUtility.TryParseHtmlString(hex.StartsWith("#") ? hex : "#" + hex, out typed) && hex.TrimStart('#').Length == 6)
+                    SetColor(DuetPresence.MakeCustomColor(typed), false);
+            }
+        }
 
         bool showGhosts = GUILayout.Toggle(m_showGhosts, " Show other people's ghost notes");
         if (showGhosts != m_showGhosts)

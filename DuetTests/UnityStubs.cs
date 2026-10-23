@@ -22,6 +22,11 @@ namespace UnityEngine
         public static Color white { get { return new Color(1, 1, 1); } }
     }
     public enum KeyCode { F9, F10 }
+    public static class ColorUtility
+    {
+        public static string ToHtmlStringRGB(Color c) { return ((int)System.Math.Round(c.r * 255)).ToString("X2") + ((int)System.Math.Round(c.g * 255)).ToString("X2") + ((int)System.Math.Round(c.b * 255)).ToString("X2"); }
+        public static bool TryParseHtmlString(string s, out Color c) { c = new Color(0, 0, 0); return false; }
+    }
 
     public static class Debug
     {
@@ -88,6 +93,7 @@ namespace UnityEngine
         public static void BeginArea(Rect rect) { }
         public static void EndArea() { }
         public static void Label(string text, params GUILayoutOption[] options) { }
+        public static float HorizontalSlider(float value, float left, float right) { return value; }
         public static string TextField(string text, int maxLength) { return text; }
         public static bool Button(string text, params GUILayoutOption[] options) { return false; }
         public static bool Toggle(bool value, string text, GUIStyle style, params GUILayoutOption[] options) { return value; }
