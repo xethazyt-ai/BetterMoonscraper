@@ -46,3 +46,10 @@ sysinfo.txt
 # Builds
 *.apk
 *.unitypackage
+
+# Duet Mode: Epic Online Services SDK and keys stay on each computer (see DuetTests/EOS-SPIKE.md)
+Moonscraper Chart Editor/EOS/
+Moonscraper Chart Editor/Assets/Plugins/EOS/
+Moonscraper Chart Editor/Assets/Plugins/EOS.meta
+Moonscraper Chart Editor/Assets/csc.rsp
+Moonscraper Chart Editor/Assets/csc.rsp.meta
