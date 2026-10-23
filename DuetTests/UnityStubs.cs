@@ -57,6 +57,7 @@ namespace UnityEngine
         public static Vector3 mousePosition;
         public static bool GetKeyDown(KeyCode key) { return false; }
         public static bool GetMouseButton(int button) { return false; }
+        public static bool GetMouseButtonDown(int button) { return false; }
     }
 
     public static class Application { public static string persistentDataPath = System.IO.Path.GetTempPath(); }

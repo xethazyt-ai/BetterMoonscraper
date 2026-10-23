@@ -38,6 +38,9 @@ public class DuetPanel : MonoBehaviour
         get { return s_instance != null && s_instance.m_session != null && s_instance.m_session.isActive ? s_instance.m_session : null; }
     }
 
+    // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
+    public static bool isMouseHeldOnPanel { get; private set; }
+
     public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
     public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
 
@@ -122,6 +125,11 @@ public class DuetPanel : MonoBehaviour
             if (!m_visible)
                 isTyping = false;
         }
+
+        if ((Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1)) && IsPointerOverPanel())
+            isMouseHeldOnPanel = true;
+        else if (!Input.GetMouseButton(0) && !Input.GetMouseButton(1))
+            isMouseHeldOnPanel = false;
 
         if (m_session != null)
         {

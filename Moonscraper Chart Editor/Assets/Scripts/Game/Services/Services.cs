@@ -51,6 +51,10 @@ public class Services : MonoBehaviour
     {
         get
         {
+            // Dragging the Duet window shouldn't scroll the song or use a tool
+            if (DuetPanel.isMouseHeldOnPanel)
+                return false;
+
             Vector2 mousePosition = uiServices.GetUIMousePosition();
 
             if (mousePosition.x < toolScreenArea.xMin ||
