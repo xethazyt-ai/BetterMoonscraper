@@ -214,7 +214,7 @@ public class DuetPanel : MonoBehaviour
                 GUILayout.Label("Connected. Receiving the host's chart...");
                 break;
             default:
-                GUILayout.Label(isHost ? "Hosting on port " + m_session.port : "Joined. Edit number " + m_session.lastSeq);
+                GUILayout.Label(isHost ? (m_sessionIsRoom ? "Hosting an online room" : "Hosting on port " + m_session.port) : "Joined. Edit number " + m_session.lastSeq);
                 break;
         }
 
