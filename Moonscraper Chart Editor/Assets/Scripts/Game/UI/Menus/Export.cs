@@ -97,6 +97,9 @@ public class Export : DisplayMenu {
 
     public void ExportSong()
     {
+        if (editor.BlockedSaveForDuetGuest())
+            return;
+
         if (chPackageToggle.isOn)
         {
             ExportCHPackage();

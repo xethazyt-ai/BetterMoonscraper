@@ -168,7 +168,6 @@ public class ChartEditor : UnityEngine.MonoBehaviour
     public void LoadCollaborationSong(Song song, bool reloadAudio, bool keepView) { currentSong = song; }
     public void UnloadCollaborationSong() { currentSong = new Song(); }
     public string currentChartFile = string.Empty;
-    public void SaveDuetCopy(string path) { }
     public void ReloadAudio() { }
 
     public void FillUndoRedoSnapInfo(uint tick, Globals.ViewMode viewMode) { }

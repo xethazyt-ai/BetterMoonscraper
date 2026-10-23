@@ -149,51 +149,6 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         m_editor.ReloadAudio();
     }
 
-    // Folder name for a saved copy: "Artist - Song", without characters Windows doesn't allow
-    public static string ChartFolderName(string artist, string name)
-    {
-        string folder = string.IsNullOrEmpty(artist) ? name : (string.IsNullOrEmpty(name) ? artist : artist + " - " + name);
-        if (string.IsNullOrEmpty(folder))
-            folder = "Untitled";
-
-        System.Text.StringBuilder safe = new System.Text.StringBuilder();
-        foreach (char c in folder)
-            safe.Append(System.Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|' ? '_' : c);
-        return safe.ToString().Trim().TrimEnd('.');
-    }
-
-    /// <summary>
-    /// Joiners only: saves the chart with all the host's song files into Songs/Artist - Song/ beside Moonscraper,
-    /// ready to play. Saving again later updates the same folder.
-    /// </summary>
-    public string SaveCopyToSongsFolder()
-    {
-        Song song = m_editor.currentSong;
-        string songs = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(Application.dataPath)), "Songs");
-        string folder = Path.Combine(songs, ChartFolderName(song.metaData.artist, song.name));
-        Directory.CreateDirectory(folder);
-
-        foreach (KeyValuePair<string, string> file in m_songFiles)
-        {
-            string destination = Path.Combine(folder, file.Key);
-            FileInfo existing = new FileInfo(destination);
-
-            // A file saved before may be open for playback, and it's the same content, so leave it
-            if (!existing.Exists || existing.Length != new FileInfo(file.Value).Length)
-                File.Copy(file.Value, destination, true);
-        }
-
-        // Point the audio at the saved copies, so the chart refers to them by name
-        foreach (KeyValuePair<Song.AudioInstrument, string> pair in m_audioFileNames)
-        {
-            if (m_songFiles.ContainsKey(pair.Value))
-                song.SetAudioLocation(pair.Key, Path.Combine(folder, pair.Value));
-        }
-
-        m_editor.SaveDuetCopy(Path.Combine(folder, "notes.chart"));
-        return folder;
-    }
-
     public DuetSongSnapshot TakeSnapshot()
     {
         Song song = m_editor.currentSong;

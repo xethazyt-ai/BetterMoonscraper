@@ -61,9 +61,6 @@ public static class FileTests
         Expect("a file name can't point outside the download folder", sneaky != null && sneaky.name == "evil.ogg");
         Expect("a bad hash is refused", DuetFiles.FromJson(new Dictionary<string, object> { { "name", "a.ogg" }, { "size", 1.0 }, { "sha1", "../x" } }) == null);
 
-        Expect("saved folders are named Artist - Song, safely", DuetEditorSong.ChartFolderName("AC/DC", "Back: in Black?") == "AC_DC - Back_ in Black_"
-            && DuetEditorSong.ChartFolderName("", "") == "Untitled" && DuetEditorSong.ChartFolderName("", "Solo") == "Solo");
-
         try { Directory.Delete(root, true); } catch (Exception) { }
         return s_failures;
     }

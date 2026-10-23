@@ -40,29 +40,6 @@ public class DuetPanel : MonoBehaviour
     // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
     public static bool isMouseHeldOnPanel { get; private set; }
 
-    // Save As while joined, and when the session ends: a copy of the whole song in Moonscraper's Songs folder
-    public static bool SaveGuestCopy()
-    {
-        if (s_instance == null)
-            return false;
-
-        ChartEditor editor = s_instance.m_editor;
-        try
-        {
-            string folder = s_instance.m_song.SaveCopyToSongsFolder();
-            DuetFileReceiver files = s_instance.m_session != null ? s_instance.m_session.songFiles : null;
-            string note = files != null && !files.isComplete ? " (STILL GETTING THE SONG'S FILES, SAVE AGAIN ONCE THEY'RE HERE)" : string.Empty;
-            editor.services.notificationBar.PushNotification("SAVED A COPY TO SONGS/" + System.IO.Path.GetFileName(folder).ToUpperInvariant() + note, 4, true);
-            return true;
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("Duet: couldn't save a copy: " + e);
-            editor.services.notificationBar.PushNotification("COULDN'T SAVE A COPY: " + e.Message, 5, true);
-            return false;
-        }
-    }
-
     public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
     public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
 
@@ -159,7 +136,6 @@ public class DuetPanel : MonoBehaviour
             if (!m_session.isActive && m_session.role == DuetSession.Role.Client && m_session.hasReceivedSong && !m_unloadedAfterSession)
             {
                 m_unloadedAfterSession = true;
-                SaveGuestCopy();    // Saved before it's unloaded, so the joiner keeps the latest version
                 m_editor.UnloadCollaborationSong();
             }
         }
@@ -341,7 +317,7 @@ public class DuetPanel : MonoBehaviour
             m_session.RequestResync("Getting a fresh copy from the host.");
 
         if (!isHost)
-            GUILayout.Label("Only the host can save or change the audio. Save As keeps your own copy in Moonscraper's Songs folder, and a copy is saved there when the session ends.");
+            GUILayout.Label("Only the host can save the chart or change the audio. Leaving closes the chart.");
 
         if (GUILayout.Button(isHost ? "End session" : "Leave session"))
             m_session.Leave();
