@@ -221,15 +221,14 @@ public class DuetPanel : MonoBehaviour
     void DrawQuitPromptWindow(int id)
     {
         bool inSession = activeSession != null;
-        bool unsaved = !isGuest && ChartEditor.isDirty;
-        bool askToSave = unsaved || (inSession && !isGuest);   // The host can always save on the way out
+        bool askToSave = !isGuest && ChartEditor.isDirty;
 
         // A plain modal window doesn't lay out its contents, so keep them clear of the title and edges
         GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, QuitPromptHeight - 34));
 
         if (inSession)
             GUILayout.Label(isGuest ? "You'll leave the Duet session." : "Everyone in your Duet session will be disconnected.");
-        if (unsaved)
+        if (askToSave)
             GUILayout.Label("You have unsaved changes. Do you want to save them first?");
 
         GUILayout.FlexibleSpace();
