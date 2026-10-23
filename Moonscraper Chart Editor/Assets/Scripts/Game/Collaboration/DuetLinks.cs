@@ -128,6 +128,8 @@ public static class DuetRooms
 
     public static bool isAvailable { get { return provider != null; } }
 
+    public const int MaxMembers = 64;   // The most Epic allows in a lobby, counting the host
+
     // Room codes are typed by hand, so accept lowercase, spaces and dashes
     public static string NormalizeCode(string code)
     {

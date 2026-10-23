@@ -87,7 +87,7 @@ namespace UnityEngine
         public static void FlexibleSpace() { }
         public static void BeginArea(Rect rect) { }
         public static void EndArea() { }
-        public static void Label(string text) { }
+        public static void Label(string text, params GUILayoutOption[] options) { }
         public static string TextField(string text, int maxLength) { return text; }
         public static bool Button(string text, params GUILayoutOption[] options) { return false; }
         public static bool Toggle(bool value, string text, GUIStyle style, params GUILayoutOption[] options) { return value; }

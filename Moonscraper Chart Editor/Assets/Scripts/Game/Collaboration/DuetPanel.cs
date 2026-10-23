@@ -391,10 +391,20 @@ public class DuetPanel : MonoBehaviour
             bool locked = GUILayout.Toggle(m_session.isLocked, " Lock the session (nobody new can join)");
             if (locked != m_session.isLocked)
                 m_session.isLocked = locked;
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Room size (up to " + DuetRooms.MaxMembers + ")");
+            if (GUILayout.Button("-", GUILayout.Width(28)))
+                m_session.maxUsers -= 1;
+            GUILayout.Label(m_session.maxUsers.ToString(), GUILayout.Width(28));
+            if (GUILayout.Button("+", GUILayout.Width(28)))
+                m_session.maxUsers += 1;
+            GUILayout.EndHorizontal();
         }
 
         GUILayout.Space(8);
-        GUILayout.Label("In this session:" + (m_session.isLocked ? "  (locked)" : string.Empty));
+        string count = m_session.users.Count + "/" + m_session.maxUsers;
+        GUILayout.Label("In this session (" + count + "):" + (m_session.isLocked ? "  (locked)" : string.Empty));
         foreach (DuetUser user in m_session.users)
             GUILayout.Label("    " + user.name + (user.id == 0 ? " (host)" : string.Empty));
 

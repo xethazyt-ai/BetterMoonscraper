@@ -98,6 +98,17 @@ public static class PresenceTests
         Expect("nobody new can join a locked session", !dave.isActive && dave.endReason.Contains("locked") && carol.isActive && host.users.Count == 3);
         host.isLocked = false;
 
+        // A full session turns new people away too
+        host.maxUsers = 3;
+        DuetSession erin = DuetSession.Join(new SessionTests.TestSong("presence-erin"), "Erin", "127.0.0.1", host.port);
+        all.Add(erin);
+        SessionTests.Pump(all, () => !erin.isActive);
+        Expect("nobody new can join a full session", !erin.isActive && erin.endReason.Contains("full") && host.users.Count == 3);
+        host.maxUsers = 1;
+        Expect("the room size stays between 2 and 64", host.maxUsers == 2);
+        host.maxUsers = 100;
+        Expect("the room size can't go past 64", host.maxUsers == 64);
+
         host.Leave();
         SessionTests.Pump(all, () => !bob.isActive && !carol.isActive);
 

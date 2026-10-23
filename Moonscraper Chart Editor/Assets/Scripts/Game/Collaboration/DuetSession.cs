@@ -92,6 +92,14 @@ public class DuetSession
     // Hosting: while locked, nobody new can join. People already in stay.
     public bool isLocked { get; set; }
 
+    // Hosting: the most people allowed in at once, counting the host. Lowering it never removes anyone.
+    int m_maxUsers = DuetRooms.MaxMembers;
+    public int maxUsers
+    {
+        get { return m_maxUsers; }
+        set { m_maxUsers = Math.Max(2, Math.Min(DuetRooms.MaxMembers, value)); }
+    }
+
     // The room code to share when hosting an online room, once the room exists
     public string roomCode { get { return m_listener != null ? m_listener.roomCode : null; } }
     public List<DuetUser> users { get; private set; }
@@ -520,6 +528,14 @@ public class DuetSession
                 client.Send(Message("rejected", "reason", "The host has locked this session, so nobody new can join right now."));
                 client.CloseAfterSending("Session locked");
                 Log("Someone tried to join, but the session is locked");
+                return;
+            }
+
+            if (users.Count >= maxUsers)
+            {
+                client.Send(Message("rejected", "reason", "This session is full (" + users.Count + "/" + maxUsers + ")."));
+                client.CloseAfterSending("Session full");
+                Log("Someone tried to join, but the session is full");
                 return;
             }
 
