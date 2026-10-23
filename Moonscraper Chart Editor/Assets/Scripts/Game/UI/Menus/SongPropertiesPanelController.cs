@@ -111,12 +111,52 @@ public class SongPropertiesPanelController : TabMenu
 
         ChartEditor.isDirty = edit;
         StartCoroutine(ScrollSetDelay());
+
+        DuetEditorSong.onRemoteSongInfoApplied += RefreshFromSong;
     }
 
     protected override void OnDisable()
     {
+        DuetEditorSong.onRemoteSongInfoApplied -= RefreshFromSong;
         UpdateIni();
         base.OnDisable();
+    }
+
+    // Someone else in a Duet session changed the song's details. Show them, except in the field being typed in.
+    void RefreshFromSong()
+    {
+        Song song = editor.currentSong;
+        Metadata metaData = song.metaData;
+
+        init = true;
+        SetUnlessTyping(songName, song.name);
+        SetUnlessTyping(artist, metaData.artist);
+        SetUnlessTyping(charter, metaData.charter);
+        SetUnlessTyping(album, metaData.album);
+        SetUnlessTyping(year, metaData.year);
+        SetUnlessTyping(offset, song.offset.ToString());
+        SetUnlessTyping(difficulty, metaData.difficulty.ToString());
+        SetUnlessTyping(genre, metaData.genre);
+        SetUnlessTyping(mediaType, metaData.mediatype);
+        init = false;
+
+        if (!customIniSettings.isFocused)
+            UpdateIniTextFromSongProperties();
+    }
+
+    static void SetUnlessTyping(InputField field, string text)
+    {
+        if (!field.isFocused && field.text != text)
+            field.text = text;
+    }
+
+    bool BlockedForDuetGuest()
+    {
+        if (!DuetPanel.isGuest)
+            return false;
+
+        editor.services.notificationBar.PushNotification("ONLY THE HOST CAN CHANGE THE AUDIO IN A DUET SESSION", 3, true);
+        return true;
     }
 
     IEnumerator ScrollSetDelay()
@@ -291,6 +331,9 @@ public class SongPropertiesPanelController : TabMenu
 
     void LoadAudioStream(Song.AudioInstrument audioInstrument)
     {
+        if (BlockedForDuetGuest())
+            return;
+
         try
         {
             string filepath = GetAudioFile();
@@ -309,6 +352,9 @@ public class SongPropertiesPanelController : TabMenu
 
     void ClearAudioStream(Song.AudioInstrument audio)
     {
+        if (BlockedForDuetGuest())
+            return;
+
         editor.currentSongAudio.Clear(audio);
         editor.currentSong.SetAudioLocation(audio, string.Empty);
 
@@ -317,6 +363,9 @@ public class SongPropertiesPanelController : TabMenu
 
     public void RefreshAllAudioStreams()
     {
+        if (BlockedForDuetGuest())
+            return;
+
         StartCoroutine(_RefreshAllAudioStreams());
     }
 

@@ -49,6 +49,9 @@ public static class SessionTests
                 ++resyncs;
         }
 
+        public Dictionary<string, string> ReadSongInfo() { return DuetSongInfo.Read(song); }
+        public void ApplySongInfo(Dictionary<string, string> info) { DuetSongInfo.Apply(song, info); }
+
         // Makes an edit locally, the way the editor does before reporting it
         public List<SongEditChange> Edit(params SongEditChange[] changes)
         {

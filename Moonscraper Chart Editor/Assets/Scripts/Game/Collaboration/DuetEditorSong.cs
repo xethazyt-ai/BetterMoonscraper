@@ -15,6 +15,9 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
     // Fired after someone else's edit has been applied to the editor's song
     public static event System.Action<IList<SongEditChange>> onRemoteEditApplied;
 
+    // Fired after someone else changed the song's details, so windows showing them can refresh
+    public static event System.Action onRemoteSongInfoApplied;
+
     readonly ChartEditor m_editor;
     readonly SongEditGestureTracker m_tracker;
 
@@ -101,6 +104,19 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
                     break;
             }
         }
+    }
+
+    public Dictionary<string, string> ReadSongInfo()
+    {
+        return DuetSongInfo.Read(m_editor.currentSong);
+    }
+
+    public void ApplySongInfo(Dictionary<string, string> info)
+    {
+        DuetSongInfo.Apply(m_editor.currentSong, info);
+        ChartEditor.isDirty = true;
+        if (onRemoteSongInfoApplied != null)
+            onRemoteSongInfoApplied();
     }
 
     public DuetSongSnapshot TakeSnapshot()

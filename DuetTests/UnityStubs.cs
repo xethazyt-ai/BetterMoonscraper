@@ -14,7 +14,12 @@ namespace UnityEngine
     public class MonoBehaviour : Behaviour { }
     public class GameObject : Object { public void SetActive(bool active) { } }
     public class TextAsset : Object { public string text; public string name; }
-    public struct Color { }
+    public struct Color
+    {
+        public float r, g, b, a;
+        public Color(float r, float g, float b, float a = 1f) { this.r = r; this.g = g; this.b = b; this.a = a; }
+        public static Color white { get { return new Color(1, 1, 1); } }
+    }
     public enum KeyCode { F9, F10 }
 
     public static class Debug
@@ -73,7 +78,7 @@ namespace UnityEngine
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
     public class GUIStyle { }
     public class GUISkin { public GUIStyle button = new GUIStyle(); }
-    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static void DragWindow() { } }
+    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static Color backgroundColor; public static void DragWindow() { } }
     public static class GUILayout
     {
         public static Rect Window(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }
@@ -81,6 +86,7 @@ namespace UnityEngine
         public static string TextField(string text, int maxLength) { return text; }
         public static bool Button(string text, params GUILayoutOption[] options) { return false; }
         public static bool Toggle(bool value, string text, GUIStyle style, params GUILayoutOption[] options) { return value; }
+        public static bool Toggle(bool value, string text, params GUILayoutOption[] options) { return value; }
         public static void Space(float pixels) { }
         public static void BeginHorizontal() { }
         public static void EndHorizontal() { }
@@ -92,6 +98,7 @@ namespace UnityEngine
         public static int GetInt(string key, int defaultValue) { return defaultValue; }
         public static void SetString(string key, string value) { }
         public static void SetInt(string key, int value) { }
+        public static bool HasKey(string key) { return false; }
     }
     public static class Time { public static float deltaTime; }
 }
@@ -157,6 +164,7 @@ public class ChartEditor : UnityEngine.MonoBehaviour
 
     public bool EditCheck() { return true; }
     public void LoadCollaborationSong(Song song, bool reloadAudio, bool keepView) { currentSong = song; }
+    public void UnloadCollaborationSong() { currentSong = new Song(); }
 
     public void FillUndoRedoSnapInfo(uint tick, Globals.ViewMode viewMode) { }
     public static float TimeToWorldYPosition(float time) { return time; }

@@ -182,6 +182,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
         errorManager = gameObject.AddComponent<ErrorManager>();
         gameObject.AddComponent<DuetPanel>();
+        gameObject.AddComponent<DuetOverlay>();
         toolManager.Init();
         interactionMethodManager.Init();
 
@@ -361,7 +362,8 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
             if (result == NativeMessageBox.Result.Yes)
             {
-                if (!_Save())
+                // Someone who joined a Duet session can only keep a copy of the host's chart
+                if (!(DuetPanel.isGuest ? _SaveAs() : _Save()))
                 {
                     return false;
                 }
@@ -601,6 +603,9 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 #region Chart Loading/Saving
     public void New()
     {
+        if (BlockedForDuetGuest())
+            return;
+
         if (!EditCheck())
             return;
 
@@ -634,7 +639,19 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     // Wrapper function
     public void Load()
     {
+        if (BlockedForDuetGuest())
+            return;
+
         onClickEventFnList.Add(LoadQueued);
+    }
+
+    bool BlockedForDuetGuest()
+    {
+        if (!DuetPanel.isGuest)
+            return false;
+
+        services.notificationBar.PushNotification("LEAVE THE DUET SESSION FIRST (F10) TO OPEN ANOTHER CHART", 3, true);
+        return true;
     }
 
     void LoadQueued()
@@ -664,6 +681,12 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
     public bool _Save()
     {
+        if (DuetPanel.isGuest)
+        {
+            services.notificationBar.PushNotification("ONLY THE HOST CAN SAVE THIS CHART. USE SAVE AS TO KEEP YOUR OWN COPY", 3, true);
+            return false;
+        }
+
         if (lastLoadedFile != string.Empty)
         {
             var exportOptions = currentSong.defaultExportOptions;
@@ -915,6 +938,35 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         selectedObjectsManager.currentSelectedObject = null;
         isDirty = true;
         isLoadingCollaborationSong = false;
+    }
+
+    /// <summary>
+    /// Closes the chart a Duet Mode joiner got from the host when the session ends, without asking to save,
+    /// leaving an empty editor as if Moonscraper had just started.
+    /// </summary>
+    public void UnloadCollaborationSong()
+    {
+        StartCoroutine(_UnloadCollaborationSong());
+    }
+
+    IEnumerator _UnloadCollaborationSong()
+    {
+        while (isLoadingCollaborationSong || isSaving || services.loadingTasksManager.isRunningTask)
+            yield return null;
+
+        Stop();
+
+        lastLoadedFile = string.Empty;
+        currentSongAudio.FreeAudioStreams();
+        currentSong = new Song();
+        currentSong.resolution = Globals.gameSettings.newSongResolution;
+        sessionFlags &= ~ChartEditorSessionFlags.CurrentChartSavedInProprietyFormat;
+
+        LoadSong(currentSong);
+
+        movement.SetPosition(0);
+        selectedObjectsManager.currentSelectedObject = null;
+        isDirty = false;
     }
 
     IEnumerator _Load()
