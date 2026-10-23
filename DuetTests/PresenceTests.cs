@@ -49,6 +49,22 @@ public static class PresenceTests
         Expect("other joiners see it too, through the host", bob.presences.ContainsKey(1) && bob.presences[1].instrument == "Drums");
         Expect("nobody gets their own presence back", !alice.presences.ContainsKey(1));
 
+        // Chat: a joiner says something, then the host answers
+        alice.SendChat("  can you take the solo?\n");
+        SessionTests.Pump(all, () => host.chat.Count == 1 && bob.chat.Count == 1);
+        Expect("a chat message reaches everyone, with who sent it", host.chat.Count == 1 && bob.chat.Count == 1 && alice.chat.Count == 1
+            && bob.chat[0].name == "Alex" && bob.chat[0].userId == 1 && bob.chat[0].text == "can you take the solo?");
+        host.SendChat("sure");
+        alice.SendChat("   ");
+        SessionTests.Pump(all, () => alice.chat.Count == 2 && bob.chat.Count == 2);
+        Expect("the host's messages reach everyone, and blank ones are dropped", alice.chat.Count == 2 && bob.chat.Count == 2 && host.chat.Count == 2
+            && alice.chat[1].name == "Robert" && alice.chat[1].text == "sure");
+
+        DuetPresence typing = new DuetPresence { color = 0, viewTick = 1536, instrument = "Drums", difficulty = "Hard", isTyping = true };
+        alice.SetLocalPresence(typing);
+        SessionTests.Pump(all, () => bob.presences.ContainsKey(1) && bob.presences[1].isTyping);
+        Expect("everyone sees who's typing", bob.presences.ContainsKey(1) && bob.presences[1].isTyping && host.presences[1].isTyping);
+
         // Song details change on a joiner, and on the host at about the same time, in different fields
         aliceSong.song.metaData.charter = "Alex";
         hostSong.song.metaData.album = "Inhuman Rampage";
@@ -68,8 +84,14 @@ public static class PresenceTests
         Expect("a leaver's cursor disappears", !host.presences.ContainsKey(1) && !bob.presences.ContainsKey(1));
         Expect("a joiner that got the chart says so", alice.hasReceivedSong && bob.hasReceivedSong);
 
+        SessionTests.TestSong carolSong = new SessionTests.TestSong("presence-carol");
+        DuetSession carol = DuetSession.Join(carolSong, "Casey", "127.0.0.1", host.port);
+        all.Add(carol);
+        SessionTests.Pump(all, () => carol.state == DuetSession.State.Connected && carol.chat.Count == 2);
+        Expect("someone joining later sees what was said", carol.chat.Count == 2 && carol.chat[0].name == "Alex" && carol.chat[1].text == "sure");
+
         host.Leave();
-        SessionTests.Pump(all, () => !bob.isActive);
+        SessionTests.Pump(all, () => !bob.isActive && !carol.isActive);
 
         DuetPresence round = DuetPresence.FromJson((Dictionary<string, object>)DuetJson.Read(DuetJson.Write(robert.ToJson())));
         Expect("presence survives being written and read", DuetJson.Write(round.ToJson()) == DuetJson.Write(robert.ToJson()));

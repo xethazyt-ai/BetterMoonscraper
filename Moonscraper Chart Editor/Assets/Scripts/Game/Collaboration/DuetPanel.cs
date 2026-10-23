@@ -45,6 +45,9 @@ public class DuetPanel : MonoBehaviour
 
     public static bool IsPointerOverPanel()
     {
+        if (DuetChat.IsPointerOver())
+            return true;
+
         if (s_instance == null || !s_instance.m_visible)
             return false;
 
@@ -54,7 +57,7 @@ public class DuetPanel : MonoBehaviour
     }
 
     // IMGUI draws in screen pixels, so scale it up on screens taller than 1080 pixels to keep text readable
-    static float GuiScale
+    public static float GuiScale
     {
         get { return Mathf.Max(1f, Screen.height / 1080f); }
     }
@@ -157,7 +160,7 @@ public class DuetPanel : MonoBehaviour
         }
 
         // Clicking anywhere outside the window gives keyboard input back to the editor
-        if (Event.current.type == EventType.MouseDown && !m_windowRect.Contains(Event.current.mousePosition))
+        if (Event.current.type == EventType.MouseDown && !m_windowRect.Contains(Event.current.mousePosition) && !DuetChat.IsPointerOver())
             GUIUtility.keyboardControl = 0;
 
         m_windowRect = GUILayout.Window(WindowId, m_windowRect, DrawWindow, "Duet Mode  (F10 to hide)");

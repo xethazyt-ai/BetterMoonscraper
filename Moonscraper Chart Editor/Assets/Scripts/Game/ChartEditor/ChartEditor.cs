@@ -184,6 +184,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         errorManager = gameObject.AddComponent<ErrorManager>();
         gameObject.AddComponent<DuetPanel>();
         gameObject.AddComponent<DuetOverlay>();
+        gameObject.AddComponent<DuetChat>();
         toolManager.Init();
         interactionMethodManager.Init();
 

@@ -47,6 +47,14 @@ public class DuetUser
     public string name;
 }
 
+public class DuetChatLine
+{
+    public int userId;
+    public string name;     // Kept with the line, so it still shows after that person leaves
+    public string text;
+    public double time;     // Seconds since the session started, by this computer's clock
+}
+
 /// <summary>
 /// A Duet Mode session, either hosting or joined.
 ///
@@ -66,6 +74,9 @@ public class DuetSession
     const int MaxLogLines = 8;
     const double PresenceIntervalSeconds = 0.05;
     const double SongInfoIntervalSeconds = 0.25;
+    public const int MaxChatLength = 300;
+    const int MaxChatLines = 100;
+    const int ChatHistoryForJoiners = 30;
 
     public enum Role { Host, Client }
     public enum State { Connecting, Joining, Connected, Ended }
@@ -85,6 +96,11 @@ public class DuetSession
 
     // Everyone else's latest presence, by user id
     public Dictionary<int, DuetPresence> presences { get; private set; }
+
+    // The chat, oldest first, and how many lines have ever arrived (so the chat box can tell when there's a new one)
+    public List<DuetChatLine> chat { get; private set; }
+    public int chatCount { get; private set; }
+    public double clockSeconds { get { return m_clock.Elapsed.TotalSeconds; } }
 
     // Our own user id: 0 when hosting, given by the host when joining
     public int localUserId { get; private set; }
@@ -134,6 +150,7 @@ public class DuetSession
         users = new List<DuetUser>();
         log = new List<string>();
         presences = new Dictionary<int, DuetPresence>();
+        chat = new List<DuetChatLine>();
     }
 
     // Hosts on a port that others connect to directly by address
@@ -191,6 +208,53 @@ public class DuetSession
         {
             SendPresenceIfChanged();
             SendSongInfoIfChanged();
+        }
+    }
+
+    // Sends a chat message to everyone in the session
+    public void SendChat(string text)
+    {
+        text = CleanChat(text);
+        if (text.Length == 0 || state != State.Connected)
+            return;
+
+        AddChat(localUserId, m_username, text);
+        if (role == Role.Host)
+            BroadcastChat(HostUserId, m_username, text, null);
+        else
+            m_host.Send(Message("chat", "text", text));
+    }
+
+    static string CleanChat(string text)
+    {
+        if (text == null)
+            return string.Empty;
+
+        System.Text.StringBuilder clean = new System.Text.StringBuilder(text.Length);
+        foreach (char c in text)
+        {
+            if (!char.IsControl(c))
+                clean.Append(c);
+        }
+        string result = clean.ToString().Trim();
+        return result.Length > MaxChatLength ? result.Substring(0, MaxChatLength) : result;
+    }
+
+    void AddChat(int userId, string name, string text)
+    {
+        chat.Add(new DuetChatLine { userId = userId, name = name, text = text, time = clockSeconds });
+        if (chat.Count > MaxChatLines)
+            chat.RemoveAt(0);
+        ++chatCount;
+    }
+
+    void BroadcastChat(int userId, string name, string text, IDuetLink except)
+    {
+        Dictionary<string, object> message = Message("chat", "user", (double)userId, "name", name, "text", text);
+        foreach (IDuetLink client in m_joinedClients)
+        {
+            if (client != except)
+                client.Send(message);
         }
     }
 
@@ -399,11 +463,17 @@ public class DuetSession
             else if (!client.TryReceive(out message))
                 return;
 
-            // Cursors keep moving even while the song is busy
-            if (DuetJson.GetString(message, "type") == "presence")
+            // Cursors and chat keep going even while the song is busy
+            string type = DuetJson.GetString(message, "type");
+            if (type == "presence" || type == "chat")
             {
                 if (m_joinedClients.Contains(client))
-                    RelayPresence(client, message);
+                {
+                    if (type == "presence")
+                        RelayPresence(client, message);
+                    else
+                        RelayChat(client, message);
+                }
                 continue;
             }
 
@@ -480,6 +550,10 @@ public class DuetSession
                 client.Send(other);
             }
 
+            // And what's been said lately
+            for (int i = Math.Max(0, chat.Count - ChatHistoryForJoiners); i < chat.Count; ++i)
+                client.Send(Message("chat", "user", (double)chat[i].userId, "name", chat[i].name, "text", chat[i].text, "old", true));
+
             Log(user.name + " joined from " + client.remoteAddress);
             BroadcastUsers();
             return;
@@ -544,6 +618,17 @@ public class DuetSession
                 }
                 break;
         }
+    }
+
+    void RelayChat(IDuetLink client, Dictionary<string, object> message)
+    {
+        string text = CleanChat(DuetJson.GetString(message, "text", string.Empty));
+        if (text.Length == 0)
+            return;
+
+        string name = UserName(client.id);
+        AddChat(client.id, name, text);
+        BroadcastChat(client.id, name, text, client);
     }
 
     void RelayPresence(IDuetLink client, Dictionary<string, object> message)
@@ -646,12 +731,20 @@ public class DuetSession
                 break;
             }
 
-            // Cursors keep moving even while the song is busy
-            if (DuetJson.GetString(message, "type") == "presence")
+            // Cursors and chat keep going even while the song is busy
+            string type = DuetJson.GetString(message, "type");
+            if (type == "presence")
             {
                 int userId = (int)DuetJson.GetNumber(message, "user", -1);
                 if (userId >= 0 && userId != localUserId && users.Exists(u => u.id == userId))
                     presences[userId] = DuetPresence.FromJson(message);
+                continue;
+            }
+            if (type == "chat")
+            {
+                string text = CleanChat(DuetJson.GetString(message, "text", string.Empty));
+                if (text.Length > 0)
+                    AddChat((int)DuetJson.GetNumber(message, "user", -1), DuetJson.GetString(message, "name", "Someone"), text);
                 continue;
             }
 

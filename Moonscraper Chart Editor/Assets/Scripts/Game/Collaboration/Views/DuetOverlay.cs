@@ -117,6 +117,7 @@ public class DuetOverlay : MonoBehaviour
         presence.viewTick = m_editor.currentTickPos;
         presence.instrument = MenuBar.currentInstrument.ToString();
         presence.difficulty = MenuBar.currentDifficulty.ToString();
+        presence.isTyping = DuetChat.isTyping;
 
         Vector2? mouse = m_editor.services.mouseMonitorSystem.world2DPosition;
         if (mouse != null && m_editor.currentState == ChartEditor.State.Editor)

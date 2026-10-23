@@ -187,3 +187,10 @@ public static class NativeMessageBox
     public enum Result { OK = 1 }
     public static Result Show(string text, string caption, Type type, NativeWindow childWindow) { System.Console.WriteLine(caption + ": " + text); return Result.OK; }
 }
+
+// The chat box is drawn by the editor; the tests only need what DuetPanel asks of it
+public static class DuetChat
+{
+    public static bool isTyping { get { return false; } }
+    public static bool IsPointerOver() { return false; }
+}

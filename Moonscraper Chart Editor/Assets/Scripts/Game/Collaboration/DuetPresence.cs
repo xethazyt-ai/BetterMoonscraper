@@ -30,6 +30,8 @@ public class DuetPresence
 
     public List<Ghost> ghosts = new List<Ghost>();
 
+    public bool isTyping;   // Writing a chat message
+
     public static readonly string[] ColorNames = { "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink" };
 
     static readonly Color[] s_colors =
@@ -69,6 +71,9 @@ public class DuetPresence
             { "difficulty", difficulty },
         };
 
+        if (isTyping)
+            json["typing"] = true;
+
         if (hasPointer)
             json["pointer"] = new List<object> { (double)pointerX, (double)pointerTick };
 
@@ -90,6 +95,9 @@ public class DuetPresence
         presence.viewTick = ToTick(DuetJson.GetNumber(json, "view"));
         presence.instrument = DuetJson.GetString(json, "instrument", string.Empty);
         presence.difficulty = DuetJson.GetString(json, "difficulty", string.Empty);
+
+        object typing;
+        presence.isTyping = json.TryGetValue("typing", out typing) && typing is bool && (bool)typing;
 
         List<object> pointer = DuetJson.GetArray(json, "pointer");
         if (pointer != null && pointer.Count >= 2 && pointer[0] is double && pointer[1] is double)
