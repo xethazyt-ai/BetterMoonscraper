@@ -18,11 +18,31 @@ public class DuetPanel : MonoBehaviour
     const string PrefAddress = "Duet.Address";
     const string PrefAudioFolder = "Duet.AudioFolder";
     const string PrefUseRooms = "Duet.UseRooms";
+    const string PrefColor = "Duet.Color";
+    const string PrefShowGhosts = "Duet.ShowGhostNotes";
 
     static DuetPanel s_instance;
 
     // Read by the editor so typing in this window doesn't trigger shortcuts or clicks fall through to the highway
     public static bool isTyping { get; private set; }
+
+    // True while in a session someone else is hosting. Only the host saves the chart or picks its audio.
+    public static bool isGuest
+    {
+        get { return s_instance != null && s_instance.m_session != null && s_instance.m_session.isActive && s_instance.m_session.role == DuetSession.Role.Client; }
+    }
+
+    // The session in progress, if any, for drawing everyone's cursors
+    public static DuetSession activeSession
+    {
+        get { return s_instance != null && s_instance.m_session != null && s_instance.m_session.isActive ? s_instance.m_session : null; }
+    }
+
+    // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
+    public static bool isMouseHeldOnPanel { get; private set; }
+
+    public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
+    public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
 
     public static bool IsPointerOverPanel()
     {
@@ -55,6 +75,9 @@ public class DuetPanel : MonoBehaviour
     string m_roomCodeInput = string.Empty;
     bool m_useRooms = true;
     bool m_sessionIsRoom = false;
+    bool m_unloadedAfterSession = false;
+    int m_color = 0;
+    bool m_showGhosts = true;
     string m_error = null;
     List<string> m_localAddresses = null;
 
@@ -70,6 +93,12 @@ public class DuetPanel : MonoBehaviour
         m_address = PlayerPrefs.GetString(PrefAddress, string.Empty);
         m_audioFolder = PlayerPrefs.GetString(PrefAudioFolder, string.Empty);
         m_useRooms = PlayerPrefs.GetInt(PrefUseRooms, 1) != 0;
+        m_showGhosts = PlayerPrefs.GetInt(PrefShowGhosts, 1) != 0;
+
+        // A random color the first time, so two people who never pick one still look different
+        if (!PlayerPrefs.HasKey(PrefColor))
+            PlayerPrefs.SetInt(PrefColor, new System.Random().Next(DuetPresence.ColorCount));
+        m_color = Mathf.Clamp(PlayerPrefs.GetInt(PrefColor, 0), 0, DuetPresence.ColorCount - 1);
     }
 
     bool useRooms { get { return m_useRooms && DuetRooms.isAvailable; } }
@@ -97,8 +126,22 @@ public class DuetPanel : MonoBehaviour
                 isTyping = false;
         }
 
+        if ((Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1)) && IsPointerOverPanel())
+            isMouseHeldOnPanel = true;
+        else if (!Input.GetMouseButton(0) && !Input.GetMouseButton(1))
+            isMouseHeldOnPanel = false;
+
         if (m_session != null)
+        {
             m_session.Update();
+
+            // A joiner's copy of the chart goes away with the session, however it ended
+            if (!m_session.isActive && m_session.role == DuetSession.Role.Client && m_session.hasReceivedSong && !m_unloadedAfterSession)
+            {
+                m_unloadedAfterSession = true;
+                m_editor.UnloadCollaborationSong();
+            }
+        }
     }
 
     void OnGUI()
@@ -141,6 +184,9 @@ public class DuetPanel : MonoBehaviour
 
         GUILayout.Label("Your name (shown to the other person)");
         m_username = GUILayout.TextField(m_username, 24);
+
+        GUILayout.Space(8);
+        DrawColorPicker();
 
         if (DuetRooms.isAvailable)
         {
@@ -259,6 +305,9 @@ public class DuetPanel : MonoBehaviour
         foreach (DuetUser user in m_session.users)
             GUILayout.Label("    " + user.name + (user.id == 0 ? " (host)" : string.Empty));
 
+        GUILayout.Space(8);
+        DrawColorPicker();
+
         if (!isHost && m_song.missingAudioFiles.Count > 0)
         {
             GUILayout.Space(8);
@@ -273,8 +322,37 @@ public class DuetPanel : MonoBehaviour
         if (!isHost && m_session.state == DuetSession.State.Connected && GUILayout.Button("Get a fresh copy from the host"))
             m_session.RequestResync("Getting a fresh copy from the host.");
 
+        if (!isHost)
+            GUILayout.Label("Only the host can save or change the audio. Save As keeps your own copy. Leaving closes the chart.");
+
         if (GUILayout.Button(isHost ? "End session" : "Leave session"))
             m_session.Leave();
+    }
+
+    // Your color for your name, cursor and song bar marker, and whether to show other people's ghost notes
+    void DrawColorPicker()
+    {
+        GUILayout.Label("Your color: " + DuetPresence.ColorNames[m_color]);
+        GUILayout.BeginHorizontal();
+        Color background = GUI.backgroundColor;
+        for (int i = 0; i < DuetPresence.ColorCount; ++i)
+        {
+            GUI.backgroundColor = DuetPresence.GetColor(i);
+            if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", GUI.skin.button, GUILayout.Width(36)) && i != m_color)
+            {
+                m_color = i;
+                PlayerPrefs.SetInt(PrefColor, m_color);
+            }
+        }
+        GUI.backgroundColor = background;
+        GUILayout.EndHorizontal();
+
+        bool showGhosts = GUILayout.Toggle(m_showGhosts, " Show other people's ghost notes");
+        if (showGhosts != m_showGhosts)
+        {
+            m_showGhosts = showGhosts;
+            PlayerPrefs.SetInt(PrefShowGhosts, m_showGhosts ? 1 : 0);
+        }
     }
 
     bool TryReadSettings(out int port)
@@ -352,6 +430,7 @@ public class DuetPanel : MonoBehaviour
         m_song.localAudioFolder = m_audioFolder.Trim();
 
         m_sessionIsRoom = useRooms;
+        m_unloadedAfterSession = false;
         if (m_sessionIsRoom)
         {
             m_session = DuetSession.Join(m_song, m_username, DuetRooms.provider.JoinRoom(code), "Looking for room " + code);

@@ -28,6 +28,10 @@ public interface IDuetSongHost
 
     DuetSongSnapshot TakeSnapshot();
     void LoadSnapshot(DuetSongSnapshot snapshot, bool isResync);
+
+    // The song's details (name, artist, charter and so on), field by field. See DuetSongInfo.
+    Dictionary<string, string> ReadSongInfo();
+    void ApplySongInfo(Dictionary<string, string> info);
 }
 
 public class DuetUser
@@ -43,6 +47,9 @@ public class DuetUser
 /// in that order. Your own edits apply on your screen straight away and are sent to the host, which checks the song
 /// is still as your edit expected before accepting it. If an edit clashes, the joiner's copy is replaced with a fresh
 /// copy from the host.
+///
+/// Alongside edits, everyone sends their presence (cursor, ghost note, place in the song) and any change to the song's
+/// details. Neither waits for the song to be free, and the newest one simply wins.
 /// </summary>
 public class DuetSession
 {
@@ -50,6 +57,8 @@ public class DuetSession
     public const int DefaultPort = 47820;
     const int HostUserId = 0;
     const int MaxLogLines = 8;
+    const double PresenceIntervalSeconds = 0.05;
+    const double SongInfoIntervalSeconds = 0.25;
 
     public enum Role { Host, Client }
     public enum State { Connecting, Joining, Connected, Ended }
@@ -66,6 +75,15 @@ public class DuetSession
     public string roomCode { get { return m_listener != null ? m_listener.roomCode : null; } }
     public List<DuetUser> users { get; private set; }
     public List<string> log { get; private set; }
+
+    // Everyone else's latest presence, by user id
+    public Dictionary<int, DuetPresence> presences { get; private set; }
+
+    // Our own user id: 0 when hosting, given by the host when joining
+    public int localUserId { get; private set; }
+
+    // Joiners only: true once the host's chart has arrived and replaced whatever was open
+    public bool hasReceivedSong { get; private set; }
 
     // Edit numbering. On the host this is the last number given out; on a joiner, the last one received.
     public int lastSeq { get; private set; }
@@ -85,6 +103,14 @@ public class DuetSession
     readonly HashSet<int> m_unacknowledgedEdits = new HashSet<int>();
     bool m_awaitingSnapshot = false;
 
+    // Presence and song details
+    readonly System.Diagnostics.Stopwatch m_clock = System.Diagnostics.Stopwatch.StartNew();
+    DuetPresence m_localPresence;
+    string m_lastSentPresence;
+    double m_lastPresenceTime = double.MinValue;
+    Dictionary<string, string> m_knownSongInfo;  // As last sent or received; null until the song settles
+    double m_lastSongInfoTime = double.MinValue;
+
     public int unacknowledgedEditCount { get { return m_unacknowledgedEdits.Count; } }
     public bool isActive { get { return state != State.Ended; } }
 
@@ -95,6 +121,7 @@ public class DuetSession
         this.role = role;
         users = new List<DuetUser>();
         log = new List<string>();
+        presences = new Dictionary<int, DuetPresence>();
     }
 
     // Hosts on a port that others connect to directly by address
@@ -147,6 +174,121 @@ public class DuetSession
             UpdateHost();
         else
             UpdateClient();
+
+        if (state == State.Connected)
+        {
+            SendPresenceIfChanged();
+            SendSongInfoIfChanged();
+        }
+    }
+
+    // Call every frame with where the local user is. Sent when it changes, at most 20 times a second.
+    public void SetLocalPresence(DuetPresence presence)
+    {
+        m_localPresence = presence;
+        if (state == State.Connected)
+            SendPresenceIfChanged();
+    }
+
+    void SendPresenceIfChanged()
+    {
+        if (m_localPresence == null || m_clock.Elapsed.TotalSeconds - m_lastPresenceTime < PresenceIntervalSeconds)
+            return;
+
+        Dictionary<string, object> message = m_localPresence.ToJson();
+        string json = DuetJson.Write(message);
+        if (json == m_lastSentPresence)
+            return;
+
+        m_lastSentPresence = json;
+        m_lastPresenceTime = m_clock.Elapsed.TotalSeconds;
+
+        if (role == Role.Host)
+        {
+            message["user"] = (double)HostUserId;
+            foreach (IDuetLink client in m_joinedClients)
+                client.Send(message);
+        }
+        else
+        {
+            m_host.Send(message);
+        }
+    }
+
+    // Checks a few times a second whether the local user changed the song's details, and sends only the fields that changed
+    void SendSongInfoIfChanged()
+    {
+        if (m_song.isBusy || m_awaitingSnapshot || m_clock.Elapsed.TotalSeconds - m_lastSongInfoTime < SongInfoIntervalSeconds)
+            return;
+
+        m_lastSongInfoTime = m_clock.Elapsed.TotalSeconds;
+        Dictionary<string, string> current = m_song.ReadSongInfo();
+        if (m_knownSongInfo == null)
+        {
+            m_knownSongInfo = current;
+            return;
+        }
+
+        Dictionary<string, object> changed = new Dictionary<string, object>();
+        foreach (KeyValuePair<string, string> field in current)
+        {
+            string known;
+            if (!m_knownSongInfo.TryGetValue(field.Key, out known) || known != field.Value)
+            {
+                changed[field.Key] = field.Value;
+                m_knownSongInfo[field.Key] = field.Value;
+            }
+        }
+
+        if (changed.Count <= 0)
+            return;
+
+        Dictionary<string, object> message = Message("songinfo", "fields", changed);
+        if (role == Role.Host)
+        {
+            foreach (IDuetLink client in m_joinedClients)
+                client.Send(message);
+        }
+        else
+        {
+            m_host.Send(message);
+        }
+    }
+
+    // Applies song details someone else changed
+    void ApplySongInfo(Dictionary<string, object> message)
+    {
+        Dictionary<string, object> fields = DuetJson.GetObject(message, "fields");
+        if (fields == null)
+            return;
+
+        Dictionary<string, string> info = new Dictionary<string, string>();
+        foreach (KeyValuePair<string, object> field in fields)
+        {
+            if (field.Value is string)
+                info[field.Key] = (string)field.Value;
+        }
+
+        if (info.Count <= 0)
+            return;
+
+        m_song.ApplySongInfo(info);
+
+        // Read back what the song actually holds, so a value the song tidied up isn't sent straight back
+        Dictionary<string, string> applied = m_song.ReadSongInfo();
+        if (m_knownSongInfo == null)
+        {
+            m_knownSongInfo = applied;
+        }
+        else
+        {
+            foreach (string key in info.Keys)
+            {
+                string value;
+                if (applied.TryGetValue(key, out value))
+                    m_knownSongInfo[key] = value;
+            }
+        }
     }
 
     // A finished edit made by the local user
@@ -217,6 +359,7 @@ public class DuetSession
                 {
                     DuetUser user = users.Find(u => u.id == client.id);
                     users.Remove(user);
+                    presences.Remove(client.id);
                     Log((user != null ? user.name : "Someone") + " left (" + client.closeReason + ")");
                     BroadcastUsers();
                 }
@@ -226,13 +369,21 @@ public class DuetSession
 
     void ProcessHostMessages(IDuetLink client)
     {
-        while (!m_song.isBusy)
+        while (true)
         {
             Dictionary<string, object> message;
             if (m_heldMessages.TryGetValue(client, out message))
                 m_heldMessages.Remove(client);
             else if (!client.TryReceive(out message))
                 return;
+
+            // Cursors keep moving even while the song is busy
+            if (DuetJson.GetString(message, "type") == "presence")
+            {
+                if (m_joinedClients.Contains(client))
+                    RelayPresence(client, message);
+                continue;
+            }
 
             // A message that needs the song, such as an edit or a join, might arrive while the song is busy.
             // Hold it and handle it first next time.
@@ -279,6 +430,26 @@ public class DuetSession
             welcome["users"] = UsersJson();
             client.Send(welcome);
 
+            // The snapshot carries most song details, but not the custom ini settings, so send them all
+            Dictionary<string, object> songInfo = new Dictionary<string, object>();
+            foreach (KeyValuePair<string, string> field in m_song.ReadSongInfo())
+                songInfo[field.Key] = field.Value;
+            client.Send(Message("songinfo", "fields", songInfo));
+
+            // Show the newcomer where everyone already is
+            if (m_lastSentPresence != null)
+            {
+                Dictionary<string, object> hostPresence = m_localPresence.ToJson();
+                hostPresence["user"] = (double)HostUserId;
+                client.Send(hostPresence);
+            }
+            foreach (KeyValuePair<int, DuetPresence> pair in presences)
+            {
+                Dictionary<string, object> other = pair.Value.ToJson();
+                other["user"] = (double)pair.Key;
+                client.Send(other);
+            }
+
             Log(user.name + " joined from " + client.remoteAddress);
             BroadcastUsers();
             return;
@@ -311,6 +482,27 @@ public class DuetSession
             case "resync":
                 client.Send(SnapshotMessage("snapshot", m_song.TakeSnapshot()));
                 break;
+
+            case "songinfo":
+                ApplySongInfo(message);
+                foreach (IDuetLink other in m_joinedClients)
+                {
+                    if (other != client)
+                        other.Send(message);
+                }
+                break;
+        }
+    }
+
+    void RelayPresence(IDuetLink client, Dictionary<string, object> message)
+    {
+        presences[client.id] = DuetPresence.FromJson(message);
+
+        message["user"] = (double)client.id;    // Whatever the sender claimed, it's this user
+        foreach (IDuetLink other in m_joinedClients)
+        {
+            if (other != client)
+                other.Send(message);
         }
     }
 
@@ -389,7 +581,7 @@ public class DuetSession
             Log("Connected, waiting for the host's chart");
         }
 
-        while (!m_song.isBusy && state != State.Ended)
+        while (state != State.Ended)
         {
             Dictionary<string, object> message;
             if (m_heldHostMessage != null)
@@ -400,6 +592,15 @@ public class DuetSession
             else if (!m_host.TryReceive(out message))
             {
                 break;
+            }
+
+            // Cursors keep moving even while the song is busy
+            if (DuetJson.GetString(message, "type") == "presence")
+            {
+                int userId = (int)DuetJson.GetNumber(message, "user", -1);
+                if (userId >= 0 && userId != localUserId && users.Exists(u => u.id == userId))
+                    presences[userId] = DuetPresence.FromJson(message);
+                continue;
             }
 
             if (m_song.isBusy)
@@ -434,7 +635,9 @@ public class DuetSession
                 break;
 
             case "welcome":
+                localUserId = (int)DuetJson.GetNumber(message, "you");
                 LoadSnapshot(message, false);
+                hasReceivedSong = true;
                 ReadUsers(message);
                 state = State.Connected;
                 Log("Joined. You now have the host's chart.");
@@ -479,6 +682,10 @@ public class DuetSession
                 m_unacknowledgedEdits.Clear();
                 Log("Back in sync with the host.");
                 break;
+
+            case "songinfo":
+                ApplySongInfo(message);
+                break;
         }
     }
 
@@ -500,6 +707,7 @@ public class DuetSession
 
         lastSeq = (int)DuetJson.GetNumber(message, "seq");
         m_song.LoadSnapshot(snapshot, isResync);
+        m_knownSongInfo = null;     // Starts again from the loaded song once it settles
     }
 
     void ReadUsers(Dictionary<string, object> message)
@@ -511,6 +719,15 @@ public class DuetSession
             if (user != null)
                 users.Add(new DuetUser { id = (int)DuetJson.GetNumber(user, "id"), name = DuetJson.GetString(user, "name", "Charter") });
         }
+
+        List<int> gone = new List<int>();
+        foreach (int id in presences.Keys)
+        {
+            if (!users.Exists(u => u.id == id))
+                gone.Add(id);
+        }
+        foreach (int id in gone)
+            presences.Remove(id);
     }
 
     #endregion
