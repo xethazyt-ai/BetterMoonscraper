@@ -204,6 +204,11 @@ public static class DuetChat
     public static bool IsPointerOver() { return false; }
 }
 
+public static class DuetMenuCover
+{
+    public static bool Covers(UnityEngine.Rect guiRect, float scale) { return false; }
+}
+
 // The real window is drawn by the editor; the tests only need what DuetPanel asks of it
 public class DuetWindow
 {

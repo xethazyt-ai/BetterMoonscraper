@@ -275,9 +275,16 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         m_localUser = null;
     }
 
-    void OnApplicationQuit()
+    // Not OnApplicationQuit: Unity sends that as soon as the window's X is clicked, before Moonscraper has asked whether
+    // to quit, so cancelling would still close the room. Application.quitting only comes once it's really quitting.
+    void Awake()
     {
-        Shutdown();
+        Application.quitting += Shutdown;
+    }
+
+    void OnDestroy()
+    {
+        Application.quitting -= Shutdown;
     }
 
     #endregion

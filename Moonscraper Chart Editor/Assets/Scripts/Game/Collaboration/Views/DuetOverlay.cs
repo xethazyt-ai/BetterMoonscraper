@@ -181,14 +181,19 @@ public class DuetOverlay : MonoBehaviour
         float scale = Mathf.Max(1f, Screen.height / 1080f);
         Color color = DuetPresence.GetColor(presence.color);
 
-        GUI.color = color;
-        GUI.DrawTexture(new Rect(tip.x, tip.y, m_arrow.width * scale * 0.75f, m_arrow.height * scale * 0.75f), m_arrow);
-
         GUIContent content = new GUIContent(label);
         Vector2 size = m_tagStyle.CalcSize(content);
+        Rect arrowRect = new Rect(tip.x, tip.y, m_arrow.width * scale * 0.75f, m_arrow.height * scale * 0.75f);
+        Rect tagRect = new Rect(tip.x + 16 * scale, tip.y + 20 * scale, size.x, size.y);
+        if (DuetMenuCover.Covers(arrowRect) || DuetMenuCover.Covers(tagRect))
+            return;     // Behind an open Moonscraper menu
+
+        GUI.color = color;
+        GUI.DrawTexture(arrowRect, m_arrow);
+
         m_tagStyle.normal.textColor = color;
         GUI.color = Color.white;
-        GUI.Label(new Rect(tip.x + 16 * scale, tip.y + 20 * scale, size.x, size.y), content, m_tagStyle);
+        GUI.Label(tagRect, content, m_tagStyle);
     }
 
     void DrawSongBarMarkers(DuetSession session)
@@ -226,6 +231,9 @@ public class DuetOverlay : MonoBehaviour
             float fraction = Mathf.Clamp01(song.TickToTime(person.Value.viewTick, song.resolution) / m_editor.currentSongLength);
             float screenY = Mathf.Lerp(bottomRight.y, topRight.y, fraction);
             Rect rect = new Rect(Mathf.Min(bottomRight.x + 2 * scale, Screen.width - size), Screen.height - screenY - size / 2, size, size);
+
+            if (DuetMenuCover.Covers(rect))
+                continue;
 
             GUI.color = DuetPresence.GetColor(person.Value.color);
             GUI.DrawTexture(rect, m_marker);

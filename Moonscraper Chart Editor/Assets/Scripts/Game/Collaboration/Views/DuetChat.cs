@@ -42,7 +42,7 @@ public class DuetChat : MonoBehaviour
 
         float scale = DuetPanel.GuiScale;
         Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
-        return s_instance.m_window.rect.Contains(pointer);
+        return s_instance.m_window.rect.Contains(pointer) && !DuetMenuCover.Covers(s_instance.m_window.rect, scale);
     }
 
     bool isShown
@@ -111,6 +111,10 @@ public class DuetChat : MonoBehaviour
         // Clicking outside the window while writing stops writing
         if (m_writing && UnityEngine.Event.current.type == EventType.MouseDown && !m_window.rect.Contains(UnityEngine.Event.current.mousePosition))
             StopWriting();
+
+        // An open Moonscraper menu goes in front of the window, so the window steps out of its way
+        if (DuetMenuCover.Covers(m_window.rect, scale))
+            return;
 
         m_window.Draw("Chat", DrawWindow, scale);
 

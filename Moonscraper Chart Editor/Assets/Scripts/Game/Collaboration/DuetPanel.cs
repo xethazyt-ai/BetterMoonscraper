@@ -74,7 +74,7 @@ public class DuetPanel : MonoBehaviour
 
         float scale = GuiScale;
         Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
-        return s_instance.m_window.rect.Contains(pointer);
+        return s_instance.m_window.rect.Contains(pointer) && !DuetMenuCover.Covers(s_instance.m_window.rect, scale);
     }
 
     // IMGUI draws in screen pixels, so scale it up on screens taller than 1080 pixels to keep text readable
@@ -198,6 +198,10 @@ public class DuetPanel : MonoBehaviour
         // Clicking anywhere outside the window gives keyboard input back to the editor
         if (Event.current.type == EventType.MouseDown && !m_window.rect.Contains(Event.current.mousePosition) && !DuetChat.IsPointerOver())
             GUIUtility.keyboardControl = 0;
+
+        // An open Moonscraper menu goes in front of the window, so the window steps out of its way
+        if (DuetMenuCover.Covers(m_window.rect, scale))
+            return;
 
         m_window.Draw("Duet Mode", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
