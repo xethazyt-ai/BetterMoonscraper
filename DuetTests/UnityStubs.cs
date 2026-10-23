@@ -69,14 +69,17 @@ namespace UnityEngine
     public enum EventType { MouseDown }
     public class Event { public static Event current = new Event(); public EventType type; public Vector2 mousePosition; }
     public class GUILayoutOption { }
-    public static class GUIUtility { public static int keyboardControl; }
-    public static class GUI { public delegate void WindowFunction(int id); public static void DragWindow() { } }
+    public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
+    public class GUIStyle { }
+    public class GUISkin { public GUIStyle button = new GUIStyle(); }
+    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static void DragWindow() { } }
     public static class GUILayout
     {
         public static Rect Window(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }
         public static void Label(string text) { }
         public static string TextField(string text, int maxLength) { return text; }
         public static bool Button(string text, params GUILayoutOption[] options) { return false; }
+        public static bool Toggle(bool value, string text, GUIStyle style, params GUILayoutOption[] options) { return value; }
         public static void Space(float pixels) { }
         public static void BeginHorizontal() { }
         public static void EndHorizontal() { }

@@ -6,17 +6,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 
 /// <summary>
 /// One TCP connection carrying Duet Mode messages. Each message is a 4-byte big-endian length followed by UTF-8 JSON.
 /// Reading and writing happen on background threads; call Receive from the main thread to collect incoming messages.
 /// </summary>
-public class DuetConnection
+public class DuetConnection : IDuetLink
 {
-    const int MaxMessageBytes = 64 * 1024 * 1024;
-
     readonly TcpClient m_client;
     readonly NetworkStream m_stream;
     readonly ConcurrentQueue<Dictionary<string, object>> m_incoming = new ConcurrentQueue<Dictionary<string, object>>();
@@ -57,13 +54,7 @@ public class DuetConnection
         if (m_closed)
             return;
 
-        byte[] body = Encoding.UTF8.GetBytes(DuetJson.Write(message));
-        byte[] frame = new byte[4 + body.Length];
-        frame[0] = (byte)(body.Length >> 24);
-        frame[1] = (byte)(body.Length >> 16);
-        frame[2] = (byte)(body.Length >> 8);
-        frame[3] = (byte)body.Length;
-        Buffer.BlockCopy(body, 0, frame, 4, body.Length);
+        byte[] frame = DuetFraming.Encode(message);
 
         try
         {
@@ -110,14 +101,14 @@ public class DuetConnection
                     break;
 
                 int length = (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
-                if (length < 0 || length > MaxMessageBytes)
+                if (length < 0 || length > DuetFraming.MaxMessageBytes)
                     throw new InvalidDataException("Message too large: " + length + " bytes");
 
                 byte[] body = new byte[length];
                 if (!ReadExactly(body, length))
                     break;
 
-                Dictionary<string, object> message = DuetJson.Read(Encoding.UTF8.GetString(body)) as Dictionary<string, object>;
+                Dictionary<string, object> message = DuetFraming.Decode(body, 0, length);
                 if (message != null)
                     m_incoming.Enqueue(message);
             }
@@ -167,13 +158,15 @@ public class DuetConnection
 /// <summary>
 /// Accepts incoming Duet Mode connections on a port.
 /// </summary>
-public class DuetListener
+public class DuetListener : IDuetListener
 {
     readonly TcpListener m_listener;
     readonly ConcurrentQueue<DuetConnection> m_accepted = new ConcurrentQueue<DuetConnection>();
     volatile bool m_stopped = false;
 
     public int port { get; private set; }
+    public string roomCode { get { return null; } }
+    public string error { get { return null; } }
 
     public DuetListener(int port)
     {
@@ -184,9 +177,12 @@ public class DuetListener
         new Thread(AcceptLoop) { IsBackground = true, Name = "Duet accept" }.Start();
     }
 
-    public bool TryAccept(out DuetConnection connection)
+    public bool TryAccept(out IDuetLink link)
     {
-        return m_accepted.TryDequeue(out connection);
+        DuetConnection connection;
+        bool accepted = m_accepted.TryDequeue(out connection);
+        link = connection;
+        return accepted;
     }
 
     public void Stop()
