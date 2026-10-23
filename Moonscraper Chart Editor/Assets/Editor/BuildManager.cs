@@ -26,6 +26,7 @@ public class BuildManager  {
         CreateDistributable = 1 << 0,
         SpecifyVersionNumber = 1 << 1,
         BuildInstaller = 1 << 2,
+        SkipSecurityPatch = 1 << 3,     // The patcher is a Windows exe, so CI runs it as a separate step
     }
 
     [MenuItem("Build Processes/Windows x64 Distributable")]
@@ -64,6 +65,18 @@ public class BuildManager  {
     {
         // Parent directory must match path defined in installer script
         _BuildSpecificTarget(BuildTarget.StandaloneWindows, Path.GetFullPath(Path.Combine(Application.dataPath, "../../Installer/Builds/")), BuildFlags.BuildInstaller);
+    }
+
+    // Entry point for automated builds (GitHub Actions). Usage:
+    // -executeMethod BuildManager.BuildWindows64CI -moonscraperBuildPath <dir>
+    public static void BuildWindows64CI()
+    {
+        string path = GetSavePath();
+        _BuildSpecificTarget(BuildTarget.StandaloneWindows64, path, BuildFlags.SkipSecurityPatch);
+
+        // _BuildSpecificTarget logs failures but doesn't report them, so check the output ourselves
+        bool built = Directory.Exists(path) && Directory.GetFiles(path, applicationName + ".exe", SearchOption.AllDirectories).Length > 0;
+        EditorApplication.Exit(built ? 0 : 1);
     }
 
     [MenuItem("Build Processes/Build Final")]
@@ -232,6 +245,12 @@ public class BuildManager  {
             case BuildTarget.StandaloneWindows:
             case BuildTarget.StandaloneWindows64:
                 {
+                    if ((buildFlags & BuildFlags.SkipSecurityPatch) != 0)
+                    {
+                        Debug.Log("Skipping security patch");
+                        break;
+                    }
+
                     Debug.Log("Applying security patch");
 
                     UnityApplicationPatcher_ExitCode resultCode = RunUnityApplicationPatcher(path, string.Format("-windows -applicationPath \"{0}\"", path));

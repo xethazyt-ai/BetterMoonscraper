@@ -1,0 +1,128 @@
+# Builds a Windows x64 copy of Moonscraper and publishes it as a GitHub release,
+# so testers can download it without installing Unity.
+#
+# master        -> release "latest-build"
+# other branch  -> release "build-<branch>" (e.g. build-duet-phase-0)
+#
+# Needs repository secrets UNITY_LICENSE (contents of Unity_lic.ulf), UNITY_EMAIL and UNITY_PASSWORD.
+
+name: Windows build
+
+on:
+  push:
+    branches: [master, 'duet/**']
+  workflow_dispatch:
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_PATH: Moonscraper Chart Editor
+  ZIP_NAME: Moonscraper-Chart-Editor-Windows-x64.zip
+
+jobs:
+  build:
+    name: Build with Unity
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check Unity secrets
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$UNITY_LICENSE" ] && missing="$missing UNITY_LICENSE"
+          [ -z "$UNITY_EMAIL" ] && missing="$missing UNITY_EMAIL"
+          [ -z "$UNITY_PASSWORD" ] && missing="$missing UNITY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Cache Unity Library folder
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PROJECT_PATH }}/Library
+          key: Library-win64-${{ hashFiles('Moonscraper Chart Editor/Assets/**', 'Moonscraper Chart Editor/Packages/**', 'Moonscraper Chart Editor/ProjectSettings/**') }}
+          restore-keys: Library-win64-
+
+      - name: Build Windows x64
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 2018.4.23f1
+          targetPlatform: StandaloneWindows64
+          projectPath: ${{ env.PROJECT_PATH }}
+          buildMethod: BuildManager.BuildWindows64CI
+          customParameters: -moonscraperBuildPath /github/workspace/ci-build
+          versioning: None
+          allowDirtyBuild: true
+
+      - name: Upload unpatched build
+        uses: actions/upload-artifact@v4
+        with:
+          name: unpatched-build
+          path: ci-build/
+          retention-days: 1
+
+  publish:
+    name: Patch and publish
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: UnityApplicationPatcher-1.0.6-Win
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: unpatched-build
+          path: ci-build
+
+      # Same security patch BuildManager applies to local Windows builds
+      - name: Apply Unity security patch
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem ci-build -Directory | Select-Object -First 1
+          $patcher = Resolve-Path "UnityApplicationPatcher-1.0.6-Win/UnityApplicationPatcherCLI.exe"
+          & $patcher -windows -applicationPath "$($app.FullName)"
+          # 0 = patched, 183 = already patched
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 183) { throw "Patcher failed with exit code $LASTEXITCODE" }
+          Compress-Archive -Path "$($app.FullName)" -DestinationPath $env:ZIP_NAME
+          "APP_FOLDER=$($app.Name)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moonscraper-Windows-x64
+          path: ${{ env.ZIP_NAME }}
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $branch = "${{ github.ref_name }}"
+          $tag = if ($branch -eq "master") { "latest-build" } else { "build-" + ($branch -replace '[^A-Za-z0-9._-]', '-') }
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $notes = @"
+          Automatic Windows build of ``$branch`` at $short (run #${{ github.run_number }}).
+
+          Download **$env:ZIP_NAME**, unzip it, and run ``Moonscraper Chart Editor.exe`` inside the ``$env:APP_FOLDER`` folder. No Unity install needed.
+          "@
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          $global:LASTEXITCODE = 0
+          gh release create $tag $env:ZIP_NAME --target $sha --prerelease --title "Windows build: $branch ($short)" --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          "Download: ${{ github.server_url }}/${{ github.repository }}/releases/download/$tag/$env:ZIP_NAME" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
