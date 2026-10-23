@@ -323,6 +323,9 @@ public class MouseMonitor : SystemManagerState.System
 
     public static bool IsUIUnderPointer()
     {
+        if (DuetPanel.IsPointerOverPanel())
+            return true;
+
         if (RaycastFromPointer() != null)
             return true;
 

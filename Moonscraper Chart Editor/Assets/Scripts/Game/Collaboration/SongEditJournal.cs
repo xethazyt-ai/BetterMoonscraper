@@ -98,7 +98,27 @@ public static class SongEditJournal
     static List<SongEditChange> s_changes = null;
     static List<SongEditChange> s_unattachedChanges = new List<SongEditChange>();
 
+    static int s_suppressDepth = 0;
+
     public static bool isRecording { get { return s_changes != null; } }
+
+    /// <summary>
+    /// Changes made inside this scope aren't recorded anywhere. Used when applying someone else's edits,
+    /// which must not be reported as our own.
+    /// </summary>
+    public static SuppressScope Suppress()
+    {
+        ++s_suppressDepth;
+        return new SuppressScope();
+    }
+
+    public struct SuppressScope : System.IDisposable
+    {
+        public void Dispose()
+        {
+            --s_suppressDepth;
+        }
+    }
 
     // Starts a recording. Unattached changes happened before it, so they're included first.
     public static void Begin()
@@ -142,6 +162,9 @@ public static class SongEditJournal
     // songObjectInSong is the live object, used to find which chart it belongs to.
     static void Record(SongEditChange.Type type, SongObject songObjectInSong, SongObject before, SongObject after)
     {
+        if (s_suppressDepth > 0)
+            return;
+
         List<SongEditChange> changes = s_changes ?? s_unattachedChanges;
 
         ChartLocation location = ChartLocation.SongLevel;

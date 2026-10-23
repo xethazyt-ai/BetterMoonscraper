@@ -15,7 +15,7 @@ namespace UnityEngine
     public class GameObject : Object { public void SetActive(bool active) { } }
     public class TextAsset : Object { public string text; public string name; }
     public struct Color { }
-    public enum KeyCode { F9 }
+    public enum KeyCode { F9, F10 }
 
     public static class Debug
     {
@@ -49,11 +49,46 @@ namespace UnityEngine
     public static class Input
     {
         public static bool anyKey;  // Set by tests to simulate holding a key or mouse button
+        public static Vector3 mousePosition;
         public static bool GetKeyDown(KeyCode key) { return false; }
         public static bool GetMouseButton(int button) { return false; }
     }
 
     public static class Application { public static string persistentDataPath = System.IO.Path.GetTempPath(); }
+
+    // Just enough of Unity's immediate-mode GUI for the Duet panel to compile
+    public struct Vector2 { public float x, y; public Vector2(float x, float y) { this.x = x; this.y = y; } }
+    public struct Vector3 { public float x, y, z; }
+    public struct Rect
+    {
+        public float x, y, width, height;
+        public Rect(float x, float y, float width, float height) { this.x = x; this.y = y; this.width = width; this.height = height; }
+        public bool Contains(Vector2 point) { return point.x >= x && point.x < x + width && point.y >= y && point.y < y + height; }
+    }
+    public static class Screen { public static int width = 1920, height = 1080; }
+    public enum EventType { MouseDown }
+    public class Event { public static Event current = new Event(); public EventType type; public Vector2 mousePosition; }
+    public class GUILayoutOption { }
+    public static class GUIUtility { public static int keyboardControl; }
+    public static class GUI { public delegate void WindowFunction(int id); public static void DragWindow() { } }
+    public static class GUILayout
+    {
+        public static Rect Window(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }
+        public static void Label(string text) { }
+        public static string TextField(string text, int maxLength) { return text; }
+        public static bool Button(string text, params GUILayoutOption[] options) { return false; }
+        public static void Space(float pixels) { }
+        public static void BeginHorizontal() { }
+        public static void EndHorizontal() { }
+        public static GUILayoutOption Width(float width) { return new GUILayoutOption(); }
+    }
+    public static class PlayerPrefs
+    {
+        public static string GetString(string key, string defaultValue) { return defaultValue; }
+        public static int GetInt(string key, int defaultValue) { return defaultValue; }
+        public static void SetString(string key, string value) { }
+        public static void SetInt(string key, int value) { }
+    }
     public static class Time { public static float deltaTime; }
 }
 
@@ -93,6 +128,9 @@ public class SelectedObjectsManager
 }
 
 public class SongObjectPoolManager { public void SetAllPoolsDirty() { } }
+public class LoadingTasksManager { public bool isRunningTask; }
+public class Services { public LoadingTasksManager loadingTasksManager = new LoadingTasksManager(); }
+public static class FileExplorer { public static bool OpenFolderPanel(out string path) { path = null; return false; } }
 public class ErrorManager { public void QueueErrorMessage(string message) { System.Console.WriteLine("MESSAGE: " + message); } }
 public class EditorObjectToolManager { public enum ToolID { Note } public ToolID currentToolId; }
 
@@ -109,6 +147,12 @@ public class ChartEditor : UnityEngine.MonoBehaviour
     public EditorObjectToolManager toolManager = new EditorObjectToolManager();
 
     public WindowHandleManager windowHandleManager = new WindowHandleManager();
+    public Services services = new Services();
+    public SongEditGestureTracker songEditGestureTracker;
+    public bool isLoadingCollaborationSong;
+
+    public bool EditCheck() { return true; }
+    public void LoadCollaborationSong(Song song, bool reloadAudio, bool keepView) { currentSong = song; }
 
     public void FillUndoRedoSnapInfo(uint tick, Globals.ViewMode viewMode) { }
     public static float TimeToWorldYPosition(float time) { return time; }
