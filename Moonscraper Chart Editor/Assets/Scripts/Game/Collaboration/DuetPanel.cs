@@ -16,7 +16,6 @@ public class DuetPanel : MonoBehaviour
     const string PrefUsername = "Duet.Username";
     const string PrefPort = "Duet.Port";
     const string PrefAddress = "Duet.Address";
-    const string PrefAudioFolder = "Duet.AudioFolder";
     const string PrefUseRooms = "Duet.UseRooms";
     const string PrefColor = "Duet.Color";
     const string PrefShowGhosts = "Duet.ShowGhostNotes";
@@ -40,6 +39,29 @@ public class DuetPanel : MonoBehaviour
 
     // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
     public static bool isMouseHeldOnPanel { get; private set; }
+
+    // Save As while joined: a copy of the whole song in Moonscraper's Charts folder
+    public static bool SaveGuestCopy()
+    {
+        if (s_instance == null)
+            return false;
+
+        ChartEditor editor = s_instance.m_editor;
+        try
+        {
+            string folder = s_instance.m_song.SaveCopyToChartsFolder();
+            DuetFileReceiver files = s_instance.m_session != null ? s_instance.m_session.songFiles : null;
+            string note = files != null && !files.isComplete ? " (STILL GETTING THE SONG'S FILES, SAVE AGAIN ONCE THEY'RE HERE)" : string.Empty;
+            editor.services.notificationBar.PushNotification("SAVED A COPY TO CHARTS/" + System.IO.Path.GetFileName(folder).ToUpperInvariant() + note, 4, true);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("Duet: couldn't save a copy: " + e);
+            editor.services.notificationBar.PushNotification("COULDN'T SAVE A COPY: " + e.Message, 5, true);
+            return false;
+        }
+    }
 
     public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
     public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
@@ -71,7 +93,6 @@ public class DuetPanel : MonoBehaviour
     string m_username;
     string m_portText;
     string m_address;
-    string m_audioFolder;
     string m_roomCodeInput = string.Empty;
     bool m_useRooms = true;
     bool m_sessionIsRoom = false;
@@ -91,7 +112,6 @@ public class DuetPanel : MonoBehaviour
         m_username = PlayerPrefs.GetString(PrefUsername, Environment.UserName);
         m_portText = PlayerPrefs.GetInt(PrefPort, DuetSession.DefaultPort).ToString();
         m_address = PlayerPrefs.GetString(PrefAddress, string.Empty);
-        m_audioFolder = PlayerPrefs.GetString(PrefAudioFolder, string.Empty);
         m_useRooms = PlayerPrefs.GetInt(PrefUseRooms, 1) != 0;
         m_showGhosts = PlayerPrefs.GetInt(PrefShowGhosts, 1) != 0;
 
@@ -236,16 +256,7 @@ public class DuetPanel : MonoBehaviour
             m_address = GUILayout.TextField(m_address, 128);
         }
 
-        GUILayout.Label("Your folder with this song's audio (optional)");
-        GUILayout.BeginHorizontal();
-        m_audioFolder = GUILayout.TextField(m_audioFolder, 512);
-        if (GUILayout.Button("Browse", GUILayout.Width(70)))
-        {
-            string folder;
-            if (FileExplorer.OpenFolderPanel(out folder))
-                m_audioFolder = folder;
-        }
-        GUILayout.EndHorizontal();
+        GUILayout.Label("The host sends the song's audio and other files when you join.");
 
         if (GUILayout.Button("Join session"))
             StartJoining();
@@ -308,10 +319,16 @@ public class DuetPanel : MonoBehaviour
         GUILayout.Space(8);
         DrawColorPicker();
 
-        if (!isHost && m_song.missingAudioFiles.Count > 0)
+        DuetFileReceiver files = m_session.songFiles;
+        if (!isHost && files != null && !files.isComplete)
         {
             GUILayout.Space(8);
-            GUILayout.Label("Not found in your audio folder: " + string.Join(", ", m_song.missingAudioFiles.ToArray()));
+            GUILayout.Label(string.Format("Getting the song's files: {0:0.0} of {1:0.0} MB", files.receivedBytes / 1048576.0, files.totalBytes / 1048576.0));
+        }
+        else if (!isHost && files != null && m_song.missingAudioFiles.Count > 0)
+        {
+            GUILayout.Space(8);
+            GUILayout.Label("Couldn't get from the host: " + string.Join(", ", m_song.missingAudioFiles.ToArray()));
         }
 
         GUILayout.Space(8);
@@ -323,7 +340,7 @@ public class DuetPanel : MonoBehaviour
             m_session.RequestResync("Getting a fresh copy from the host.");
 
         if (!isHost)
-            GUILayout.Label("Only the host can save or change the audio. Save As keeps your own copy. Leaving closes the chart.");
+            GUILayout.Label("Only the host can save or change the audio. Save As keeps your own copy in Moonscraper's Charts folder. Leaving closes the chart.");
 
         if (GUILayout.Button(isHost ? "End session" : "Leave session"))
             m_session.Leave();
@@ -426,8 +443,6 @@ public class DuetPanel : MonoBehaviour
         if (!m_editor.EditCheck())
             return;     // The user cancelled when asked about unsaved changes
 
-        PlayerPrefs.SetString(PrefAudioFolder, m_audioFolder);
-        m_song.localAudioFolder = m_audioFolder.Trim();
 
         m_sessionIsRoom = useRooms;
         m_unloadedAfterSession = false;

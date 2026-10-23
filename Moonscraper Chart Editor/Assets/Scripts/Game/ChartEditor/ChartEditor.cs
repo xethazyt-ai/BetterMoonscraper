@@ -66,6 +66,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     public SongObjectPoolManager songObjectPoolManager { get { return _songObjectPoolManager; } }
 
     string lastLoadedFile = string.Empty;
+    public string currentChartFile { get { return lastLoadedFile; } }
     public WindowHandleManager windowHandleManager { get; private set; }
     [HideInInspector]
     public ErrorManager errorManager { get; private set; }
@@ -701,6 +702,10 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
     public bool _SaveAs(bool forced = true)
     {
+        // A Duet Mode joiner saves a copy of the whole song, files included, into Moonscraper's Charts folder
+        if (DuetPanel.isGuest)
+            return DuetPanel.SaveGuestCopy();
+
         string defaultFileName;
 
         if (lastLoadedFile != string.Empty)
@@ -726,6 +731,15 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
         // User canceled
         return false;
+    }
+
+    // Saves a Duet Mode joiner's copy as a normal .chart. See DuetEditorSong.SaveCopyToChartsFolder.
+    public void SaveDuetCopy(string filename)
+    {
+        ExportOptions exportOptions = currentSong.defaultExportOptions;
+        exportOptions.forced = true;
+        exportOptions.isGeneralSave = true;
+        Save(filename, exportOptions);
     }
 
     void Save (string filename, ExportOptions exportOptions)

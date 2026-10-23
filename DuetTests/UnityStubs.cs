@@ -60,7 +60,7 @@ namespace UnityEngine
         public static bool GetMouseButtonDown(int button) { return false; }
     }
 
-    public static class Application { public static string persistentDataPath = System.IO.Path.GetTempPath(); }
+    public static class Application { public static string persistentDataPath = System.IO.Path.GetTempPath(); public static string dataPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "duet-app", "Data"); }
 
     // Just enough of Unity's immediate-mode GUI for the Duet panel to compile
     public struct Vector2 { public float x, y; public Vector2(float x, float y) { this.x = x; this.y = y; } }
@@ -141,7 +141,8 @@ public class SelectedObjectsManager
 
 public class SongObjectPoolManager { public void SetAllPoolsDirty() { } }
 public class LoadingTasksManager { public bool isRunningTask; }
-public class Services { public LoadingTasksManager loadingTasksManager = new LoadingTasksManager(); }
+public class DropdownNotification { public void PushNotification(string message, float displayTime = 3, bool cancelable = false) { } }
+public class Services { public LoadingTasksManager loadingTasksManager = new LoadingTasksManager(); public DropdownNotification notificationBar = new DropdownNotification(); }
 public static class FileExplorer { public static bool OpenFolderPanel(out string path) { path = null; return false; } }
 public class ErrorManager { public void QueueErrorMessage(string message) { System.Console.WriteLine("MESSAGE: " + message); } }
 public class EditorObjectToolManager { public enum ToolID { Note } public ToolID currentToolId; }
@@ -166,6 +167,9 @@ public class ChartEditor : UnityEngine.MonoBehaviour
     public bool EditCheck() { return true; }
     public void LoadCollaborationSong(Song song, bool reloadAudio, bool keepView) { currentSong = song; }
     public void UnloadCollaborationSong() { currentSong = new Song(); }
+    public string currentChartFile = string.Empty;
+    public void SaveDuetCopy(string path) { }
+    public void ReloadAudio() { }
 
     public void FillUndoRedoSnapInfo(uint tick, Globals.ViewMode viewMode) { }
     public static float TimeToWorldYPosition(float time) { return time; }

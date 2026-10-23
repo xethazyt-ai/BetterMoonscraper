@@ -120,6 +120,7 @@ public static class LinkTests
         public string remoteAddress { get { return "an online room"; } }
         public bool isClosed { get; private set; }
         public string closeReason { get; private set; }
+        public long queuedBytes { get { return 0; } }
 
         public void Send(Dictionary<string, object> message)
         {

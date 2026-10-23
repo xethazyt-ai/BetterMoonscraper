@@ -21,11 +21,12 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
     readonly ChartEditor m_editor;
     readonly SongEditGestureTracker m_tracker;
 
-    // Joiners only: a folder on this computer holding the song's audio files
-    public string localAudioFolder = string.Empty;
-
-    // Joiners only: audio files the host's song uses that weren't found in localAudioFolder
+    // Joiners only: audio files the host's song uses that haven't arrived from the host (yet)
     public List<string> missingAudioFiles { get; private set; }
+
+    // Joiners only: which file each audio stem uses on the host, and the host's files once they're here
+    Dictionary<Song.AudioInstrument, string> m_audioFileNames = new Dictionary<Song.AudioInstrument, string>();
+    Dictionary<string, string> m_songFiles = new Dictionary<string, string>();
 
     public DuetEditorSong(ChartEditor editor, SongEditGestureTracker tracker)
     {
@@ -119,6 +120,80 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
             onRemoteSongInfoApplied();
     }
 
+    public List<string> GetSongFilePaths()
+    {
+        Song song = m_editor.currentSong;
+        List<string> audio = new List<string>();
+        foreach (Song.AudioInstrument instrument in EnumX<Song.AudioInstrument>.Values)
+            audio.Add(song.GetAudioLocation(instrument));
+
+        string chartFile = m_editor.currentChartFile;
+        return DuetFiles.FindSongFiles(string.IsNullOrEmpty(chartFile) ? null : Path.GetDirectoryName(chartFile), audio);
+    }
+
+    public void UseSongFiles(Dictionary<string, string> localPaths)
+    {
+        m_songFiles = new Dictionary<string, string>(localPaths, System.StringComparer.OrdinalIgnoreCase);
+
+        Song song = m_editor.currentSong;
+        missingAudioFiles.Clear();
+        foreach (KeyValuePair<Song.AudioInstrument, string> pair in m_audioFileNames)
+        {
+            string path;
+            if (m_songFiles.TryGetValue(pair.Value, out path))
+                song.SetAudioLocation(pair.Key, path);
+            else if (!missingAudioFiles.Contains(pair.Value))
+                missingAudioFiles.Add(pair.Value);
+        }
+
+        m_editor.ReloadAudio();
+    }
+
+    // Folder name for a saved copy: "Artist - Song", without characters Windows doesn't allow
+    public static string ChartFolderName(string artist, string name)
+    {
+        string folder = string.IsNullOrEmpty(artist) ? name : (string.IsNullOrEmpty(name) ? artist : artist + " - " + name);
+        if (string.IsNullOrEmpty(folder))
+            folder = "Untitled";
+
+        System.Text.StringBuilder safe = new System.Text.StringBuilder();
+        foreach (char c in folder)
+            safe.Append(System.Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|' ? '_' : c);
+        return safe.ToString().Trim().TrimEnd('.');
+    }
+
+    /// <summary>
+    /// Joiners only: saves the chart with all the host's song files into Charts/Artist - Song/ beside Moonscraper,
+    /// ready to play. Saving again later updates the same folder.
+    /// </summary>
+    public string SaveCopyToChartsFolder()
+    {
+        Song song = m_editor.currentSong;
+        string charts = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(Application.dataPath)), "Charts");
+        string folder = Path.Combine(charts, ChartFolderName(song.metaData.artist, song.name));
+        Directory.CreateDirectory(folder);
+
+        foreach (KeyValuePair<string, string> file in m_songFiles)
+        {
+            string destination = Path.Combine(folder, file.Key);
+            FileInfo existing = new FileInfo(destination);
+
+            // A file saved before may be open for playback, and it's the same content, so leave it
+            if (!existing.Exists || existing.Length != new FileInfo(file.Value).Length)
+                File.Copy(file.Value, destination, true);
+        }
+
+        // Point the audio at the saved copies, so the chart refers to them by name
+        foreach (KeyValuePair<Song.AudioInstrument, string> pair in m_audioFileNames)
+        {
+            if (m_songFiles.ContainsKey(pair.Value))
+                song.SetAudioLocation(pair.Key, Path.Combine(folder, pair.Value));
+        }
+
+        m_editor.SaveDuetCopy(Path.Combine(folder, "notes.chart"));
+        return folder;
+    }
+
     public DuetSongSnapshot TakeSnapshot()
     {
         Song song = m_editor.currentSong;
@@ -157,14 +232,14 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         }
         else
         {
+            // The audio comes separately from the host, straight after the chart. See UseSongFiles.
+            m_audioFileNames = new Dictionary<Song.AudioInstrument, string>(snapshot.audioFileNames);
+            m_songFiles = new Dictionary<string, string>();
             missingAudioFiles.Clear();
-            foreach (KeyValuePair<Song.AudioInstrument, string> pair in snapshot.audioFileNames)
+            foreach (string name in m_audioFileNames.Values)
             {
-                string localPath = string.IsNullOrEmpty(localAudioFolder) ? string.Empty : Path.Combine(localAudioFolder, pair.Value);
-                if (File.Exists(localPath))
-                    song.SetAudioLocation(pair.Key, localPath);
-                else if (!missingAudioFiles.Contains(pair.Value))
-                    missingAudioFiles.Add(pair.Value);
+                if (!missingAudioFiles.Contains(name))
+                    missingAudioFiles.Add(name);
             }
         }
 

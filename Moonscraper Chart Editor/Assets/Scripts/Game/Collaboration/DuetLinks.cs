@@ -18,6 +18,9 @@ public interface IDuetLink
     string closeReason { get; }
 
     void Send(Dictionary<string, object> message);
+
+    // Bytes sent but not yet on their way, so big transfers can wait instead of piling up ahead of edits
+    long queuedBytes { get; }
     bool TryReceive(out Dictionary<string, object> message);
     void Close(string reason = "Disconnected");
 

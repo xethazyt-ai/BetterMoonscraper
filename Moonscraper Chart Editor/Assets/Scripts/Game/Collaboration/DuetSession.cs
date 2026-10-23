@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using MoonscraperChartEditor.Song;
 
 /// <summary>
@@ -32,6 +33,12 @@ public interface IDuetSongHost
     // The song's details (name, artist, charter and so on), field by field. See DuetSongInfo.
     Dictionary<string, string> ReadSongInfo();
     void ApplySongInfo(Dictionary<string, string> info);
+
+    // Hosting: the song's files to send each joiner (audio, images, video, song.ini). See DuetFiles.
+    List<string> GetSongFilePaths();
+
+    // Joining: the host's files have arrived, by file name, at these paths on this computer
+    void UseSongFiles(Dictionary<string, string> localPaths);
 }
 
 public class DuetUser
@@ -93,6 +100,8 @@ public class DuetSession
     readonly List<IDuetLink> m_clients = new List<IDuetLink>();
     readonly HashSet<IDuetLink> m_joinedClients = new HashSet<IDuetLink>();
     readonly Dictionary<IDuetLink, Dictionary<string, object>> m_heldMessages = new Dictionary<IDuetLink, Dictionary<string, object>>();
+    readonly Dictionary<IDuetLink, Dictionary<string, string>> m_offeredFiles = new Dictionary<IDuetLink, Dictionary<string, string>>();
+    readonly Dictionary<IDuetLink, DuetFileSender> m_fileSenders = new Dictionary<IDuetLink, DuetFileSender>();
     int m_nextUserId = HostUserId + 1;
 
     // Joining
@@ -102,6 +111,9 @@ public class DuetSession
     int m_nextEditId = 1;
     readonly HashSet<int> m_unacknowledgedEdits = new HashSet<int>();
     bool m_awaitingSnapshot = false;
+
+    // Joiners only: the host's song files, while they arrive and after
+    public DuetFileReceiver songFiles { get; private set; }
 
     // Presence and song details
     readonly System.Diagnostics.Stopwatch m_clock = System.Diagnostics.Stopwatch.StartNew();
@@ -350,10 +362,20 @@ public class DuetSession
 
             ProcessHostMessages(client);
 
+            DuetFileSender sender;
+            if (m_fileSenders.TryGetValue(client, out sender))
+                sender.Pump(client);
+
             if (client.isClosed)
             {
                 m_clients.RemoveAt(i);
                 m_heldMessages.Remove(client);
+                m_offeredFiles.Remove(client);
+                if (m_fileSenders.TryGetValue(client, out sender))
+                {
+                    sender.Close();
+                    m_fileSenders.Remove(client);
+                }
 
                 if (m_joinedClients.Remove(client))
                 {
@@ -436,6 +458,14 @@ public class DuetSession
                 songInfo[field.Key] = field.Value;
             client.Send(Message("songinfo", "fields", songInfo));
 
+            // Offer the song's files; the joiner asks for the ones it doesn't already have from an earlier session
+            Dictionary<string, string> offered = new Dictionary<string, string>();
+            List<object> files = new List<object>();
+            foreach (DuetFileEntry entry in DuetFiles.Describe(m_song.GetSongFilePaths(), offered))
+                files.Add(DuetFiles.ToJson(entry));
+            m_offeredFiles[client] = offered;
+            client.Send(Message("files", "files", files));
+
             // Show the newcomer where everyone already is
             if (m_lastSentPresence != null)
             {
@@ -482,6 +512,28 @@ public class DuetSession
             case "resync":
                 client.Send(SnapshotMessage("snapshot", m_song.TakeSnapshot()));
                 break;
+
+            case "wantfiles":
+                {
+                    Dictionary<string, string> offered;
+                    if (!m_offeredFiles.TryGetValue(client, out offered))
+                        break;
+
+                    DuetFileSender sender;
+                    if (!m_fileSenders.TryGetValue(client, out sender))
+                        m_fileSenders[client] = sender = new DuetFileSender();
+
+                    foreach (object item in DuetJson.GetArray(message, "names"))
+                    {
+                        string path;
+                        if (item is string && offered.TryGetValue((string)item, out path))
+                        {
+                            FileInfo info = new FileInfo(path);
+                            sender.Add(new DuetFileEntry { name = (string)item, size = info.Exists ? info.Length : 0 }, path);
+                        }
+                    }
+                    break;
+                }
 
             case "songinfo":
                 ApplySongInfo(message);
@@ -686,7 +738,86 @@ public class DuetSession
             case "songinfo":
                 ApplySongInfo(message);
                 break;
+
+            case "files":
+                {
+                    List<DuetFileEntry> entries = new List<DuetFileEntry>();
+                    foreach (object item in DuetJson.GetArray(message, "files"))
+                    {
+                        Dictionary<string, object> json = item as Dictionary<string, object>;
+                        DuetFileEntry entry = json != null ? DuetFiles.FromJson(json) : null;
+                        if (entry != null)
+                            entries.Add(entry);
+                    }
+
+                    if (songFiles != null)
+                        songFiles.Close();
+                    songFiles = new DuetFileReceiver();
+                    List<string> wanted = songFiles.Start(entries);
+
+                    List<object> names = new List<object>();
+                    foreach (string name in wanted)
+                        names.Add(name);
+                    if (names.Count > 0)
+                        m_host.Send(Message("wantfiles", "names", names));
+
+                    long reused = 0;
+                    foreach (DuetFileEntry entry in entries)
+                    {
+                        if (!wanted.Contains(entry.name))
+                            reused += entry.size;
+                    }
+                    if (entries.Count > 0)
+                        Log(string.Format("The song has {0} file(s): {1} to download, {2} already here", entries.Count, MegaBytes(songFiles.totalBytes), MegaBytes(reused)));
+
+                    CheckSongFilesDone();
+                    break;
+                }
+
+            case "file":
+                if (songFiles != null)
+                {
+                    try
+                    {
+                        songFiles.Append(DuetJson.GetString(message, "name", string.Empty), (long)DuetJson.GetNumber(message, "offset"),
+                            Convert.FromBase64String(DuetJson.GetString(message, "data", string.Empty)));
+                    }
+                    catch (Exception e)
+                    {
+                        songFiles.Fail(DuetJson.GetString(message, "name", string.Empty), "couldn't be saved: " + e.Message);
+                    }
+                    CheckSongFilesDone();
+                }
+                break;
+
+            case "filefailed":
+                if (songFiles != null)
+                {
+                    songFiles.Fail(DuetJson.GetString(message, "name", string.Empty), "couldn't be read on the host");
+                    CheckSongFilesDone();
+                }
+                break;
         }
+    }
+
+    bool m_songFilesUsed = false;
+
+    void CheckSongFilesDone()
+    {
+        if (m_songFilesUsed || songFiles == null || !songFiles.isComplete)
+            return;
+
+        m_songFilesUsed = true;
+        m_song.UseSongFiles(songFiles.localPaths);
+        if (songFiles.failed.Count > 0)
+            Log("Couldn't get " + string.Join(", ", songFiles.failed.ToArray()) + " from the host");
+        else if (songFiles.totalBytes > 0)
+            Log("Got all the song's files");
+    }
+
+    static string MegaBytes(long bytes)
+    {
+        return (bytes / (1024.0 * 1024.0)).ToString("0.0") + " MB";
     }
 
     void LoadSnapshot(Dictionary<string, object> message, bool isResync)
@@ -754,6 +885,14 @@ public class DuetSession
             client.Close("The host ended the session");
         m_clients.Clear();
         m_joinedClients.Clear();
+
+        foreach (DuetFileSender sender in m_fileSenders.Values)
+            sender.Close();
+        m_fileSenders.Clear();
+        m_offeredFiles.Clear();
+
+        if (songFiles != null)
+            songFiles.Close();
 
         if (m_host != null)
             m_host.Close(reason);

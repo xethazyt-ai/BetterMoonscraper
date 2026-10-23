@@ -393,6 +393,18 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         }
     }
 
+    long OutgoingQueueBytes()
+    {
+        if (m_platform == null)
+            return 0;
+
+        GetPacketQueueInfoOptions options = new GetPacketQueueInfoOptions();
+        PacketQueueInfo info;
+        if (m_platform.GetP2PInterface().GetPacketQueueInfo(ref options, out info) != Result.Success)
+            return 0;
+        return (long)info.OutgoingPacketQueueCurrentSizeBytes;
+    }
+
     // Returns false when the outgoing queue is full and the packet should be tried again next frame
     bool TrySendPacket(Link link, byte[] packet, out string error)
     {
@@ -611,6 +623,18 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         public string remoteAddress { get { return "an online room"; } }
         public bool isClosed { get; private set; }
         public string closeReason { get; private set; }
+
+        // What's waiting here plus everything in EOS's own outgoing queue, which all links share
+        public long queuedBytes
+        {
+            get
+            {
+                long waiting = 0;
+                foreach (byte[] packet in m_outgoing)
+                    waiting += packet.Length;
+                return waiting + m_owner.OutgoingQueueBytes();
+            }
+        }
 
         public Link(DuetEos owner, ProductUserId peer, string lobbyId)
         {
