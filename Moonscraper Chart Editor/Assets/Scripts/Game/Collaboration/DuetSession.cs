@@ -60,7 +60,7 @@ public class DuetUser
 /// </summary>
 public class DuetSession
 {
-    public const int ProtocolVersion = 1;
+    public const int ProtocolVersion = 2;  // 2: song files sent on join
     public const int DefaultPort = 47820;
     const int HostUserId = 0;
     const int MaxLogLines = 8;
