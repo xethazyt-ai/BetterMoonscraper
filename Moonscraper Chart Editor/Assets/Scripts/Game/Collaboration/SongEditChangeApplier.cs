@@ -4,11 +4,102 @@ using System.Collections.Generic;
 using MoonscraperChartEditor.Song;
 
 /// <summary>
+/// Something recorded song edit changes can be applied to: a Song's raw data, or the song open in the editor.
+/// </summary>
+public interface ISongEditChangeTarget
+{
+    // The object in the song with the same identity (kind, position and lane or text), or null
+    SongObject Find(ChartLocation location, SongObject songObject);
+    void Apply(SongEditChange change);
+}
+
+/// <summary>
 /// Applies recorded song edit changes directly to a Song's data. Doesn't touch the editor, its views or
 /// its command history, so it can run against any Song, such as a copy kept for comparison.
 /// </summary>
 public static class SongEditChangeApplier
 {
+    public class SongDataTarget : ISongEditChangeTarget
+    {
+        readonly Song m_song;
+
+        public SongDataTarget(Song song)
+        {
+            m_song = song;
+        }
+
+        public SongObject Find(ChartLocation location, SongObject songObject)
+        {
+            return SongEditChangeApplier.Find(m_song, location.GetChart(m_song), songObject);
+        }
+
+        public void Apply(SongEditChange change)
+        {
+            if (!ApplyChange(m_song, change))
+                UnityEngine.Debug.LogError("Unable to apply " + change);
+
+            m_song.UpdateCache();
+            m_song.UpdateAllChartCaches();
+        }
+    }
+
+    /// <summary>
+    /// Applies the changes only if each one finds the song exactly as it expects: nothing already in the way of an add,
+    /// and the exact object it recorded for a delete or modify. Otherwise undoes what it applied and returns false,
+    /// leaving the song as it was.
+    /// </summary>
+    public static bool TryApplyStrict(ISongEditChangeTarget target, IList<SongEditChange> changes, out string failure)
+    {
+        List<SongEditChange> applied = new List<SongEditChange>(changes.Count);
+
+        foreach (SongEditChange change in changes)
+        {
+            if (!CanApply(target, change))
+            {
+                failure = "Song doesn't match " + change;
+
+                for (int i = applied.Count - 1; i >= 0; --i)
+                    target.Apply(Inverse(applied[i]));
+
+                return false;
+            }
+
+            target.Apply(change);
+            applied.Add(change);
+        }
+
+        failure = null;
+        return true;
+    }
+
+    static bool CanApply(ISongEditChangeTarget target, SongEditChange change)
+    {
+        switch (change.type)
+        {
+            case SongEditChange.Type.Add:
+                return target.Find(change.location, change.after) == null;
+
+            default:
+                SongObject found = target.Find(change.location, change.before);
+                return found != null && DuetSerialization.AreIdentical(found, change.before);
+        }
+    }
+
+    public static SongEditChange Inverse(SongEditChange change)
+    {
+        SongEditChange inverse = change;
+        inverse.before = change.after;
+        inverse.after = change.before;
+
+        switch (change.type)
+        {
+            case SongEditChange.Type.Add: inverse.type = SongEditChange.Type.Delete; break;
+            case SongEditChange.Type.Delete: inverse.type = SongEditChange.Type.Add; break;
+        }
+
+        return inverse;
+    }
+
     public struct Result
     {
         public int applied;
@@ -145,7 +236,7 @@ public static class SongEditChangeApplier
         return false;
     }
 
-    static SongObject Find(Song song, Chart chart, SongObject songObject)
+    public static SongObject Find(Song song, Chart chart, SongObject songObject)
     {
         int index;
 

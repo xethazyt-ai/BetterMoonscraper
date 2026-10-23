@@ -39,6 +39,7 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
         m_tracker = tracker;
         m_tracker.onEditFinished.Register(OnEditFinished);
         m_tracker.onHistoryCleared.Register(TakeSnapshot);
+        DuetEditorSong.onRemoteEditApplied += OnRemoteEditApplied;
     }
 
     public override void SystemUpdate()
@@ -82,17 +83,28 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
 
     void OnEditFinished(in SongEditGestureTracker.FinishedEdit edit)
     {
+        Replay(edit.kind.ToString(), edit.changes);
+    }
+
+    // Edits from the other person in a Duet session are part of the song too
+    void OnRemoteEditApplied(IList<SongEditChange> changes)
+    {
+        Replay("Duet", changes);
+    }
+
+    void Replay(string kind, IList<SongEditChange> changes)
+    {
         if (m_replayedSong == null)
             return;
 
-        SongEditChangeApplier.Result result = SongEditChangeApplier.Apply(m_replayedSong, edit.changes);
+        SongEditChangeApplier.Result result = SongEditChangeApplier.Apply(m_replayedSong, changes);
         ++m_editsSinceSnapshot;
 
         if (!result.success)
         {
             foreach (string failure in result.failures)
             {
-                string message = string.Format("{0} edit #{1}: could not apply {2}", edit.kind, m_editsSinceSnapshot, failure);
+                string message = string.Format("{0} edit #{1}: could not apply {2}", kind, m_editsSinceSnapshot, failure);
                 m_applyFailures.Add(message);
                 Debug.LogError("Duet replay check: " + message);
             }

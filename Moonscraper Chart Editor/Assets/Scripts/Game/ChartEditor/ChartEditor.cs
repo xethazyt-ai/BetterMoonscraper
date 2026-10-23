@@ -181,6 +181,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         gameObject.AddComponent<UITabbing>();
 
         errorManager = gameObject.AddComponent<ErrorManager>();
+        gameObject.AddComponent<DuetPanel>();
         toolManager.Init();
         interactionMethodManager.Init();
 
@@ -350,7 +351,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         applicationStateMachine.currentState = null; // Force call exit on current state;
     }
 
-    bool EditCheck()
+    public bool EditCheck()
     {    
         // Check for unsaved changes
         if (isDirty)
@@ -856,6 +857,64 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 #if TIMING_DEBUG
         Debug.Log("Total load time: " + (Time.realtimeSinceStartup - totalLoadTime));
 #endif
+    }
+
+    public bool isLoadingCollaborationSong { get; private set; }
+
+    /// <summary>
+    /// Replaces the open song with one received in a Duet Mode session. keepView stays on the same
+    /// instrument, difficulty and position, for when a joiner's copy is refreshed mid-session.
+    /// </summary>
+    public void LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView)
+    {
+        StartCoroutine(_LoadCollaborationSong(newSong, reloadAudio, keepView));
+    }
+
+    IEnumerator _LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView)
+    {
+        isLoadingCollaborationSong = true;
+
+        Song.Instrument instrument = MenuBar.currentInstrument;
+        Song.Difficulty difficulty = MenuBar.currentDifficulty;
+        uint tick = currentTickPos;
+
+        while (isSaving)
+            yield return null;
+
+        if (reloadAudio)
+        {
+            LoadingTasksManager tasksManager = services.loadingTasksManager;
+            tasksManager.KickTasks(new List<LoadingTask>()
+            {
+                new LoadingTask("Loading audio", () =>
+                {
+                    currentSongAudio.FreeAudioStreams();
+                    currentSongAudio.LoadAllAudioClips(newSong);
+                }),
+            });
+
+            while (tasksManager.isRunningTask)
+                yield return null;
+        }
+
+        lastLoadedFile = string.Empty;  // Saving asks where to save, rather than overwriting whatever was open before
+        currentSong = newSong;
+        sessionFlags &= ~ChartEditorSessionFlags.CurrentChartSavedInProprietyFormat;
+
+        LoadSong(currentSong);
+
+        if (keepView)
+        {
+            MenuBar.currentInstrument = instrument;
+            MenuBar.currentDifficulty = difficulty;
+            LoadChart(currentSong.GetChart(instrument, difficulty));
+            uiServices.menuBar.LoadCurrentInstumentAndDifficulty();
+            movement.SetPosition(tick);
+        }
+
+        selectedObjectsManager.currentSelectedObject = null;
+        isDirty = true;
+        isLoadingCollaborationSong = false;
     }
 
     IEnumerator _Load()

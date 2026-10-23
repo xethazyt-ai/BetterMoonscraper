@@ -22,7 +22,7 @@ public static class ReplayTests
     static Chart GuitarExpert { get { return s_live.GetChart(Song.Instrument.Guitar, Song.Difficulty.Expert); } }
     static Chart DrumsHard { get { return s_live.GetChart(Song.Instrument.Drums, Song.Difficulty.Hard); } }
 
-    public static int Main()
+    public static int Run()
     {
         s_live = new Song();
         s_replayed = new Song();
@@ -118,8 +118,7 @@ public static class ReplayTests
         s_stack.Push();
         Check("redo lyrics");
 
-        Console.WriteLine(s_failures == 0 ? "All checks passed." : s_failures + " check(s) failed.");
-        return s_failures == 0 ? 0 : 1;
+        return s_failures;
     }
 
     static void OnEditFinished(in SongEditGestureTracker.FinishedEdit edit)
