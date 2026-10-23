@@ -52,9 +52,11 @@ public class AddAction : BaseAction
     {
         ChartEditor editor = ChartEditor.Instance;
         Song song = editor.currentSong;
-        Chart chart = editor.currentChart;
+        Chart chart = SongEditTarget.chart;
 
         songObject = songObject.Clone();    // Add a new version of the object
+
+        RecordOverwrite(songObject, song, chart);
 
         switch (songObject.classID)
         {
@@ -78,13 +80,13 @@ public class AddAction : BaseAction
                     }
                 }
 
-                SongEditAdd.SetDrumRollsDirty(note.tick, editor.currentChart.chartObjects);
+                SongEditAdd.SetDrumRollsDirty(note.tick, SongEditTarget.chart.chartObjects);
                 break;
 
             case (int)SongObject.ID.Starpower:
                 Starpower sp = songObject as Starpower;
                 chart.Add(sp, false);
-                SongEditAdd.SetNotesDirty(sp, editor.currentChart.chartObjects);
+                SongEditAdd.SetNotesDirty(sp, SongEditTarget.chart.chartObjects);
                 break;
 
             case (int)SongObject.ID.DrumRoll:
@@ -110,6 +112,34 @@ public class AddAction : BaseAction
                 song.Add(songObject as SyncTrack, false);
                 break;
         }
+
+        SongEditJournal.RecordAdd(songObject);
+    }
+
+    // Adding an object where an identical one already exists silently replaces it. Record that as a delete.
+    static void RecordOverwrite(SongObject songObject, Song song, Chart chart)
+    {
+        int index;
+        SongObject existing = null;
+
+        if (songObject is ChartObject)
+        {
+            index = SongObjectHelper.FindObjectPosition(songObject as ChartObject, chart.chartObjects);
+            existing = index != SongObjectHelper.NOTFOUND ? chart.chartObjects[index] : null;
+        }
+        else if (songObject is Event)
+        {
+            index = SongObjectHelper.FindObjectPosition(songObject as Event, song.eventsAndSections);
+            existing = index != SongObjectHelper.NOTFOUND ? song.eventsAndSections[index] : null;
+        }
+        else if (songObject is SyncTrack)
+        {
+            index = SongObjectHelper.FindObjectPosition(songObject as SyncTrack, song.syncTrack);
+            existing = index != SongObjectHelper.NOTFOUND ? song.syncTrack[index] : null;
+        }
+
+        if (existing != null && existing.classID == songObject.classID)
+            SongEditJournal.RecordDelete(existing);
     }
 }
 
@@ -134,7 +164,7 @@ public class DeleteAction : BaseAction
 
         if (songObject.GetType().IsSubclassOf(typeof(ChartObject)) || songObject.GetType() == typeof(ChartObject))
         {
-            TryDeleteSongObject((ChartObject)songObject, editor.currentChart.chartObjects);
+            TryDeleteSongObject((ChartObject)songObject, SongEditTarget.chart.chartObjects);
         }
         else
         {
@@ -181,7 +211,7 @@ public class DeleteAction : BaseAction
             if (isNote)
             {
                 ChartEditor editor = ChartEditor.Instance;
-                SongEditAdd.SetDrumRollsDirty(foundSongObject.tick, editor.currentChart.chartObjects);
+                SongEditAdd.SetDrumRollsDirty(foundSongObject.tick, SongEditTarget.chart.chartObjects);
             }
         }
         else
@@ -234,7 +264,10 @@ public class DeleteAction : BaseAction
             {
                 Chart chart = chartObj.chart;
                 if (chart != null)
+                {
+                    SongEditJournal.RecordDelete(chartObj);
                     chart.Remove(chartObj, updateCache);
+                }
 
                 return;
             }
@@ -248,7 +281,10 @@ public class DeleteAction : BaseAction
                 {
                     Song song = foundSongObject.song;
                     if (song != null)
+                    {
+                        SongEditJournal.RecordDelete(syncObj);
                         song.Remove(syncObj, updateCache);
+                    }
                 }
 
                 return;
@@ -261,7 +297,10 @@ public class DeleteAction : BaseAction
             {
                 Song song = foundSongObject.song;
                 if (song != null)
+                {
+                    SongEditJournal.RecordDelete(eventObj);
                     song.Remove(eventObj, updateCache);
+                }
 
                 return;
             }

@@ -73,7 +73,9 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
     public SelectedObjectsManager selectedObjectsManager;
     public CommandStack commandStack => m_songCommandStack;
-    CommandStack m_songCommandStack;
+    public SongEditCommandStack songEditCommandStack => m_songCommandStack;
+    SongEditCommandStack m_songCommandStack = new SongEditCommandStack();
+    public SongEditGestureTracker songEditGestureTracker { get; private set; }
 
     /// <summary>
     /// State machine for the entire application. 
@@ -412,6 +414,15 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         DrawBeatLines drawBeatLinesSystem = new DrawBeatLines();
 
         RegisterPersistentSystem(State.Editor, new AutoSaveSystem());
+
+        songEditGestureTracker = new SongEditGestureTracker(m_songCommandStack);
+        RegisterPersistentSystem(State.Editor, songEditGestureTracker);
+        RegisterPersistentSystem(State.Playing, songEditGestureTracker);
+        if (SongEditReplayCheck.IsEnabled())
+        {
+            RegisterPersistentSystem(State.Editor, new SongEditReplayCheck(songEditGestureTracker));
+        }
+
         RegisterPersistentSystem(State.Editor, _songObjectPoolManager);
         RegisterPersistentSystem(State.Editor, drawBeatLinesSystem);
         RegisterPersistentSystem(State.Editor, new HoverHighlightDisplaySystem(assets));
@@ -923,15 +934,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     // Chart should be part of the current song
     public void LoadChart(Chart chart)
     {
-        if (m_songCommandStack == null)
-        {
-            // Needs initialisation
-            m_songCommandStack = new CommandStack();
-        }
-        else
-        {
-            commandStack.Clear();
-        }       
+        commandStack.Clear();
 
         Stop();
 

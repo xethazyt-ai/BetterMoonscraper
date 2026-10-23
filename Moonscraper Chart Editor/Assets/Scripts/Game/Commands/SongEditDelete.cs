@@ -41,7 +41,7 @@ public class SongEditDelete : SongEditCommand
 
         if (note != null)
         {
-            var chartObjects = ChartEditor.Instance.currentChart.chartObjects;
+            var chartObjects = SongEditTarget.chart.chartObjects;
             int arrayPos = SongObjectHelper.FindObjectPosition(note, chartObjects);
             if (arrayPos != SongObjectHelper.NOTFOUND)
             {

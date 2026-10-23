@@ -12,6 +12,10 @@ public abstract class SongEditCommand : ICommand {
     protected bool extendedSustainsEnabled;
     public bool preExecuteEnabled = true;
     public bool postExecuteEnabled = true;
+    // Set for edits that came from someone else. Applies the edit without moving the view or touching the local selection.
+    public bool isRemote = false;
+    // The chart this edit was made in. Edits and their undos always apply here, whichever chart is on screen.
+    public readonly Chart targetChart = SongEditTarget.chart;
     public List<BaseAction> subActions = new List<BaseAction>();
 
     private List<SongEditModify<BPM>> bpmAnchorFixup = new List<SongEditModify<BPM>>();
@@ -52,16 +56,22 @@ public abstract class SongEditCommand : ICommand {
 
     public void Invoke()
     {
-        PreExecuteUpdate(true);
-        InvokeSongEditCommand();
-        PostExecuteUpdate(true);
+        using (SongEditTarget.Use(targetChart))
+        {
+            PreExecuteUpdate(true);
+            InvokeSongEditCommand();
+            PostExecuteUpdate(true);
+        }
     }
 
     public void Revoke()
     {
-        PreExecuteUpdate(false);
-        RevokeSongEditCommand();
-        PostExecuteUpdate(false);
+        using (SongEditTarget.Use(targetChart))
+        {
+            PreExecuteUpdate(false);
+            RevokeSongEditCommand();
+            PostExecuteUpdate(false);
+        }
     }
 
     public abstract void InvokeSongEditCommand();
@@ -74,9 +84,12 @@ public abstract class SongEditCommand : ICommand {
             return;
 
         selectedSongObjects.Clear();
-        foreach (SongObject so in ChartEditor.Instance.selectedObjectsManager.currentSelectedObjects)
+        if (!isRemote)
         {
-            selectedSongObjects.Add(so.Clone());
+            foreach (SongObject so in ChartEditor.Instance.selectedObjectsManager.currentSelectedObjects)
+            {
+                selectedSongObjects.Add(so.Clone());
+            }
         }
 
         if (!isInvoke)
@@ -129,13 +142,16 @@ public abstract class SongEditCommand : ICommand {
             }
         }
 
-        editor.currentChart.UpdateCache();
+        SongEditTarget.chart.UpdateCache();
         editor.currentSong.UpdateCache();
+
+        ChartEditor.isDirty = true;
+
+        if (isRemote)
+            return;
 
         if (editor.toolManager.currentToolId != EditorObjectToolManager.ToolID.Note)
             editor.selectedObjectsManager.currentSelectedObject = null;
-
-        ChartEditor.isDirty = true;
 
         if (jumpInfo.IsValid)
         {
@@ -241,6 +257,7 @@ public abstract class SongEditCommand : ICommand {
 
                         // Manually invoke the modify effect
                         bpmToAdjust.value = newValue;
+                        SongEditJournal.RecordModify(original, bpmToAdjust);
 
                         SongEditModify<BPM> command = new SongEditModify<BPM>(original, bpmToAdjust.CloneAs<BPM>());
                         command.postExecuteEnabled = false;
@@ -261,7 +278,7 @@ public abstract class SongEditCommand : ICommand {
 
     void GenerateForcedFlagFixupCommands(UndoRedoJumpInfo jumpInfo)
     {
-        Chart chart = ChartEditor.Instance.currentChart;
+        Chart chart = SongEditTarget.chart;
         if (chart.chartObjects.Count <= 0)
         {
             return;
