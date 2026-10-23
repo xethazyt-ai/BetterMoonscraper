@@ -7,11 +7,10 @@ using System.Net.Sockets;
 using UnityEngine;
 
 /// <summary>
-/// The Duet Mode window. Press F10 to show or hide it. Drawn on top of the editor, so the editor's own UI is unchanged.
+/// The Duet Mode window. Press F10 (rebindable in Controls) to show or hide it. Drawn on top of the editor, so the editor's own UI is unchanged.
 /// </summary>
 public class DuetPanel : MonoBehaviour
 {
-    const KeyCode ToggleKey = KeyCode.F10;
     const int WindowId = 0x4475;    // Any number unique among IMGUI windows
     const string PrefUsername = "Duet.Username";
     const string PrefPort = "Duet.Port";
@@ -128,7 +127,7 @@ public class DuetPanel : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(ToggleKey))
+        if (MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetToggleWindow))
         {
             m_visible = !m_visible;
             if (!m_visible)
@@ -179,7 +178,7 @@ public class DuetPanel : MonoBehaviour
         if (Event.current.type == EventType.MouseDown && !m_window.rect.Contains(Event.current.mousePosition) && !DuetChat.IsPointerOver())
             GUIUtility.keyboardControl = 0;
 
-        m_window.Draw("Duet Mode  (F10 to hide)", DrawWindow, scale);
+        m_window.Draw("Duet Mode", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
     }
 

@@ -204,3 +204,9 @@ public class DuetWindow
     public DuetWindow(int id, string prefKey, UnityEngine.Rect initial, UnityEngine.Vector2 minSize, bool fixedHeight, bool scrollWhenSized) { rect = initial; }
     public void Draw(string title, UnityEngine.GUI.WindowFunction content, float scale) { }
 }
+
+public enum MSChartEditorInputActions { DuetToggleWindow, DuetChat }
+public static class MSChartEditorInput
+{
+    public static bool GetInputDown(MSChartEditorInputActions action, bool allowedDuringRebind = false) { return false; }
+}

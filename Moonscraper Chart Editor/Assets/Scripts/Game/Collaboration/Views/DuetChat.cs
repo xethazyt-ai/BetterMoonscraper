@@ -5,8 +5,8 @@ using System.Text;
 using UnityEngine;
 
 /// <summary>
-/// A chat window during a Duet session, which can be dragged anywhere and scrolled back through. Press Enter to
-/// write, Enter to send, Escape to stop writing. Also shows who's typing.
+/// A chat window during a Duet session, which can be dragged anywhere and scrolled back through. Press the chat key
+/// (Enter unless rebound in Controls) to write, Enter to send, Escape to stop writing. Also shows who's typing.
 /// </summary>
 public class DuetChat : MonoBehaviour
 {
@@ -69,8 +69,9 @@ public class DuetChat : MonoBehaviour
             return;
         }
 
-        bool enter = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
-        if (enter && !m_writing && !Services.IsTyping && m_editor.currentState == ChartEditor.State.Editor)
+        // Enter also sets lyric times, so leave it to the lyric editor while that's open
+        if (!m_writing && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetChat) && m_editor.currentState == ChartEditor.State.Editor
+            && FindObjectOfType<LyricEditor2Controller>() == null)
             StartWriting(Time.frameCount);
     }
 
@@ -182,7 +183,7 @@ public class DuetChat : MonoBehaviour
             m_writing = false;  // Focus went somewhere else, such as the Duet window
         }
 
-        GUILayout.Label(m_writing ? "Enter to send, Escape to stop" : "Press Enter to chat", m_typingStyle);
+        GUILayout.Label(m_writing ? "Enter to send, Escape to stop" : "Press Enter (or your chat key) to chat", m_typingStyle);
     }
 
     string TypingText(DuetSession session)
