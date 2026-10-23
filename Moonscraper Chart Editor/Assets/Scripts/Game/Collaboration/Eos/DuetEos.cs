@@ -27,7 +27,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     const string SocketName = "DuetMode";
     const string LobbyIdPrefix = "duet";
     const string BucketId = "duet";
-    const uint MaxRoomMembers = 4;
+    const uint MaxRoomMembers = 64;    // The most Epic allows in a lobby
     const int RoomCodeLength = 6;
     const string RoomCodeLetters = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";    // No 0/O or 1/I/L, so codes are easy to read out
     const int MaxPacketsPerFrame = 4096;
