@@ -5,87 +5,91 @@ using System.Text;
 using UnityEngine;
 
 /// <summary>
-/// A chat box in the bottom left corner during a Duet session. Press Enter to write, Enter to send, Escape to cancel.
-/// New messages show for a few seconds and then fade, so they don't cover the highway. Also shows who's typing.
+/// A chat window during a Duet session, which can be dragged anywhere and scrolled back through. Press Enter to
+/// write, Enter to send, Escape to stop writing. Also shows who's typing.
 /// </summary>
 public class DuetChat : MonoBehaviour
 {
+    const int WindowId = 0x4476;    // Any number unique among IMGUI windows, next to the Duet window's
     const string InputName = "DuetChatInput";
-    const float Width = 380;
-    const float Margin = 12;
-    const float BottomMargin = 70;
-    const int MaxLinesShown = 8;
-    const double ShowSeconds = 12;
-    const double FadeSeconds = 2;
+    const string PrefX = "Duet.ChatX";
+    const string PrefY = "Duet.ChatY";
+    const float Width = 340;
+    const float MessagesHeight = 170;
 
     static DuetChat s_instance;
 
     ChartEditor m_editor;
+    Rect m_windowRect = new Rect(0, 0, Width, 10);    // In GUI units, before scaling
+    bool m_windowPlaced = false;
+    Vector2 m_scroll;
+    int m_seenChatCount = -1;
     string m_text = string.Empty;
-    bool m_open = false;
+    bool m_writing = false;
     bool m_focusRequested = false;
-    int m_openedFrame = -1;
-    Rect m_area;        // In screen pixels, y down, for blocking clicks to the highway
+    int m_startedFrame = -1;
     GUIStyle m_lineStyle;
-    GUIStyle m_hintStyle;
-    Texture2D m_background;
+    GUIStyle m_typingStyle;
 
     // True while writing a message, so the editor's shortcuts leave the keys alone
-    public static bool isTyping { get { return s_instance != null && s_instance.m_open; } }
+    public static bool isTyping { get { return s_instance != null && s_instance.m_writing; } }
 
     public static bool IsPointerOver()
     {
-        if (s_instance == null || DuetPanel.activeSession == null)
+        if (s_instance == null || !s_instance.isShown)
             return false;
 
-        Vector2 pointer = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
-        return s_instance.m_area.Contains(pointer);
+        float scale = DuetPanel.GuiScale;
+        Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
+        return s_instance.m_windowRect.Contains(pointer);
+    }
+
+    bool isShown
+    {
+        get
+        {
+            DuetSession session = DuetPanel.activeSession;
+            return session != null && session.state == DuetSession.State.Connected && !DuetPanel.isHudHidden;
+        }
     }
 
     void Start()
     {
         s_instance = this;
         m_editor = ChartEditor.Instance;
-
-        m_background = new Texture2D(1, 1);
-        m_background.SetPixel(0, 0, new Color(0, 0, 0, 0.6f));
-        m_background.Apply();
     }
 
     void Update()
     {
-        DuetSession session = DuetPanel.activeSession;
-        if (session == null || session.state != DuetSession.State.Connected)
+        if (!isShown)
         {
-            if (m_open)
-                Close();
-            m_area = new Rect();
+            if (m_writing)
+                StopWriting();
             return;
         }
 
         bool enter = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
-        if (enter && !m_open && !Services.IsTyping && m_editor.currentState == ChartEditor.State.Editor)
-            Open();
+        if (enter && !m_writing && !Services.IsTyping && m_editor.currentState == ChartEditor.State.Editor)
+            StartWriting(Time.frameCount);
     }
 
-    void Open()
+    void StartWriting(int frame)
     {
-        m_open = true;
+        m_writing = true;
         m_focusRequested = true;
-        m_openedFrame = Time.frameCount;
+        m_startedFrame = frame;
     }
 
-    void Close()
+    void StopWriting()
     {
-        m_open = false;
+        m_writing = false;
         m_focusRequested = false;
         GUIUtility.keyboardControl = 0;
     }
 
     void OnGUI()
     {
-        DuetSession session = DuetPanel.activeSession;
-        if (session == null || session.state != DuetSession.State.Connected)
+        if (!isShown)
             return;
 
         if (m_lineStyle == null)
@@ -93,88 +97,92 @@ public class DuetChat : MonoBehaviour
 
         float scale = DuetPanel.GuiScale;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
-        GUI.depth = 5;      // Above cursors, below the Duet window
 
-        Event e = Event.current;
-        float bottom = Screen.height / scale - BottomMargin;
-        float y = bottom;
-
-        // The line to type in, or a hint to press Enter
-        const float InputHeight = 24;
-        y -= InputHeight;
-        Rect inputRect = new Rect(Margin, y, Width, InputHeight);
-        if (m_open)
+        if (!m_windowPlaced)
         {
-            if (e.type == EventType.KeyDown && GUI.GetNameOfFocusedControl() == InputName && Time.frameCount != m_openedFrame)
-            {
-                if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter)
-                {
-                    session.SendChat(m_text);
-                    m_text = string.Empty;
-                    Close();
-                    e.Use();
-                }
-                else if (e.keyCode == KeyCode.Escape)
-                {
-                    Close();
-                    e.Use();
-                }
-            }
-
-            if (m_open)
-            {
-                GUI.SetNextControlName(InputName);
-                m_text = GUI.TextField(inputRect, m_text, DuetSession.MaxChatLength);
-                if (m_focusRequested)
-                {
-                    GUI.FocusControl(InputName);
-                    m_focusRequested = false;
-                }
-                else if (e.type == EventType.MouseDown && !inputRect.Contains(e.mousePosition))
-                {
-                    Close();    // Clicked somewhere else
-                }
-            }
-        }
-        else if (GUI.Button(inputRect, "Press Enter to chat", m_hintStyle))
-        {
-            Open();
-            m_openedFrame = -1;
+            m_windowRect.x = PlayerPrefs.GetFloat(PrefX, 20);
+            m_windowRect.y = PlayerPrefs.GetFloat(PrefY, Screen.height / scale - MessagesHeight - 150);
+            m_windowPlaced = true;
         }
 
-        // Who's typing
+        // Clicking outside the window while writing stops writing
+        if (m_writing && UnityEngine.Event.current.type == EventType.MouseDown && !m_windowRect.Contains(UnityEngine.Event.current.mousePosition))
+            StopWriting();
+
+        Rect before = m_windowRect;
+        m_windowRect = GUILayout.Window(WindowId, m_windowRect, DrawWindow, "Chat");
+
+        // Keep it on screen, and remember where it was put
+        m_windowRect.x = Mathf.Clamp(m_windowRect.x, 0, Mathf.Max(0, Screen.width / scale - m_windowRect.width));
+        m_windowRect.y = Mathf.Clamp(m_windowRect.y, 0, Mathf.Max(0, Screen.height / scale - m_windowRect.height));
+        if (m_windowRect.position != before.position && UnityEngine.Event.current.type == EventType.MouseUp)
+        {
+            PlayerPrefs.SetFloat(PrefX, m_windowRect.x);
+            PlayerPrefs.SetFloat(PrefY, m_windowRect.y);
+        }
+    }
+
+    void DrawWindow(int id)
+    {
+        DuetSession session = DuetPanel.activeSession;
+        UnityEngine.Event e = UnityEngine.Event.current;
+
+        // Jump to the newest message when one arrives
+        if (session.chatCount != m_seenChatCount)
+        {
+            m_seenChatCount = session.chatCount;
+            m_scroll.y = float.MaxValue;
+        }
+
+        m_scroll = GUILayout.BeginScrollView(m_scroll, GUILayout.Height(MessagesHeight));
+        if (session.chat.Count == 0)
+            GUILayout.Label("No messages yet.", m_typingStyle);
+        foreach (DuetChatLine line in session.chat)
+            GUILayout.Label(FormatLine(session, line), m_lineStyle);
+        GUILayout.EndScrollView();
+
         string typing = TypingText(session);
-        if (typing != null)
+        GUILayout.Label(typing ?? " ", m_typingStyle);
+
+        if (m_writing && e.type == EventType.KeyDown && GUI.GetNameOfFocusedControl() == InputName && Time.frameCount != m_startedFrame)
         {
-            GUIContent content = new GUIContent(typing);
-            float height = m_hintStyle.CalcHeight(content, Width);
-            y -= height + 2;
-            GUI.Label(new Rect(Margin, y, Width, height), content, m_hintStyle);
+            if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter)
+            {
+                session.SendChat(m_text);
+                m_text = string.Empty;
+                StopWriting();
+                e.Use();
+            }
+            else if (e.keyCode == KeyCode.Escape)
+            {
+                StopWriting();
+                e.Use();
+            }
         }
 
-        // Recent messages, newest at the bottom. All of them while writing, otherwise only new ones, fading out.
-        double now = session.clockSeconds;
-        int shown = 0;
-        Color oldColor = GUI.color;
-        for (int i = session.chat.Count - 1; i >= 0 && shown < MaxLinesShown; --i)
+        GUI.SetNextControlName(InputName);
+        string text = GUILayout.TextField(m_text, DuetSession.MaxChatLength);
+        if (m_writing)
+            m_text = text;
+
+        if (m_focusRequested && e.type == EventType.Repaint)
         {
-            DuetChatLine line = session.chat[i];
-            double age = now - line.time;
-            if (!m_open && age > ShowSeconds)
-                break;
-
-            GUIContent content = new GUIContent(FormatLine(session, line));
-            float height = m_lineStyle.CalcHeight(content, Width);
-            y -= height + 2;
-
-            float alpha = m_open ? 1f : Mathf.Clamp01((float)((ShowSeconds - age) / FadeSeconds));
-            GUI.color = new Color(1, 1, 1, alpha);
-            GUI.Label(new Rect(Margin, y, Width, height), content, m_lineStyle);
-            ++shown;
+            GUI.FocusControl(InputName);
+            m_focusRequested = false;
         }
-        GUI.color = oldColor;
+        else if (!m_writing && e.type == EventType.Repaint && GUI.GetNameOfFocusedControl() == InputName)
+        {
+            StartWriting(-1);   // Clicked into the box
+            m_focusRequested = false;
+        }
+        else if (m_writing && !m_focusRequested && e.type == EventType.Repaint && GUI.GetNameOfFocusedControl() != InputName)
+        {
+            m_writing = false;  // Focus went somewhere else, such as the Duet window
+        }
 
-        m_area = new Rect(Margin * scale, y * scale, Width * scale, (bottom - y) * scale);
+        GUILayout.Label(m_writing ? "Enter to send, Escape to stop" : "Press Enter to chat", m_typingStyle);
+
+        GUI.DragWindow();
     }
 
     string TypingText(DuetSession session)
@@ -226,19 +234,10 @@ public class DuetChat : MonoBehaviour
         m_lineStyle = new GUIStyle(GUI.skin.label);
         m_lineStyle.richText = true;
         m_lineStyle.wordWrap = true;
-        m_lineStyle.fontSize = 14;
-        m_lineStyle.normal.textColor = Color.white;
-        m_lineStyle.normal.background = m_background;
-        m_lineStyle.padding = new RectOffset(6, 6, 3, 3);
 
-        m_hintStyle = new GUIStyle(m_lineStyle);
-        m_hintStyle.richText = false;
-        m_hintStyle.fontStyle = FontStyle.Italic;
-        m_hintStyle.fontSize = 12;
-        m_hintStyle.normal.textColor = new Color(1, 1, 1, 0.7f);
-        m_hintStyle.hover.background = m_background;
-        m_hintStyle.hover.textColor = Color.white;
-        m_hintStyle.active.background = m_background;
-        m_hintStyle.active.textColor = Color.white;
+        m_typingStyle = new GUIStyle(GUI.skin.label);
+        m_typingStyle.fontStyle = FontStyle.Italic;
+        m_typingStyle.fontSize = Mathf.Max(10, GUI.skin.label.fontSize - 1);
+        m_typingStyle.normal.textColor = new Color(1, 1, 1, 0.6f);
     }
 }

@@ -143,7 +143,7 @@ public class DuetOverlay : MonoBehaviour
     void OnGUI()
     {
         DuetSession session = DuetPanel.activeSession;
-        if (session == null || session.state != DuetSession.State.Connected || UnityEngine.Event.current.type != EventType.Repaint)
+        if (session == null || session.state != DuetSession.State.Connected || UnityEngine.Event.current.type != EventType.Repaint || DuetPanel.isHudHidden)
             return;
 
         GUI.depth = 10;     // Behind the Duet window

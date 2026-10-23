@@ -151,6 +151,8 @@ public class ChartEditor : UnityEngine.MonoBehaviour
 {
     public static ChartEditor Instance;
     public static bool isDirty;
+    public enum State { Editor, Playing, Menu }
+    public State currentState;
 
     public Song currentSong;
     public Chart currentChart;
