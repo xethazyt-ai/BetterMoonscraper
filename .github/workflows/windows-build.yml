@@ -44,6 +44,16 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # The Windows file dialog DLLs are only enabled for the Windows editor, but the
+      # build runs in a Linux editor, which still compiles UNITY_STANDALONE_WIN code.
+      # Enable them for any editor OS in this checkout only.
+      - name: Enable Windows-only editor plugins on Linux
+        run: |
+          sed -i 's/OS: Windows$/OS: AnyOS/' \
+            "$PROJECT_PATH/Assets/Plugins/Native File Explorer/Windows/System.Windows.Forms.dll.meta" \
+            "$PROJECT_PATH/Assets/Plugins/Native File Explorer/Windows/Ookii.Dialogs.dll.meta"
+          git diff --stat
+
       - name: Cache Unity Library folder
         uses: actions/cache@v4
         with:
