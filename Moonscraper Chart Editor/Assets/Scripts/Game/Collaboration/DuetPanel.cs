@@ -18,7 +18,6 @@ public class DuetPanel : MonoBehaviour
     const string PrefUseRooms = "Duet.UseRooms";
     const string PrefColor = "Duet.Color";
     const string PrefShowGhosts = "Duet.ShowGhostNotes";
-    const string PrefHideInMenus = "Duet.HideInMenus";
 
     static DuetPanel s_instance;
 
@@ -61,7 +60,7 @@ public class DuetPanel : MonoBehaviour
     // True while a Moonscraper menu such as Settings is open and the Duet windows, cursors and markers should get out of the way
     public static bool isHudHidden
     {
-        get { return s_instance != null && s_instance.m_hideInMenus && s_instance.m_editor != null && s_instance.m_editor.currentState == ChartEditor.State.Menu; }
+        get { return s_instance != null && s_instance.m_editor != null && s_instance.m_editor.currentState == ChartEditor.State.Menu; }
     }
 
     public static bool IsPointerOverPanel()
@@ -100,7 +99,6 @@ public class DuetPanel : MonoBehaviour
     bool m_unloadedAfterSession = false;
     int m_color = 0;
     bool m_showGhosts = true;
-    bool m_hideInMenus = true;
     string m_error = null;
     List<string> m_localAddresses = null;
 
@@ -116,7 +114,6 @@ public class DuetPanel : MonoBehaviour
         m_address = PlayerPrefs.GetString(PrefAddress, string.Empty);
         m_useRooms = PlayerPrefs.GetInt(PrefUseRooms, 1) != 0;
         m_showGhosts = PlayerPrefs.GetInt(PrefShowGhosts, 1) != 0;
-        m_hideInMenus = PlayerPrefs.GetInt(PrefHideInMenus, 1) != 0;
 
         // A random color the first time, so two people who never pick one still look different
         if (!PlayerPrefs.HasKey(PrefColor))
@@ -454,13 +451,6 @@ public class DuetPanel : MonoBehaviour
         {
             m_showGhosts = showGhosts;
             PlayerPrefs.SetInt(PrefShowGhosts, m_showGhosts ? 1 : 0);
-        }
-
-        bool hideInMenus = GUILayout.Toggle(m_hideInMenus, " Hide Duet windows while a Moonscraper menu is open");
-        if (hideInMenus != m_hideInMenus)
-        {
-            m_hideInMenus = hideInMenus;
-            PlayerPrefs.SetInt(PrefHideInMenus, m_hideInMenus ? 1 : 0);
         }
     }
 
