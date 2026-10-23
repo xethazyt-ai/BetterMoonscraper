@@ -702,7 +702,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
     public bool _SaveAs(bool forced = true)
     {
-        // A Duet Mode joiner saves a copy of the whole song, files included, into Moonscraper's Charts folder
+        // A Duet Mode joiner saves a copy of the whole song, files included, into Moonscraper's Songs folder
         if (DuetPanel.isGuest)
             return DuetPanel.SaveGuestCopy();
 
@@ -733,7 +733,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         return false;
     }
 
-    // Saves a Duet Mode joiner's copy as a normal .chart. See DuetEditorSong.SaveCopyToChartsFolder.
+    // Saves a Duet Mode joiner's copy as a normal .chart. See DuetEditorSong.SaveCopyToSongsFolder.
     public void SaveDuetCopy(string filename)
     {
         ExportOptions exportOptions = currentSong.defaultExportOptions;

@@ -163,14 +163,14 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
     }
 
     /// <summary>
-    /// Joiners only: saves the chart with all the host's song files into Charts/Artist - Song/ beside Moonscraper,
+    /// Joiners only: saves the chart with all the host's song files into Songs/Artist - Song/ beside Moonscraper,
     /// ready to play. Saving again later updates the same folder.
     /// </summary>
-    public string SaveCopyToChartsFolder()
+    public string SaveCopyToSongsFolder()
     {
         Song song = m_editor.currentSong;
-        string charts = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(Application.dataPath)), "Charts");
-        string folder = Path.Combine(charts, ChartFolderName(song.metaData.artist, song.name));
+        string songs = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(Application.dataPath)), "Songs");
+        string folder = Path.Combine(songs, ChartFolderName(song.metaData.artist, song.name));
         Directory.CreateDirectory(folder);
 
         foreach (KeyValuePair<string, string> file in m_songFiles)

@@ -18,7 +18,23 @@ public static class LinkTests
         CheckAssembler();
         CheckSessionOverPackets();
         CheckRoomCodes();
+        CheckKeepAlive();
         return s_failures;
+    }
+
+    // While a Windows pop-up freezes the main thread, online rooms keep ticking; afterwards they stop
+    static void CheckKeepAlive()
+    {
+        int ticks = 0;
+        DuetKeepAlive.tick = () => System.Threading.Interlocked.Increment(ref ticks);
+        using (DuetKeepAlive.WhileBlocked())
+            System.Threading.Thread.Sleep(300);
+        int afterwards = ticks;
+        System.Threading.Thread.Sleep(150);
+        DuetKeepAlive.tick = null;
+
+        Expect("rooms keep ticking while a pop-up is open", afterwards >= 3);
+        Expect("and stop once it closes", ticks == afterwards);
     }
 
     static void CheckAssembler()

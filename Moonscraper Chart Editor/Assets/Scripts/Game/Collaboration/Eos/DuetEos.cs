@@ -31,6 +31,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     const int RoomCodeLength = 6;
     const string RoomCodeLetters = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";    // No 0/O or 1/I/L, so codes are easy to read out
     const int MaxPacketsPerFrame = 4096;
+    const int ShutdownGraceMs = 400;
 
     enum Phase { Idle, SigningIn, Ready, Failed }
 
@@ -158,6 +159,8 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         if (m_platform == null)
             return "the platform couldn't be created. Check the values in " + Path.Combine(EosFolder, "credentials.txt");
 
+        DuetKeepAlive.tick = TickPlatform;
+
         return null;
     }
 
@@ -229,6 +232,19 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             m_room = null;
         }
 
+        // Give EOS a moment to tell everyone, so they see the session end straight away instead of timing out
+        if (m_platform != null && m_phase == Phase.Ready)
+        {
+            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            while (clock.ElapsedMilliseconds < ShutdownGraceMs)
+            {
+                TickPlatform();
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+
+        DuetKeepAlive.tick = null;
+
         if (m_platform != null)
         {
             if (m_requestNotification != 0)
@@ -273,7 +289,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         if (m_platform == null)
             return;
 
-        m_platform.Tick();
+        TickPlatform();
 
         if (m_phase != Phase.Ready)
             return;
@@ -282,6 +298,15 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
         foreach (Link link in new List<Link>(m_links.Values))
             link.Flush();
+    }
+
+    void TickPlatform()
+    {
+        lock (DuetKeepAlive.tickLock)
+        {
+            if (m_platform != null)
+                m_platform.Tick();
+        }
     }
 
     void ReceivePackets()

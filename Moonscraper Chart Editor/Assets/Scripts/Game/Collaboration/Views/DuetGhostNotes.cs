@@ -10,7 +10,7 @@ using MoonscraperChartEditor.Song;
 /// </summary>
 public class DuetGhostNotes
 {
-    const float OutlineScale = 1.22f;
+    const float OutlineScale = 1.07f;     // A thin line round the note
     const string SilhouetteShaderName = "Duet/Silhouette";
 
     class Slot
