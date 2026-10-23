@@ -99,6 +99,8 @@ jobs:
 
           gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$asset" > "$RUNNER_TEMP/eos-sdk-ci.zip"
           unzip -q -o "$RUNNER_TEMP/eos-sdk-ci.zip" -d "$PROJECT_PATH"
+          # The zip keeps its maker's private file modes; make the files readable so the build can be uploaded
+          (cd "$PROJECT_PATH" && unzip -Z1 "$RUNNER_TEMP/eos-sdk-ci.zip" | tr '\n' '\0' | xargs -0 chmod a+rX)
           test -f "$PROJECT_PATH/EOS/EOSSDK-Win64-Shipping.dll"
           test -d "$PROJECT_PATH/Assets/Plugins/EOS/Source"
 
@@ -121,6 +123,10 @@ jobs:
           customParameters: -moonscraperBuildPath /github/workspace/ci-build
           versioning: None
           allowDirtyBuild: true
+
+      # The Unity container writes the build as root, keeping the source files' modes
+      - name: Make the build readable
+        run: sudo chmod -R a+rX ci-build
 
       - name: Upload unpatched build
         uses: actions/upload-artifact@v4
