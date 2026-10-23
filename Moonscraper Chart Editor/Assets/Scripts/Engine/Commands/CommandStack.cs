@@ -17,8 +17,14 @@ namespace MoonscraperEngine
         public bool isAtStart { get { return currentStackIndex < 0; } }
         public bool isAtEnd { get { return currentStackIndex >= commands.Count - 1; } }
 
+        // Called before the command is invoked/revoked
         protected virtual void OnPush(ICommand command) { }
         protected virtual void OnPop(ICommand command) { }
+
+        // Called after the command has been invoked/revoked. isRedo is true when re-pushing a previously popped command.
+        protected virtual void OnPushed(ICommand command, bool isRedo) { }
+        protected virtual void OnPopped(ICommand command) { }
+        protected virtual void OnCleared() { }
 
         public CommandStack()
         {
@@ -29,6 +35,7 @@ namespace MoonscraperEngine
         {
             commands = new List<ICommand>();
             currentStackIndex = -1;
+            OnCleared();
         }
 
         public void Push()
@@ -37,6 +44,7 @@ namespace MoonscraperEngine
             {
                 OnPush(commands[++currentStackIndex]);
                 commands[currentStackIndex].Invoke();
+                OnPushed(commands[currentStackIndex], true);
             }
         }
 
@@ -52,6 +60,7 @@ namespace MoonscraperEngine
             ++currentStackIndex;
             command.Invoke();
             commands.Add(command);
+            OnPushed(command, false);
         }
 
         public void Pop()
@@ -63,8 +72,10 @@ namespace MoonscraperEngine
 #endif
             if (!isAtStart)
             {
-                OnPop(commands[currentStackIndex]);
-                commands[currentStackIndex--].Revoke();
+                ICommand command = commands[currentStackIndex--];
+                OnPop(command);
+                command.Revoke();
+                OnPopped(command);
             }
         }
 

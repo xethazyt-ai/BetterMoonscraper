@@ -31,8 +31,7 @@ public class BatchedSongEditCommand : SongEditCommand
         {
             // Try to preserve forced flags on notes that aren't being moved. 
 
-            ChartEditor editor = ChartEditor.Instance;
-            Chart chart = editor.currentChart;
+            Chart chart = SongEditTarget.chart;
             List<BaseAction> newSubActions = new List<BaseAction>();
 
             foreach (SongEditCommand command in commands)

@@ -116,7 +116,7 @@ public class SongEditAdd : SongEditCommand
     static void AddNote(Note note, IList<BaseAction> subActions, bool extendedSustainsEnabled)
     {
         ChartEditor editor = ChartEditor.Instance;
-        Chart chart = editor.currentChart;
+        Chart chart = SongEditTarget.chart;
         Song song = editor.currentSong;
 
         NoteFunctions.PerformPreChartInsertCorrections(note, chart, subActions, extendedSustainsEnabled);
@@ -142,9 +142,9 @@ public class SongEditAdd : SongEditCommand
     static void AddStarpower(Starpower sp, IList<BaseAction> subActions)
     {
         ChartEditor editor = ChartEditor.Instance;
-        TryRecordOverwrite(sp, editor.currentChart.chartObjects, subActions);
+        TryRecordOverwrite(sp, SongEditTarget.chart.chartObjects, subActions);
 
-        CapPrevAndNextPreInsert(sp, editor.currentChart, subActions);
+        CapPrevAndNextPreInsert(sp, SongEditTarget.chart, subActions);
 
         AddAndInvokeSubAction(new AddAction(sp), subActions);
     }
@@ -152,9 +152,9 @@ public class SongEditAdd : SongEditCommand
     static void AddDrumRoll(DrumRoll drumRoll, IList<BaseAction> subActions)
     {
         ChartEditor editor = ChartEditor.Instance;
-        TryRecordOverwrite(drumRoll, editor.currentChart.chartObjects, subActions);
+        TryRecordOverwrite(drumRoll, SongEditTarget.chart.chartObjects, subActions);
 
-        CapPrevAndNextPreInsert(drumRoll, editor.currentChart, subActions);
+        CapPrevAndNextPreInsert(drumRoll, SongEditTarget.chart, subActions);
 
         AddAndInvokeSubAction(new AddAction(drumRoll), subActions);
     }
@@ -162,7 +162,7 @@ public class SongEditAdd : SongEditCommand
     static void AddChartEvent(ChartEvent chartEvent, IList<BaseAction> subActions)
     {      
         ChartEditor editor = ChartEditor.Instance;
-        TryRecordOverwrite(chartEvent, editor.currentChart.chartObjects, subActions);
+        TryRecordOverwrite(chartEvent, SongEditTarget.chart.chartObjects, subActions);
 
         AddAndInvokeSubAction(new AddAction(chartEvent), subActions);
     }

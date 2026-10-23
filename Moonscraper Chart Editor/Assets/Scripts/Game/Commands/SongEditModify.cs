@@ -50,7 +50,10 @@ public class SongEditModify<T> : SongEditCommand where T : SongObject
 
     void CloneInto(SongObject objectToCopyInto, SongObject objectToCopyFrom)
     {
-        Chart chart = ChartEditor.Instance.currentChart;
+        Chart chart = SongEditTarget.chart;
+
+        SongObject recordedBefore = objectToCopyInto.Clone();
+        bool recordAsModify = true;    // Events are modified by deleting and re-adding, which records itself
 
         switch ((SongObject.ID)objectToCopyInto.classID)
         {
@@ -75,6 +78,7 @@ public class SongEditModify<T> : SongEditCommand where T : SongObject
                     // Invoke delete and add to ensure we maintain correct sorting, as these can duplicate at the same tick
                     AddAndInvokeSubAction(new DeleteAction(objectToCopyInto), subActions);
                     AddAndInvokeSubAction(new AddAction(objectToCopyFrom), subActions);
+                    recordAsModify = false;
                     break;
                 }
             case SongObject.ID.BPM:
@@ -91,6 +95,7 @@ public class SongEditModify<T> : SongEditCommand where T : SongObject
                     // Invoke delete and add to ensure we maintain correct sorting, as these can duplicate at the same tick
                     AddAndInvokeSubAction(new DeleteAction(objectToCopyInto), subActions);
                     AddAndInvokeSubAction(new AddAction(objectToCopyFrom), subActions);
+                    recordAsModify = false;
                     break;
                 }
             case SongObject.ID.Section:
@@ -99,8 +104,12 @@ public class SongEditModify<T> : SongEditCommand where T : SongObject
 
             default:
                 UnityEngine.Debug.LogError("Object to modify not supported.");
+                recordAsModify = false;
                 break;
         }
+
+        if (recordAsModify)
+            SongEditJournal.RecordModify(recordedBefore, objectToCopyInto);
 
         if (objectToCopyInto.controller)
             objectToCopyInto.controller.SetDirty();
@@ -110,7 +119,7 @@ public class SongEditModify<T> : SongEditCommand where T : SongObject
     {
         ChartEditor editor = ChartEditor.Instance;
         Song song = editor.currentSong;
-        Chart chart = editor.currentChart;
+        Chart chart = SongEditTarget.chart;
 
         int index;
 
