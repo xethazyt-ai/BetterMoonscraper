@@ -40,6 +40,18 @@ public class DuetPanel : MonoBehaviour
     // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
     public static bool isMouseHeldOnPanel { get; private set; }
 
+    // Closing Moonscraper during a session asks here rather than with a Windows pop-up. May be called off the main thread.
+    static volatile bool s_quitPromptOpen = false;
+
+    public static bool RequestQuitConfirmation()
+    {
+        if (s_instance == null || activeSession == null)
+            return false;
+
+        s_quitPromptOpen = true;
+        return true;
+    }
+
     public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
     public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
 
@@ -51,7 +63,7 @@ public class DuetPanel : MonoBehaviour
 
     public static bool IsPointerOverPanel()
     {
-        if (DuetChat.IsPointerOver())
+        if (DuetChat.IsPointerOver() || s_quitPromptOpen)
             return true;
 
         if (s_instance == null || !s_instance.m_visible || isHudHidden)
@@ -154,6 +166,12 @@ public class DuetPanel : MonoBehaviour
 
     void OnGUI()
     {
+        if (s_quitPromptOpen)
+        {
+            DrawQuitPrompt();
+            return;
+        }
+
         if (!m_visible || isHudHidden)
         {
             if (isTyping)
@@ -180,6 +198,59 @@ public class DuetPanel : MonoBehaviour
 
         m_window.Draw("Duet Mode", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
+    }
+
+    const int QuitPromptId = 0x4477;
+
+    void DrawQuitPrompt()
+    {
+        isTyping = true;    // Keeps the editor's shortcuts quiet until it's answered
+
+        float scale = GuiScale;
+        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+        Rect rect = new Rect((Screen.width / scale - 380) / 2, (Screen.height / scale - 140) / 2, 380, 140);
+        GUILayout.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit Moonscraper?");
+    }
+
+    void DrawQuitPromptWindow(int id)
+    {
+        bool hosting = m_session != null && m_session.role == DuetSession.Role.Host;
+        bool askToSave = hosting && ChartEditor.isDirty;
+
+        GUILayout.Label(hosting ? "Everyone in your Duet session will be disconnected." : "You'll leave the Duet session.");
+        if (askToSave)
+            GUILayout.Label("Do you want to save your changes first?");
+
+        GUILayout.FlexibleSpace();
+        GUILayout.BeginHorizontal();
+        if (askToSave && GUILayout.Button("Save and quit"))
+        {
+            CloseQuitPrompt();
+            if (m_editor._Save())
+                StartCoroutine(QuitWhenSaved());
+        }
+        if (GUILayout.Button(askToSave ? "Quit without saving" : "Quit"))
+        {
+            CloseQuitPrompt();
+            m_editor.QuitAfterDuetPrompt();
+        }
+        if (GUILayout.Button("Cancel"))
+            CloseQuitPrompt();
+        GUILayout.EndHorizontal();
+    }
+
+    void CloseQuitPrompt()
+    {
+        s_quitPromptOpen = false;
+        isTyping = false;
+    }
+
+    System.Collections.IEnumerator QuitWhenSaved()
+    {
+        yield return null;
+        while (m_editor.isSaving)
+            yield return null;
+        m_editor.QuitAfterDuetPrompt();
     }
 
     void DrawWindow(int id)

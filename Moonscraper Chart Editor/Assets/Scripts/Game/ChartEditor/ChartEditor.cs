@@ -320,6 +320,12 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         }
     }
 
+    // The Duet quit prompt was answered with quit. Update then quits for real.
+    public void QuitAfterDuetPrompt()
+    {
+        quittingCheckPassed = true;
+    }
+
     public void ForceQuit()
     {
         quittingCheckPassed = true;
@@ -394,6 +400,10 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
         if (quittingCheckPassed)
             return true;
+
+        // In a Duet session, ask inside the editor instead: a Windows pop-up freezes Moonscraper and drops the session
+        if (DuetPanel.RequestQuitConfirmation())
+            return false;
 
         if (haltThreadForQuit)
             return false;

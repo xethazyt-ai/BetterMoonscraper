@@ -11,7 +11,8 @@ namespace UnityEngine
     public class Object { public static implicit operator bool(Object o) { return o != null; } }
     public class Component : Object { public GameObject gameObject; }
     public class Behaviour : Component { public bool enabled; }
-    public class MonoBehaviour : Behaviour { }
+    public class MonoBehaviour : Behaviour { public Coroutine StartCoroutine(System.Collections.IEnumerator routine) { return null; } }
+    public class Coroutine { }
     public class GameObject : Object { public void SetActive(bool active) { } }
     public class TextAsset : Object { public string text; public string name; }
     public struct Color
@@ -83,6 +84,8 @@ namespace UnityEngine
     public static class GUILayout
     {
         public static Rect Window(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }
+        public static Rect ModalWindow(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }
+        public static void FlexibleSpace() { }
         public static void Label(string text) { }
         public static string TextField(string text, int maxLength) { return text; }
         public static bool Button(string text, params GUILayoutOption[] options) { return false; }
@@ -151,6 +154,9 @@ public class ChartEditor : UnityEngine.MonoBehaviour
 {
     public static ChartEditor Instance;
     public static bool isDirty;
+    public bool isSaving;
+    public bool _Save() { return true; }
+    public void QuitAfterDuetPrompt() { }
     public enum State { Editor, Playing, Menu }
     public State currentState;
 
