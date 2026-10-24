@@ -322,15 +322,19 @@ public class SongPropertiesPanelController : TabMenu
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
     }
 
-    // Fills in the album, year and genre from MusicBrainz or iTunes, by the song's name and artist. Only empty fields are filled.
+    // Fills in the song's details online. With audio matching in this build, the song is identified by its sound and
+    // only an exact match counts; otherwise it's searched for by name and artist. Only empty fields are filled.
     void LookUpOnMusicBrainz()
     {
         if (lookingUp || !formatBar)
             return;
 
         lookingUp = true;
-        formatBar.SetStatus("Looking up \"" + RichTextIni.Strip(songName.text) + "\" online...");
-        StartCoroutine(MusicBrainzLookup.Find(songName.text, artist.text, (result, error) =>
+        string audioPath = editor.currentSong.GetAudioLocation(Song.AudioInstrument.Song);
+        bool byAudio = MusicBrainzLookup.canMatchAudio && !string.IsNullOrEmpty(audioPath);
+        formatBar.SetStatus(byAudio ? "Listening to the song's audio and looking it up..." : "Looking up \"" + RichTextIni.Strip(songName.text) + "\" online...");
+
+        Action<MusicBrainzLookup.Result, string> fill = (result, error) =>
         {
             lookingUp = false;
             if (result == null)
@@ -340,14 +344,22 @@ public class SongPropertiesPanelController : TabMenu
             }
 
             List<string> filled = new List<string>();
+            if (byAudio)
+            {
+                // An exact audio match knows the song, so it can fill in the name and artist too
+                FillIfEmpty(songName, result.title, "name", filled);
+                FillIfEmpty(artist, result.artist, "artist", filled);
+            }
             FillIfEmpty(album, result.album, "album", filled);
             FillIfEmpty(year, result.year, "year", filled);
             FillIfEmpty(genre, result.genre, "genre", filled);
 
-            string found = "Found \"" + result.title + "\" by " + result.artist + " on " + result.source + ": album " + (result.album ?? "unknown")
+            string found = "Found \"" + result.title + "\" by " + result.artist + " from " + result.source + ": album " + (result.album ?? "unknown")
                 + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + ".";
             formatBar.SetStatus(found + (filled.Count > 0 ? " Filled in the " + string.Join(", ", filled.ToArray()) + "." : " Clear a field to have it filled in."));
-        }));
+        };
+
+        StartCoroutine(byAudio ? MusicBrainzLookup.FindByAudio(audioPath, fill) : MusicBrainzLookup.Find(songName.text, artist.text, fill));
     }
 
     static void FillIfEmpty(InputField field, string value, string what, List<string> filled)

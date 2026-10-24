@@ -151,6 +151,22 @@ jobs:
           name: unpatched-build
           path: ci-build
 
+      # Song Properties' "Fill song info online" identifies a song by its audio with Chromaprint's fpcalc (LGPL 2.1,
+      # https://github.com/acoustid/chromaprint), which it runs from the fpcalc folder next to the app
+      - name: Add fpcalc for audio matching
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem ci-build -Directory | Select-Object -First 1
+          $zip = Join-Path $env:RUNNER_TEMP "fpcalc.zip"
+          Invoke-WebRequest "https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-fpcalc-1.5.1-windows-x86_64.zip" -OutFile $zip
+          $unzipped = Join-Path $env:RUNNER_TEMP "fpcalc"
+          Expand-Archive $zip -DestinationPath $unzipped -Force
+          $exe = Get-ChildItem $unzipped -Recurse -Filter fpcalc.exe | Select-Object -First 1
+          if (-not $exe) { throw "fpcalc.exe not found in the Chromaprint download" }
+          $target = New-Item -ItemType Directory -Force (Join-Path $app.FullName "fpcalc")
+          Copy-Item $exe.FullName $target
+          "fpcalc is part of Chromaprint (https://github.com/acoustid/chromaprint), licensed under the GNU LGPL 2.1. Its source code is at that address." | Out-File (Join-Path $target "README.txt") -Encoding utf8
+
       # Same security patch BuildManager applies to local Windows builds
       - name: Apply Unity security patch
         shell: pwsh

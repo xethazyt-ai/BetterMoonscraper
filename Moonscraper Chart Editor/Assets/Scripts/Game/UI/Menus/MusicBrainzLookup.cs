@@ -3,6 +3,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Threading;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -65,7 +69,6 @@ public static class MusicBrainzLookup
 
     static IEnumerator FindOnMusicBrainz(string name, string artist, Action<Result, string> done)
     {
-
         string query = "recording:\"" + name + "\"" + (artist.Length > 0 ? " AND artist:\"" + artist + "\"" : string.Empty);
         Dictionary<string, object> found = null;
         string error = null;
@@ -89,6 +92,14 @@ public static class MusicBrainzLookup
             yield break;
         }
 
+        Result result = null;
+        yield return DetailsFromRecording(recording, r => result = r);
+        done(result, null);
+    }
+
+    // The album, year and genre of a MusicBrainz recording (from a search, or looked up by its ID)
+    static IEnumerator DetailsFromRecording(Dictionary<string, object> recording, Action<Result> done)
+    {
         Result result = new Result();
         result.source = "MusicBrainz";
         result.title = DuetJson.GetString(recording, "title", string.Empty);
@@ -137,7 +148,7 @@ public static class MusicBrainzLookup
                 releaseGroupId = DuetJson.GetString(group, "id", null);
         }
 
-        result.genre = TopName(DuetJson.GetArray(recording, "tags"));
+        result.genre = TopName(DuetJson.GetArray(recording, "genres")) ?? TopName(DuetJson.GetArray(recording, "tags"));
 
         // Genres are mostly filed on the album, so ask for those (a second after the first request, as asked)
         if (string.IsNullOrEmpty(result.genre) && !string.IsNullOrEmpty(releaseGroupId))
@@ -152,7 +163,7 @@ public static class MusicBrainzLookup
         if (!string.IsNullOrEmpty(result.genre))
             result.genre = char.ToUpperInvariant(result.genre[0]) + result.genre.Substring(1);
 
-        done(result, null);
+        done(result);
     }
 
     static IEnumerator FindOnITunes(string name, string artist, Action<Result, string> done)
@@ -204,6 +215,162 @@ public static class MusicBrainzLookup
         done(result, null);
     }
 
+    // Identifies the song by its sound: a Chromaprint fingerprint of the audio file, looked up on AcoustID (which links
+    // fingerprints to MusicBrainz recordings). Only a match AcoustID is at least 90% sure of counts.
+    public static bool canMatchAudio { get { return AcoustIdClientKey.Length > 0 && File.Exists(fpcalcPath); } }
+
+    // AcoustID's free key for this app (https://acoustid.org/new-application). Apps ship with theirs, like this.
+    const string AcoustIdClientKey = "PEVuwLfy74";
+    const double MinAudioScore = 0.9;
+
+    static string fpcalcPath
+    {
+        get { return Path.Combine(Path.GetDirectoryName(Application.dataPath), Path.Combine("fpcalc", "fpcalc.exe")); }
+    }
+
+    public static IEnumerator FindByAudio(string audioPath, Action<Result, string> done)
+    {
+        if (!canMatchAudio)
+        {
+            done(null, "Audio matching isn't in this build.");
+            yield break;
+        }
+        if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath))
+        {
+            done(null, "Load the song's audio first (Song Properties > Audio).");
+            yield break;
+        }
+
+        // Fingerprinting decodes the first two minutes of audio, which takes a moment, so it runs off the main thread
+        string fingerprint = null, fingerprintError = null;
+        int duration = 0;
+        string exe = fpcalcPath;    // Unity's paths can only be read on the main thread
+        Thread thread = new Thread(() =>
+        {
+            try
+            {
+                Fingerprint(exe, audioPath, out fingerprint, out duration);
+            }
+            catch (Exception e)
+            {
+                fingerprintError = e.Message;
+            }
+        });
+        thread.IsBackground = true;
+        thread.Start();
+        while (thread.IsAlive)
+            yield return null;
+
+        if (fingerprint == null)
+        {
+            done(null, "Couldn't fingerprint the audio. " + fingerprintError);
+            yield break;
+        }
+
+        Dictionary<string, object> found = null;
+        string error = null;
+        string url = "https://api.acoustid.org/v2/lookup";
+        yield return Send(url, () =>
+        {
+            WWWForm form = new WWWForm();
+            form.AddField("client", AcoustIdClientKey);
+            form.AddField("meta", "recordingids");
+            form.AddField("duration", duration.ToString(CultureInfo.InvariantCulture));
+            form.AddField("fingerprint", fingerprint);
+            return UnityWebRequest.Post(url, form);
+        }, (json, e) => { found = json; error = e; });
+        if (found == null)
+        {
+            done(null, error);
+            yield break;
+        }
+
+        string recordingId = null;
+        double bestScore = 0;
+        foreach (object item in DuetJson.GetArray(found, "results"))
+        {
+            Dictionary<string, object> match = item as Dictionary<string, object>;
+            if (match == null)
+                continue;
+
+            double score = DuetJson.GetNumber(match, "score", 0);
+            foreach (object recording in DuetJson.GetArray(match, "recordings"))
+            {
+                Dictionary<string, object> recordingObject = recording as Dictionary<string, object>;
+                string id = recordingObject != null ? DuetJson.GetString(recordingObject, "id", null) : null;
+                if (id != null && score > bestScore)
+                {
+                    bestScore = score;
+                    recordingId = id;
+                }
+            }
+        }
+
+        if (recordingId == null || bestScore < MinAudioScore)
+        {
+            done(null, recordingId == null
+                ? "No exact audio match. This recording may not be in AcoustID yet."
+                : "No exact audio match (best was " + Math.Round(bestScore * 100) + "% sure), so nothing was filled in.");
+            yield break;
+        }
+
+        yield return new WaitForSecondsRealtime(1.1f);     // MusicBrainz asks for a second between requests
+        Dictionary<string, object> details = null;
+        yield return Get(Api + "recording/" + UnityWebRequest.EscapeURL(recordingId) + "?fmt=json&inc=artist-credits+releases+release-groups+genres+tags",
+            (json, e) => { details = json; error = e; });
+        if (details == null)
+        {
+            done(null, error);
+            yield break;
+        }
+
+        Result result = null;
+        yield return DetailsFromRecording(details, r => result = r);
+        result.source = "an audio match (" + Math.Round(bestScore * 100) + "% sure)";
+
+        if (string.IsNullOrEmpty(result.genre) && !string.IsNullOrEmpty(result.title))
+        {
+            Result itunes = null;
+            yield return FindOnITunes(Clean(result.title), Clean(result.artist), (r, e) => itunes = r);
+            if (itunes != null)
+                result.genre = itunes.genre;
+        }
+
+        done(result, null);
+    }
+
+    static void Fingerprint(string exe, string audioPath, out string fingerprint, out int duration)
+    {
+        fingerprint = null;
+        duration = 0;
+
+        ProcessStartInfo start = new ProcessStartInfo(exe, "-json -length 120 \"" + audioPath + "\"");
+        start.UseShellExecute = false;
+        start.CreateNoWindow = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+
+        using (Process process = Process.Start(start))
+        {
+            string output = process.StandardOutput.ReadToEnd();
+            string errors = process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(60000))
+            {
+                process.Kill();
+                throw new TimeoutException("fpcalc took too long");
+            }
+
+            Dictionary<string, object> json = output.Trim().Length > 0 ? DuetJson.Read(output.Trim()) as Dictionary<string, object> : null;
+            if (json == null)
+                throw new FormatException(errors.Trim().Length > 0 ? errors.Trim() : "fpcalc gave no fingerprint");
+
+            fingerprint = DuetJson.GetString(json, "fingerprint", null);
+            duration = (int)Math.Round(DuetJson.GetNumber(json, "duration", 0));
+            if (string.IsNullOrEmpty(fingerprint))
+                throw new FormatException("fpcalc gave no fingerprint");
+        }
+    }
+
     static string TopName(List<object> tags)
     {
         string name = null;
@@ -233,9 +400,14 @@ public static class MusicBrainzLookup
 
     static IEnumerator Get(string url, Action<Dictionary<string, object>, string> done)
     {
+        return Send(url, () => UnityWebRequest.Get(url), done);
+    }
+
+    static IEnumerator Send(string url, Func<UnityWebRequest> makeRequest, Action<Dictionary<string, object>, string> done)
+    {
         for (int attempt = 0; ; ++attempt)
         {
-            using (UnityWebRequest request = UnityWebRequest.Get(url))
+            using (UnityWebRequest request = makeRequest())
             {
                 request.SetRequestHeader("User-Agent", UserAgent);
                 request.SetRequestHeader("Accept", "application/json");
