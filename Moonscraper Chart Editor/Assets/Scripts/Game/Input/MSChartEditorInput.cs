@@ -150,6 +150,7 @@ public enum MSChartEditorInputActions
     // Duet Mode
     DuetToggleWindow,
     DuetChat,
+    DuetHideChat,
 }
 
 public static class MSChartEditorInput

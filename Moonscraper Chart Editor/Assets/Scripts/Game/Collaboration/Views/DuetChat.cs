@@ -14,6 +14,7 @@ public class DuetChat : MonoBehaviour
     const string InputName = "DuetChatInput";
     const string PrefX = "Duet.ChatX";
     const string PrefY = "Duet.ChatY";
+    const string PrefHidden = "Duet.ChatHidden";
     const float Width = 340;
     const float Height = 300;
 
@@ -22,6 +23,7 @@ public class DuetChat : MonoBehaviour
     ChartEditor m_editor;
     readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Chat", new Rect(0, 0, Width, Height), new Vector2(220, 150), true, false);
     bool m_windowPlaced = false;
+    bool m_hidden = false;     // Put away with the hide chat key (F11 unless rebound in Controls)
     Vector2 m_savedPosition;
     Vector2 m_scroll;
     int m_seenChatCount = -1;
@@ -49,8 +51,16 @@ public class DuetChat : MonoBehaviour
     {
         get
         {
+            return isInSession && !m_hidden && !DuetPanel.isHudHidden;
+        }
+    }
+
+    static bool isInSession
+    {
+        get
+        {
             DuetSession session = DuetPanel.activeSession;
-            return session != null && session.state == DuetSession.State.Connected && !DuetPanel.isHudHidden;
+            return session != null && session.state == DuetSession.State.Connected;
         }
     }
 
@@ -58,10 +68,25 @@ public class DuetChat : MonoBehaviour
     {
         s_instance = this;
         m_editor = ChartEditor.Instance;
+        m_hidden = PlayerPrefs.GetInt(PrefHidden, 0) != 0;
+    }
+
+    void SetHidden(bool hidden)
+    {
+        m_hidden = hidden;
+        PlayerPrefs.SetInt(PrefHidden, hidden ? 1 : 0);
     }
 
     void Update()
     {
+        bool canUseKeys = isInSession && !m_writing && m_editor.currentState == ChartEditor.State.Editor && !Services.IsTyping;
+        if (canUseKeys && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetHideChat))
+            SetHidden(!m_hidden);
+
+        // The chat key brings a hidden chat back, ready to write
+        if (m_hidden && canUseKeys && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetChat) && FindObjectOfType<LyricEditor2Controller>() == null)
+            SetHidden(false);
+
         if (!isShown)
         {
             if (m_writing)

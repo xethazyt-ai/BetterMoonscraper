@@ -117,6 +117,11 @@ public static class LinkTests
 
     static void CheckRoomCodes()
     {
+        bool refused = false;
+        try { DuetJson.Read(new string('[', 100000)); }
+        catch (FormatException) { refused = true; }
+        Expect("a message nested thousands deep is refused, not a crash", refused);
+
         Expect("room codes ignore case, spaces and dashes", DuetRooms.NormalizeCode(" k7q-2mx ") == "K7Q2MX");
     }
 

@@ -1132,6 +1132,17 @@
                 "category": 1,
                 "allowSameFrameMultiInput": false
             }
+        },
+        {
+            "mSChartEditorInputAction": "DuetHideChat",
+            "properties": {
+                "displayName": "Duet Mode Hide Chat",
+                "rebindable": true,
+                "hiddenInLists": false,
+                "anyDirectionAxis": false,
+                "category": 0,
+                "allowSameFrameMultiInput": false
+            }
         }
     ]
 }

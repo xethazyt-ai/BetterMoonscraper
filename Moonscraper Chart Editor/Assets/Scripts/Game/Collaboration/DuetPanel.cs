@@ -15,6 +15,7 @@ public class DuetPanel : MonoBehaviour
     const string PrefUsername = "Duet.Username";
     const string PrefPort = "Duet.Port";
     const string PrefAddress = "Duet.Address";
+    const string PrefRejoin = "Duet.Rejoin";    // Set while joined, so closing Moonscraper mid-session rejoins next time
     const string PrefUseRooms = "Duet.UseRooms";
     const string PrefColor = "Duet.Color";
     const string PrefShowGhosts = "Duet.ShowGhostNotes";
@@ -97,6 +98,9 @@ public class DuetPanel : MonoBehaviour
     bool m_useRooms = true;
     bool m_sessionIsRoom = false;
     bool m_unloadedAfterSession = false;
+    bool m_rejoinSaved = false;
+    string m_joinedCode;
+    bool m_rejoinPending = false;
     int m_color = 0;
     string m_hexInput = string.Empty;
     bool m_showCustomColor = false;
@@ -124,6 +128,35 @@ public class DuetPanel : MonoBehaviour
         if (!DuetPresence.IsValidColor(m_color))
             m_color = 0;
         m_hexInput = HexOf(m_color);
+
+        m_rejoinPending = PlayerPrefs.HasKey(PrefRejoin);
+    }
+
+    // A joiner who closed Moonscraper without leaving goes back into the session, if the host still has it open
+    void RejoinIfLeftOpen()
+    {
+        m_rejoinPending = false;
+        string[] saved = PlayerPrefs.GetString(PrefRejoin, string.Empty).Split('\n');
+        PlayerPrefs.DeleteKey(PrefRejoin);
+
+        if (saved.Length == 2 && saved[0] == "room" && DuetRooms.isAvailable)
+        {
+            m_useRooms = true;
+            m_roomCodeInput = saved[1];
+        }
+        else if (saved.Length == 3 && saved[0] == "ip")
+        {
+            m_useRooms = false;
+            m_address = saved[1];
+            m_portText = saved[2];
+        }
+        else
+        {
+            return;
+        }
+
+        m_editor.services.notificationBar.PushNotification("REJOINING YOUR DUET SESSION", 3, true);
+        StartJoining();
     }
 
     bool useRooms { get { return m_useRooms && DuetRooms.isAvailable; } }
@@ -156,9 +189,29 @@ public class DuetPanel : MonoBehaviour
         else if (!Input.GetMouseButton(0) && !Input.GetMouseButton(1))
             isMouseHeldOnPanel = false;
 
+        if (m_rejoinPending && m_session == null && m_editor.currentState == ChartEditor.State.Editor)
+            RejoinIfLeftOpen();
+
         if (m_session != null)
         {
             m_session.Update();
+
+            // Remember the session while in it. Ending it any way other than closing Moonscraper forgets it again.
+            if (m_session.role == DuetSession.Role.Client)
+            {
+                if (m_session.isActive && m_session.state == DuetSession.State.Connected && !m_rejoinSaved)
+                {
+                    m_rejoinSaved = true;
+                    PlayerPrefs.SetString(PrefRejoin, m_sessionIsRoom ? "room\n" + m_joinedCode : "ip\n" + m_address + "\n" + m_session.port);
+                    PlayerPrefs.Save();
+                }
+                else if (!m_session.isActive && m_rejoinSaved)
+                {
+                    m_rejoinSaved = false;
+                    PlayerPrefs.DeleteKey(PrefRejoin);
+                    PlayerPrefs.Save();
+                }
+            }
 
             // A joiner's copy of the chart goes away with the session, however it ended
             if (!m_session.isActive && m_session.role == DuetSession.Role.Client && m_session.hasReceivedSong && !m_unloadedAfterSession)
@@ -589,6 +642,8 @@ public class DuetPanel : MonoBehaviour
 
         m_sessionIsRoom = useRooms;
         m_unloadedAfterSession = false;
+        m_rejoinSaved = false;
+        m_joinedCode = code;
         if (m_sessionIsRoom)
         {
             m_session = DuetSession.Join(m_song, m_username, DuetRooms.provider.JoinRoom(code), "Looking for room " + code, code);

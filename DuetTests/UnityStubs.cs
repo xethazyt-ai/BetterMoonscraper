@@ -110,6 +110,8 @@ namespace UnityEngine
         public static void SetString(string key, string value) { }
         public static void SetInt(string key, int value) { }
         public static bool HasKey(string key) { return false; }
+        public static void DeleteKey(string key) { }
+        public static void Save() { }
     }
     public static class Time { public static float deltaTime; }
 }
@@ -223,7 +225,7 @@ public class DuetWindow
     public void Draw(string title, UnityEngine.GUI.WindowFunction content, float scale) { }
 }
 
-public enum MSChartEditorInputActions { DuetToggleWindow, DuetChat }
+public enum MSChartEditorInputActions { DuetToggleWindow, DuetChat, DuetHideChat }
 public static class MSChartEditorInput
 {
     public static bool GetInputDown(MSChartEditorInputActions action, bool allowedDuringRebind = false) { return false; }
