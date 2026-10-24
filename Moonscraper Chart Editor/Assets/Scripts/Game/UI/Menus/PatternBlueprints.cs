@@ -10,8 +10,8 @@ using MoonscraperChartEditor.Song;
 /// <summary>
 /// Pattern blueprints: select some notes, save them as a named pattern, and later put the pattern back anywhere.
 /// Fit to step re-spaces the same notes at another step (a 32nd pattern as 16ths takes twice the beat lines). The
-/// speed slider changes the step too: above 1x the pattern repeats to fill the same beat lines (2x of four 16ths is
-/// eight 32nds), below 1x it spreads over more of them (0.5x takes twice as many). Saved on this computer only,
+/// speed slider changes the step too: above 1x the pattern repeats, whole, to fill the beat lines it took (2x of four
+/// 16ths is eight 32nds), below 1x it spreads over more of them (0.5x takes twice as many). Saved on this computer only,
 /// in a file that every Moonscraper version reads. Opened with F9; Ctrl+B pastes the picked pattern where the mouse
 /// points on the highway (or at the strikeline), even with the window closed. Both are rebindable in Controls.
 /// </summary>
@@ -243,7 +243,7 @@ public class PatternBlueprints : MonoBehaviour
             GUILayout.Label("2. Type a name and press Save selection. It's kept on this computer for every Moonscraper version.");
             GUILayout.Label("3. Pick the pattern, point the mouse where it should start on the highway and press Ctrl+B (works with this window closed too). Or press Paste pattern to put it at the strikeline. Ctrl+Z undoes it.");
             GUILayout.Label("Fit to step: type a step (8, 12, 16, 24, 32...) and press Fit. The same notes are re-spaced at that step, so 32nds fitted to 16 take twice the beat lines.");
-            GUILayout.Label("Speed: above 1x the pattern repeats faster in the same beat lines (2x of four 16ths is eight 32nds). Below 1x it spreads out over more beat lines (0.5x takes twice as many).");
+            GUILayout.Label("Speed: above 1x the pattern repeats faster in the same beat lines (2x of four 16ths is eight 32nds), always finishing the last repeat. Below 1x it spreads out over more beat lines (0.5x takes twice as many).");
         }
 
         GUILayout.BeginHorizontal();
@@ -377,7 +377,7 @@ public class PatternBlueprints : MonoBehaviour
 
     // Where each note goes. The pattern is cut into slots one step apart (a chord shares a slot, a rest is an empty
     // one), re-spaced at fitStep and then sped up. Faster than 1x, it plays again until it fills the beat lines it
-    // took at 1x; slower, it plays once over more of them.
+    // took at 1x, always finishing the last repeat (1.5x plays it twice); slower, it plays once over more of them.
     static List<Placed> Arrange(Blueprint blueprint, int fitStep, float speed, out int noteCount, out double span)
     {
         double originalGap = 4.0 / OriginalStep(blueprint);
@@ -389,7 +389,8 @@ public class PatternBlueprints : MonoBehaviour
             slotCount = Math.Max(slotCount, (int)Math.Round(note.beat / originalGap) + 1);
         slotCount = Math.Max(1, slotCount);
 
-        int playedSlots = speed > 1 ? Math.Max(slotCount, (int)Math.Round(slotCount * speed)) : slotCount;
+        int repeats = speed > 1 ? (int)Math.Ceiling(speed - 1e-4) : 1;
+        int playedSlots = repeats * slotCount;
         List<Placed> placed = new List<Placed>();
         for (int repeat = 0; repeat * slotCount < playedSlots; ++repeat)
         {
@@ -397,9 +398,6 @@ public class PatternBlueprints : MonoBehaviour
             {
                 int slot = (int)Math.Round(note.beat / originalGap);
                 int playedSlot = repeat * slotCount + slot;
-                if (playedSlot >= playedSlots)
-                    continue;
-
                 placed.Add(new Placed
                 {
                     beat = playedSlot * gap + (note.beat - slot * originalGap) * factor,    // Keeps any off-grid nudge
