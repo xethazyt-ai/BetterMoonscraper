@@ -55,10 +55,13 @@ public class DuetWindow
 
         m_content = content;
         rect = DuetMenuCover.KeepOnScreen(rect, scale);
+        GUISkin oldSkin = GUI.skin;
+        GUI.skin = DuetSkin.skin;   // Moonscraper's look. The window keeps the skin it was opened with.
         if (m_fixedHeight)
             rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width), GUILayout.Height(rect.height));
         else
             rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width));
+        GUI.skin = oldSkin;
 
         // Keep it on screen and below Moonscraper's menu bar, however it was dragged or resized
         rect = DuetMenuCover.KeepOnScreen(rect, scale);
@@ -139,15 +142,24 @@ public class DuetWindow
             }
         }
 
+        // Everything is fitted to the window's width (long text wraps), so it only ever scrolls up and down
+        GUISkin skin = GUI.skin;
+        float contentWidth = width - skin.window.padding.horizontal;
         if (m_fixedHeight && m_scrollWhenSized)
         {
-            m_scroll = GUILayout.BeginScrollView(m_scroll);
+            GUIStyle bar = skin.verticalScrollbar;
+            contentWidth -= Mathf.Max(bar.fixedWidth, 12) + bar.margin.horizontal + 2;
+            m_scroll = GUILayout.BeginScrollView(m_scroll, false, false, GUIStyle.none, bar);
+            GUILayout.BeginVertical(GUILayout.Width(contentWidth));
             m_content(id);
+            GUILayout.EndVertical();
             GUILayout.EndScrollView();
         }
         else
         {
+            GUILayout.BeginVertical(GUILayout.Width(contentWidth));
             m_content(id);
+            GUILayout.EndVertical();
         }
 
         // A few dots in the bottom right corner, so it's clear the window can be resized

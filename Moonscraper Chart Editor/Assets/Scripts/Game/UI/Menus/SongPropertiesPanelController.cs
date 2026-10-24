@@ -155,7 +155,7 @@ public class SongPropertiesPanelController : TabMenu
         if (!DuetPanel.isGuest)
             return false;
 
-        editor.services.notificationBar.PushNotification("ONLY THE HOST CAN CHANGE THE AUDIO IN A DUET SESSION", 3, true);
+        editor.services.notificationBar.PushNotification("ONLY THE HOST CAN CHANGE THE AUDIO IN A COLLAB SESSION", 3, true);
         return true;
     }
 

@@ -77,7 +77,7 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
         catch (Exception e)
         {
             m_replayedSong = null;
-            Debug.LogError("Duet replay check: unable to take snapshot. " + e.Message);
+            Debug.LogError("Collab replay check: unable to take snapshot. " + e.Message);
         }
     }
 
@@ -106,7 +106,7 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
             {
                 string message = string.Format("{0} edit #{1}: could not apply {2}", kind, m_editsSinceSnapshot, failure);
                 m_applyFailures.Add(message);
-                Debug.LogError("Duet replay check: " + message);
+                Debug.LogError("Collab replay check: " + message);
             }
         }
     }
@@ -139,12 +139,12 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
 
         if (mismatchLine < 0 && m_applyFailures.Count <= 0)
         {
-            report.AppendFormat("Duet replay check PASSED. {0} edits replayed, {1} chart lines identical.", m_editsSinceSnapshot, liveLines.Length);
+            report.AppendFormat("Collab replay check PASSED. {0} edits replayed, {1} chart lines identical.", m_editsSinceSnapshot, liveLines.Length);
             Debug.Log(report.ToString());
         }
         else
         {
-            report.AppendFormat("Duet replay check FAILED after {0} edits.", m_editsSinceSnapshot);
+            report.AppendFormat("Collab replay check FAILED after {0} edits.", m_editsSinceSnapshot);
             report.AppendLine();
 
             if (mismatchLine >= 0)
@@ -168,7 +168,7 @@ public class SongEditReplayCheck : MoonscraperEngine.SystemManagerState.System
 
     static void ShowResult(string message)
     {
-        NativeMessageBox.Show(message, "Duet replay check", NativeMessageBox.Type.OK, ChartEditor.Instance.windowHandleManager.nativeWindow);
+        NativeMessageBox.Show(message, "Collab replay check", NativeMessageBox.Type.OK, ChartEditor.Instance.windowHandleManager.nativeWindow);
     }
 
     static void Write(Song song, string path)

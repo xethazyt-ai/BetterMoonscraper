@@ -16,9 +16,11 @@ public class DuetPanel : MonoBehaviour
     const string PrefPort = "Duet.Port";
     const string PrefAddress = "Duet.Address";
     const string PrefRejoin = "Duet.Rejoin";    // Set while joined, so closing Moonscraper mid-session rejoins next time
+    const string PrefRehost = "Duet.Rehost";    // Set while hosting, and cleared on a normal close, so it's only left after a crash
     const string PrefUseRooms = "Duet.UseRooms";
     const string PrefColor = "Duet.Color";
     const string PrefShowGhosts = "Duet.ShowGhostNotes";
+    const string PrefRainbowSpeed = "Duet.RainbowSpeed";
 
     static DuetPanel s_instance;
 
@@ -103,9 +105,13 @@ public class DuetPanel : MonoBehaviour
     bool m_rejoinSaved = false;
     string m_joinedCode;
     bool m_rejoinPending = false;
+    bool m_rehostPending = false;
+    string m_savedRehost = null;
+    bool m_quitHandled = false;
     int m_color = 0;
     string m_hexInput = string.Empty;
     bool m_showCustomColor = false;
+    int m_rainbowSpeed = 5;
     bool m_showGhosts = true;
     string m_error = null;
     List<string> m_localAddresses = null;
@@ -129,9 +135,123 @@ public class DuetPanel : MonoBehaviour
         m_color = PlayerPrefs.GetInt(PrefColor, 0);
         if (!DuetPresence.IsValidColor(m_color))
             m_color = 0;
-        m_hexInput = HexOf(m_color);
+        m_hexInput = SliderHexOf(m_color);
+        m_rainbowSpeed = Mathf.Clamp(PlayerPrefs.GetInt(PrefRainbowSpeed, 5), 1, DuetPresence.MaxRainbowSpeed);
 
         m_rejoinPending = PlayerPrefs.HasKey(PrefRejoin);
+        m_rehostPending = PlayerPrefs.HasKey(PrefRehost);
+
+        DuetRooms.quitting += OnQuitting;
+        Application.quitting += OnQuitting;
+    }
+
+    // Closing Moonscraper normally ends the session on purpose, so joiners aren't left waiting as if it crashed.
+    // Online rooms call this before their connections close; Application.quitting covers direct IP.
+    void OnQuitting()
+    {
+        if (m_quitHandled)
+            return;
+        m_quitHandled = true;
+
+        PlayerPrefs.DeleteKey(PrefRehost);
+        PlayerPrefs.Save();
+
+        if (m_session != null && m_session.isActive)
+        {
+            bool directHost = m_session.role == DuetSession.Role.Host && !m_sessionIsRoom;
+            m_session.Leave();
+            if (directHost)
+                System.Threading.Thread.Sleep(200);     // Time for the goodbye to go out before Moonscraper closes
+        }
+    }
+
+    // Saves what's needed to open the same session again if Moonscraper crashes while hosting
+    void RememberHosting()
+    {
+        string info = null;
+        if (m_session.isActive)
+        {
+            if (m_session.state != DuetSession.State.Connected || (m_sessionIsRoom && m_session.roomCode == null))
+                return;     // Still opening the room
+
+            string settings = m_session.maxUsers + "\n" + (m_session.isLocked ? 1 : 0) + "\n" + (m_editor.currentChartFile ?? string.Empty);
+            info = m_sessionIsRoom ? "room\n" + m_session.roomCode + "\n" + settings : "ip\n" + m_session.port + "\n" + m_password + "\n" + settings;
+        }
+
+        if (info == m_savedRehost)
+            return;
+
+        m_savedRehost = info;
+        if (info != null)
+            PlayerPrefs.SetString(PrefRehost, info);
+        else
+            PlayerPrefs.DeleteKey(PrefRehost);     // Ended on purpose
+        PlayerPrefs.Save();
+    }
+
+    // Moonscraper crashed while hosting: open the chart again and the same room, and get the latest chart back
+    // from whoever is still waiting in it
+    System.Collections.IEnumerator RehostAfterCrash()
+    {
+        m_rehostPending = false;
+        string[] saved = PlayerPrefs.GetString(PrefRehost, string.Empty).Split('\n');
+        PlayerPrefs.DeleteKey(PrefRehost);     // Saved again once hosting, so a crash while starting doesn't repeat forever
+        PlayerPrefs.Save();
+
+        bool room = saved.Length == 5 && saved[0] == "room";
+        bool ip = saved.Length == 6 && saved[0] == "ip";
+        if (!room && !ip)
+            yield break;
+
+        int offset = room ? 2 : 3;
+        int maxUsers;
+        int.TryParse(saved[offset], out maxUsers);
+        bool locked = saved[offset + 1] == "1";
+        string chart = saved[offset + 2];
+
+        m_editor.services.notificationBar.PushNotification("RESTARTING YOUR COLLAB SESSION", 3, true);
+        if (!string.IsNullOrEmpty(chart) && System.IO.File.Exists(chart))
+        {
+            yield return m_editor.StartCoroutine(m_editor._Load(chart));
+            while (m_editor.services.loadingTasksManager.isRunningTask)
+                yield return null;
+        }
+
+        if (room && DuetRooms.isAvailable)
+        {
+            m_sessionIsRoom = true;
+            m_useRooms = true;
+            m_session = DuetSession.Host(m_song, m_username, DuetRooms.provider.CreateRoom(saved[1]), "Opening room " + saved[1] + " again");
+        }
+        else if (ip)
+        {
+            int port;
+            int.TryParse(saved[1], out port);
+            m_sessionIsRoom = false;
+            m_useRooms = false;
+            m_password = saved[2];
+            m_portText = saved[1];
+            try
+            {
+                m_session = DuetSession.Host(m_song, m_username, port, m_password);
+                m_localAddresses = null;
+            }
+            catch (SocketException e)
+            {
+                m_error = "Couldn't host on port " + port + " again: " + e.Message;
+                yield break;
+            }
+        }
+        else
+        {
+            yield break;
+        }
+
+        m_session.maxUsers = maxUsers;
+        m_session.isLocked = locked;
+        m_session.ExpectRecovery();
+        m_savedRehost = null;
+        m_visible = true;
     }
 
     // A joiner who closed Moonscraper without leaving goes back into the session, if the host still has it open
@@ -141,31 +261,39 @@ public class DuetPanel : MonoBehaviour
         string[] saved = PlayerPrefs.GetString(PrefRejoin, string.Empty).Split('\n');
         PlayerPrefs.DeleteKey(PrefRejoin);
 
-        if (saved.Length == 2 && saved[0] == "room" && DuetRooms.isAvailable)
+        // Each ends with the host's rejoin secret, which gets you back in even if the session was locked meanwhile
+        string token;
+        if (saved.Length == 3 && saved[0] == "room" && DuetRooms.isAvailable)
         {
             m_useRooms = true;
             m_roomCodeInput = saved[1];
+            token = saved[2];
         }
-        else if (saved.Length == 4 && saved[0] == "ip")
+        else if (saved.Length == 5 && saved[0] == "ip")
         {
             m_useRooms = false;
             m_address = saved[1];
             m_portText = saved[2];
             m_password = saved[3];
+            token = saved[4];
         }
         else
         {
             return;
         }
 
-        m_editor.services.notificationBar.PushNotification("REJOINING YOUR DUET SESSION", 3, true);
+        m_editor.services.notificationBar.PushNotification("REJOINING YOUR COLLAB SESSION", 3, true);
         StartJoining();
+        if (m_session != null && m_session.role == DuetSession.Role.Client)
+            m_session.rejoinToken = token;
     }
 
     bool useRooms { get { return m_useRooms && DuetRooms.isAvailable; } }
 
     void OnDestroy()
     {
+        DuetRooms.quitting -= OnQuitting;
+        Application.quitting -= OnQuitting;
         if (m_session != null)
             m_session.Leave();
 
@@ -192,12 +320,17 @@ public class DuetPanel : MonoBehaviour
         else if (!Input.GetMouseButton(0) && !Input.GetMouseButton(1))
             isMouseHeldOnPanel = false;
 
-        if (m_rejoinPending && m_session == null && m_editor.currentState == ChartEditor.State.Editor)
+        if (m_rehostPending && m_session == null && m_editor.currentState == ChartEditor.State.Editor)
+            StartCoroutine(RehostAfterCrash());
+        else if (m_rejoinPending && m_session == null && m_editor.currentState == ChartEditor.State.Editor)
             RejoinIfLeftOpen();
 
         if (m_session != null)
         {
             m_session.Update();
+
+            if (m_session.role == DuetSession.Role.Host)
+                RememberHosting();
 
             // Remember the session while in it. Ending it any way other than closing Moonscraper forgets it again.
             if (m_session.role == DuetSession.Role.Client)
@@ -205,7 +338,8 @@ public class DuetPanel : MonoBehaviour
                 if (m_session.isActive && m_session.state == DuetSession.State.Connected && !m_rejoinSaved)
                 {
                     m_rejoinSaved = true;
-                    PlayerPrefs.SetString(PrefRejoin, m_sessionIsRoom ? "room\n" + m_joinedCode : "ip\n" + m_address + "\n" + m_session.port + "\n" + m_password);
+                    PlayerPrefs.SetString(PrefRejoin, (m_sessionIsRoom ? "room\n" + m_joinedCode : "ip\n" + m_address + "\n" + m_session.port + "\n" + m_password)
+                        + "\n" + (m_session.rejoinToken ?? string.Empty));
                     PlayerPrefs.Save();
                 }
                 else if (!m_session.isActive && m_rejoinSaved)
@@ -232,6 +366,8 @@ public class DuetPanel : MonoBehaviour
             DrawQuitPrompt();
             return;
         }
+
+        DrawHostLostNotice();
 
         if (!m_visible || isHudHidden)
         {
@@ -261,8 +397,16 @@ public class DuetPanel : MonoBehaviour
         if (DuetMenuCover.Covers(m_window.rect, scale))
             return;
 
-        m_window.Draw("Duet Mode", DrawWindow, scale);
+        m_window.Draw("Collab Mode", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
+    }
+
+    // Shown to joiners, whether or not the Duet window is open, while a host that crashed is away
+    void DrawHostLostNotice()
+    {
+        if (m_session != null && m_session.role == DuetSession.Role.Client && m_session.isActive && m_session.hostLostSeconds > 0
+            && m_session.state != DuetSession.State.Connected && !isHudHidden)
+            DuetHostLostNotice.Draw(m_session.hostLostSeconds, GuiScale);
     }
 
     const int QuitPromptId = 0x4477;
@@ -277,7 +421,10 @@ public class DuetPanel : MonoBehaviour
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
         Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - QuitPromptHeight) / 2, QuitPromptWidth, QuitPromptHeight);
         DuetInputBlocker.Block(QuitPromptId, new Rect(0, 0, Screen.width / scale, Screen.height / scale), scale);    // Nothing else can be clicked until it's answered
+        GUISkin oldSkin = GUI.skin;
+        GUI.skin = DuetSkin.skin;
         GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit Moonscraper?");
+        GUI.skin = oldSkin;
     }
 
     void DrawQuitPromptWindow(int id)
@@ -289,7 +436,7 @@ public class DuetPanel : MonoBehaviour
         GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, QuitPromptHeight - 34));
 
         if (inSession)
-            GUILayout.Label(isGuest ? "You'll leave the Duet session." : "Everyone in your Duet session will be disconnected.");
+            GUILayout.Label(isGuest ? "You'll leave the Collab session." : "Everyone in your Collab session will be disconnected.");
         if (askToSave)
             GUILayout.Label("You have unsaved changes. Do you want to save them first?");
 
@@ -414,13 +561,16 @@ public class DuetPanel : MonoBehaviour
         switch (m_session.state)
         {
             case DuetSession.State.Connecting:
-                GUILayout.Label("Connecting...");
+                GUILayout.Label(m_session.hostLostSeconds > 0 ? "The host disconnected. Trying to reach them again..." : "Connecting...");
                 break;
             case DuetSession.State.Joining:
-                GUILayout.Label("Connected. Receiving the host's chart...");
+                GUILayout.Label(m_session.hostLostSeconds > 0 ? "The host is back. Catching up..." : "Connected. Receiving the host's chart...");
+                break;
+            case DuetSession.State.HostLost:
+                GUILayout.Label("The host disconnected. Don't leave: you'll be reconnected as soon as they're back.");
                 break;
             default:
-                GUILayout.Label(isHost ? (m_sessionIsRoom ? "Hosting an online room" : "Hosting on port " + m_session.port) : "Joined. Edit number " + m_session.lastSeq);
+                GUILayout.Label(isHost ? (m_sessionIsRoom ? "Hosting an online room" : "Hosting on port " + m_session.port) : "Joined " + HostName() + "'s session");
                 break;
         }
 
@@ -436,7 +586,7 @@ public class DuetPanel : MonoBehaviour
                 GUILayout.Label("Room code:  " + code.Substring(0, 3) + " " + code.Substring(3));
                 if (GUILayout.Button("Copy room code"))
                     GUIUtility.systemCopyBuffer = code;
-                GUILayout.Label("Your buddy picks Room code in their Duet window, types this in and joins. Works from any network.");
+                GUILayout.Label("Your buddy picks Room code in their Collab window, types this in and joins. Works from any network.");
             }
         }
         else if (isHost)
@@ -457,7 +607,7 @@ public class DuetPanel : MonoBehaviour
                 m_session.isLocked = locked;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Room size: " + m_session.maxUsers, GUILayout.Width(110));
+            GUILayout.Label("Room size: " + m_session.maxUsers, GUILayout.Width(130));
             float size = GUILayout.HorizontalSlider(m_session.maxUsers, 2, DuetRooms.MaxMembers);
             m_session.maxUsers = Mathf.RoundToInt(size);
             GUILayout.EndHorizontal();
@@ -469,8 +619,17 @@ public class DuetPanel : MonoBehaviour
         int kick = -1;
         foreach (DuetUser user in m_session.users)
         {
+            // In each person's own color, as on their cursor
+            DuetPresence presence;
+            Color content = GUI.contentColor;
+            if (user.id == m_session.localUserId)
+                GUI.contentColor = DuetPresence.GetColor(m_color);
+            else if (m_session.presences.TryGetValue(user.id, out presence))
+                GUI.contentColor = DuetPresence.GetColor(presence.color);
+
             GUILayout.BeginHorizontal();
             GUILayout.Label("    " + user.name + (user.id == 0 ? " (host)" : string.Empty));
+            GUI.contentColor = content;
             if (isHost && user.id != 0 && GUILayout.Button("Kick", GUILayout.Width(50)))
                 kick = user.id;
             GUILayout.EndHorizontal();
@@ -504,8 +663,18 @@ public class DuetPanel : MonoBehaviour
         if (!isHost)
             GUILayout.Label("Only the host can save the chart or change the audio. Leaving closes the chart.");
 
-        if (GUILayout.Button(isHost ? "End session" : "Leave session"))
+        if (isHost && m_session.isAwaitingRecoveryChart)
+            GUILayout.Label("Back after a crash. When someone from the session comes back, their copy of the chart (with every edit) replaces this one.");
+
+        bool waiting = !isHost && m_session.hostLostSeconds > 0 && m_session.state != DuetSession.State.Connected;
+        if (GUILayout.Button(isHost ? "End session" : waiting ? "Stop waiting and leave" : "Leave session"))
             m_session.Leave();
+    }
+
+    string HostName()
+    {
+        DuetUser host = m_session.users.Find(u => u.id == 0);
+        return host != null ? host.name : "the host";
     }
 
     void SetColor(int color, bool updateHex = true)
@@ -513,7 +682,18 @@ public class DuetPanel : MonoBehaviour
         m_color = color;
         PlayerPrefs.SetInt(PrefColor, m_color);
         if (updateHex)
-            m_hexInput = HexOf(m_color);
+            m_hexInput = SliderHexOf(m_color);
+    }
+
+    // Where the custom color sliders start: a rainbow has no one color, so it starts them on white
+    static Color SliderColorOf(int color)
+    {
+        return DuetPresence.IsRainbow(color) ? Color.white : DuetPresence.GetColor(color);
+    }
+
+    static string SliderHexOf(int color)
+    {
+        return DuetPresence.IsRainbow(color) ? "#FFFFFF" : HexOf(color);
     }
 
     static string HexOf(int color)
@@ -539,27 +719,52 @@ public class DuetPanel : MonoBehaviour
         for (int i = 0; i < DuetPresence.ColorCount; ++i)
         {
             GUI.backgroundColor = DuetPresence.GetColor(i);
-            if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", GUI.skin.button, GUILayout.Width(36)) && i != m_color)
+            if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", DuetSkin.swatch, GUILayout.MinWidth(16), GUILayout.ExpandWidth(true)) && i != m_color)
                 SetColor(i);
         }
         GUI.backgroundColor = background;
         GUILayout.EndHorizontal();
 
-        // Any color at all, by sliders or by typing its hex code
+        // Any color at all, by sliders or by typing its hex code, or a rainbow
         bool custom = DuetPresence.IsCustomColor(m_color);
+        bool rainbow = DuetPresence.IsRainbow(m_color);
         GUILayout.BeginHorizontal();
-        GUI.backgroundColor = custom ? DuetPresence.GetColor(m_color) : background;
-        m_showCustomColor = GUILayout.Toggle(m_showCustomColor, custom ? "* Custom color" : "Custom color", GUI.skin.button);
+        // The button stays white until a slider or the hex code picks a custom color. The sliders start on the preset
+        // you picked, so it can be fine tuned, or on white for a rainbow.
+        bool customLook = custom || m_showCustomColor;
+        GUI.backgroundColor = custom ? DuetPresence.GetColor(m_color) : customLook ? Color.white : background;
+        bool showCustomColor = GUILayout.Toggle(m_showCustomColor, custom ? "* Custom color" : "Custom color", customLook ? DuetSkin.swatch : GUI.skin.button);
+        if (showCustomColor && !m_showCustomColor)
+            m_hexInput = SliderHexOf(m_color);
+        m_showCustomColor = showCustomColor;
+        GUI.backgroundColor = rainbow ? DuetPresence.GetColor(m_color) : background;
+        if (GUILayout.Toggle(rainbow, rainbow ? "* Rainbow" : "Rainbow", rainbow ? DuetSkin.swatch : GUI.skin.button) && !rainbow)
+            SetColor(DuetPresence.MakeRainbow(m_rainbowSpeed));
         GUI.backgroundColor = background;
         GUILayout.EndHorizontal();
 
+        if (rainbow)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Speed " + DuetPresence.RainbowSpeed(m_color), GUILayout.Width(85));
+            int speed = Mathf.RoundToInt(GUILayout.HorizontalSlider(DuetPresence.RainbowSpeed(m_color), 1, DuetPresence.MaxRainbowSpeed));
+            GUILayout.EndHorizontal();
+            if (speed != DuetPresence.RainbowSpeed(m_color))
+            {
+                m_rainbowSpeed = speed;
+                PlayerPrefs.SetInt(PrefRainbowSpeed, speed);
+                SetColor(DuetPresence.MakeRainbow(speed));
+            }
+        }
+
         if (m_showCustomColor)
         {
-            Color current = DuetPresence.GetColor(m_color);
+            Color current = SliderColorOf(m_color);
             float r = ColorSlider("Red", current.r);
             float g = ColorSlider("Green", current.g);
             float b = ColorSlider("Blue", current.b);
-            if (r != current.r || g != current.g || b != current.b)
+            // Compared at the sliders' own precision, so only a real slider move picks a custom color
+            if (r != Mathf.Round(current.r * 255) / 255f || g != Mathf.Round(current.g * 255) / 255f || b != Mathf.Round(current.b * 255) / 255f)
                 SetColor(DuetPresence.MakeCustomColor(new Color(r, g, b)));
 
             GUILayout.BeginHorizontal();
@@ -623,6 +828,7 @@ public class DuetPanel : MonoBehaviour
         if (m_sessionIsRoom)
         {
             m_session = DuetSession.Host(m_song, m_username, DuetRooms.provider.CreateRoom(), "Opening an online room");
+            m_savedRehost = null;
             return;
         }
 
@@ -630,6 +836,7 @@ public class DuetPanel : MonoBehaviour
         {
             m_session = DuetSession.Host(m_song, m_username, port, m_password);
             m_localAddresses = null;
+            m_savedRehost = null;
         }
         catch (SocketException e)
         {
@@ -667,6 +874,7 @@ public class DuetPanel : MonoBehaviour
         if (m_sessionIsRoom)
         {
             m_session = DuetSession.Join(m_song, m_username, DuetRooms.provider.JoinRoom(code), "Looking for room " + code, code);
+            m_session.reconnect = () => DuetRooms.provider.JoinRoom(code);
         }
         else
         {

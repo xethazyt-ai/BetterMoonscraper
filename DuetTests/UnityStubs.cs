@@ -66,7 +66,7 @@ namespace UnityEngine
         public static bool GetMouseButtonDown(int button) { return false; }
     }
 
-    public static class Application { public static string persistentDataPath = System.IO.Path.GetTempPath(); public static string dataPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "duet-app", "Data"); }
+    public static class Application { public static string persistentDataPath = System.IO.Path.GetTempPath(); public static string dataPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "duet-app", "Data"); public static event System.Action quitting { add { } remove { } } }
 
     // Just enough of Unity's immediate-mode GUI for the Duet panel to compile
     public struct Vector2 { public float x, y; public Vector2(float x, float y) { this.x = x; this.y = y; } }
@@ -85,7 +85,7 @@ namespace UnityEngine
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
     public class GUIStyle { }
     public class GUISkin { public GUIStyle button = new GUIStyle(); }
-    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static Color backgroundColor; public static void DragWindow() { } public static Rect ModalWindow(int id, Rect rect, WindowFunction func, string text) { return rect; } }
+    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static Color backgroundColor; public static Color contentColor; public static void DragWindow() { } public static Rect ModalWindow(int id, Rect rect, WindowFunction func, string text) { return rect; } }
     public static class GUILayout
     {
         public static Rect Window(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }
@@ -103,6 +103,8 @@ namespace UnityEngine
         public static void BeginHorizontal() { }
         public static void EndHorizontal() { }
         public static GUILayoutOption Width(float width) { return new GUILayoutOption(); }
+        public static GUILayoutOption MinWidth(float width) { return new GUILayoutOption(); }
+        public static GUILayoutOption ExpandWidth(bool expand) { return new GUILayoutOption(); }
     }
     public static class PlayerPrefs
     {
@@ -183,8 +185,9 @@ public class ChartEditor : UnityEngine.MonoBehaviour
     public bool isLoadingCollaborationSong;
 
     public bool EditCheck() { return true; }
-    public void LoadCollaborationSong(Song song, bool reloadAudio, bool keepView) { currentSong = song; }
+    public void LoadCollaborationSong(Song song, bool reloadAudio, bool keepView, bool keepFile = false) { currentSong = song; }
     public void UnloadCollaborationSong() { currentSong = new Song(); }
+    public System.Collections.IEnumerator _Load(string file, bool recordLastLoaded = true) { yield break; }
     public string currentChartFile = string.Empty;
     public void ReloadAudio() { }
 
@@ -214,6 +217,8 @@ public static class DuetChat
 }
 
 public static class DuetInputBlocker { public static void Block(int id, UnityEngine.Rect guiRect, float scale) { } }
+public static class DuetSkin { public static UnityEngine.GUISkin skin = new UnityEngine.GUISkin(); public static UnityEngine.GUIStyle swatch = new UnityEngine.GUIStyle(); }
+public static class DuetHostLostNotice { public static void Draw(double waitedSeconds, float scale) { } }
 
 public static class DuetMenuCover
 {

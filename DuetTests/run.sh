@@ -10,7 +10,7 @@ SCRIPTS="$HERE/../Moonscraper Chart Editor/Assets/Scripts"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 
-# Collaboration/Views draws on screen with Unity and is left out.
+# Collaboration/Views draws on screen with Unity and is left out, as is the Unity-only Duet log.
 # mcs doesn't support the System.Enum generic constraint, so use a copy of EnumX without it
 sed 's/ where EnumType : Enum//' "$SCRIPTS/Engine/Core/EnumX.cs" > "$OUT/EnumX.cs"
 
@@ -18,7 +18,7 @@ FILES=()
 while IFS= read -r -d '' f; do FILES+=("$f"); done < <(
   find "$SCRIPTS/Game/Collaboration" "$SCRIPTS/Game/Commands" "$SCRIPTS/Engine/Commands" \
        "$SCRIPTS/Engine/Events" "$SCRIPTS/Engine/State Control" "$SCRIPTS/Game/Charts" \
-       -name '*.cs' -not -path '*/Midi/*' -not -path '*/Collaboration/Views/*' -print0)
+       -name '*.cs' -not -path '*/Midi/*' -not -path '*/Collaboration/Views/*' -not -name 'DuetLogKeeper.cs' -print0)
 FILES+=("$SCRIPTS/External/Advanced INI Parser/INIParser.cs" "$SCRIPTS/Game/Misc/ISongValidateReport.cs"
         "$SCRIPTS/Engine/Logging/Logger.cs" "$OUT/EnumX.cs" "$HERE/UnityStubs.cs" "$HERE/ReplayTests.cs" "$HERE/SessionTests.cs" "$HERE/LinkTests.cs" "$HERE/PresenceTests.cs" "$HERE/FileTests.cs" "$HERE/Program.cs")
 

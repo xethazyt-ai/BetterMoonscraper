@@ -1,9 +1,10 @@
 // See LICENSE in project root for license information.
 
-// Checks that cursors, ghost notes and the song's details (name, artist and so on) reach everyone in a session.
+// Checks that cursors, ghost notes, selections and the song's details (name, artist and so on) reach everyone in a session.
 
 using System;
 using System.Collections.Generic;
+using MoonscraperChartEditor.Song;
 
 public static class PresenceTests
 {
@@ -78,16 +79,49 @@ public static class PresenceTests
         SessionTests.Pump(all, () => hostSong.song.offset == 0.25f && aliceSong.song.offset == 0.25f);
         Expect("the offset syncs exactly", hostSong.song.offset == 0.25f && aliceSong.song.offset == 0.25f);
 
+        // Selections: Alex selects two notes and a BPM marker, the host selects one note
+        DuetSelection aliceSelection = new DuetSelection { instrument = "Drums", difficulty = "Hard" };
+        aliceSelection.items.Add(new DuetSelection.Item { classID = (int)SongObject.ID.Note, tick = 192, extra = 2 });
+        aliceSelection.items.Add(new DuetSelection.Item { classID = (int)SongObject.ID.Note, tick = 384, extra = 0 });
+        aliceSelection.items.Add(new DuetSelection.Item { classID = (int)SongObject.ID.BPM, tick = 0, extra = 0 });
+        alice.SetLocalSelection(aliceSelection);
+        DuetSelection hostSelection = new DuetSelection { instrument = "Guitar", difficulty = "Expert" };
+        hostSelection.items.Add(new DuetSelection.Item { classID = (int)SongObject.ID.Note, tick = 768, extra = 4 });
+        host.SetLocalSelection(hostSelection);
+        SessionTests.Pump(all, () => host.selections.ContainsKey(1) && bob.selections.ContainsKey(1) && alice.selections.ContainsKey(0));
+        Expect("everyone sees what a joiner selected", host.selections.ContainsKey(1) && bob.selections.ContainsKey(1)
+            && bob.selections[1].items.Count == 3 && bob.selections[1].items[0].tick == 192 && bob.selections[1].items[0].extra == 2
+            && bob.selections[1].instrument == "Drums");
+        Expect("everyone sees what the host selected", alice.selections.ContainsKey(0) && bob.selections[0].items.Count == 1 && bob.selections[0].items[0].extra == 4);
+        Expect("nobody gets their own selection back", !alice.selections.ContainsKey(1) && !host.selections.ContainsKey(0));
+
+        alice.SetLocalSelection(new DuetSelection { instrument = "Drums", difficulty = "Hard" });
+        SessionTests.Pump(all, () => bob.selections[1].items.Count == 0);
+        Expect("deselecting everything clears it for everyone", bob.selections[1].items.Count == 0 && host.selections[1].items.Count == 0);
+        alice.SetLocalSelection(aliceSelection);
+        SessionTests.Pump(all, () => bob.selections[1].items.Count == 3);
+
+        DuetPresence dragging = new DuetPresence { viewTick = 1536, instrument = "Drums", difficulty = "Hard",
+            hasDrag = true, dragX1 = -1.5f, dragTick1 = 192, dragX2 = 2.25f, dragTick2 = 960, dragRemoving = true };
+        alice.SetLocalPresence(dragging);
+        SessionTests.Pump(all, () => bob.presences.ContainsKey(1) && bob.presences[1].hasDrag);
+        Expect("everyone sees a deselect drag box", bob.presences[1].hasDrag && bob.presences[1].dragRemoving
+            && bob.presences[1].dragX1 == -1.5f && bob.presences[1].dragTick2 == 960);
+
         // When Alex leaves, their cursor goes away for everyone
         alice.Leave();
         SessionTests.Pump(all, () => !host.presences.ContainsKey(1) && !bob.presences.ContainsKey(1));
         Expect("a leaver's cursor disappears", !host.presences.ContainsKey(1) && !bob.presences.ContainsKey(1));
+        SessionTests.Pump(all, () => !bob.selections.ContainsKey(1));
+        Expect("a leaver's selection disappears", !host.selections.ContainsKey(1) && !bob.selections.ContainsKey(1));
         Expect("a joiner that got the chart says so", alice.hasReceivedSong && bob.hasReceivedSong);
 
         SessionTests.TestSong carolSong = new SessionTests.TestSong("presence-carol");
         DuetSession carol = DuetSession.Join(carolSong, "Casey", "127.0.0.1", host.port, "pw");
         all.Add(carol);
         SessionTests.Pump(all, () => carol.state == DuetSession.State.Connected && carol.chat.Count == 2);
+        SessionTests.Pump(all, () => carol.selections.ContainsKey(0));
+        Expect("someone joining later sees the host's selection", carol.selections.ContainsKey(0) && carol.selections[0].items.Count == 1);
         Expect("someone joining later sees what was said", carol.chat.Count == 2 && carol.chat[0].name == "Alex" && carol.chat[1].text == "sure");
 
         // A locked session turns new people away but keeps everyone already in
@@ -96,6 +130,17 @@ public static class PresenceTests
         all.Add(dave);
         SessionTests.Pump(all, () => !dave.isActive);
         Expect("nobody new can join a locked session", !dave.isActive && dave.endReason.Contains("locked") && carol.isActive && host.users.Count == 3);
+
+        // Someone already in who loses their connection can still come back while it's locked
+        string carolToken = carol.rejoinToken;
+        carol.Leave();
+        SessionTests.Pump(all, () => host.users.Count == 2);
+        DuetSession carolBack = DuetSession.Join(new SessionTests.TestSong("presence-carol-back"), "Casey", "127.0.0.1", host.port, "pw");
+        carolBack.rejoinToken = carolToken;
+        all.Add(carolBack);
+        SessionTests.Pump(all, () => carolBack.state == DuetSession.State.Connected || !carolBack.isActive);
+        Expect("someone who was in can rejoin a locked session", !string.IsNullOrEmpty(carolToken) && carolBack.state == DuetSession.State.Connected && host.users.Count == 3);
+        carol = carolBack;
         host.isLocked = false;
 
         // A full session turns new people away too
@@ -138,6 +183,34 @@ public static class PresenceTests
 
         DuetPresence round = DuetPresence.FromJson((Dictionary<string, object>)DuetJson.Read(DuetJson.Write(robert.ToJson())));
         Expect("presence survives being written and read", DuetJson.Write(round.ToJson()) == DuetJson.Write(robert.ToJson()));
+
+        int rainbow = DuetPresence.MakeRainbow(7);
+        Expect("a rainbow keeps its speed", DuetPresence.IsRainbow(rainbow) && DuetPresence.RainbowSpeed(rainbow) == 7 && DuetPresence.IsValidColor(rainbow)
+            && !DuetPresence.IsCustomColor(rainbow) && DuetPresence.GetColorName(rainbow) == "Rainbow");
+        Expect("a nonsense rainbow isn't valid", !DuetPresence.IsValidColor(DuetPresence.RainbowFlag) && !DuetPresence.IsValidColor(DuetPresence.RainbowFlag | 99)
+            && !DuetPresence.IsValidColor(DuetPresence.RainbowFlag | DuetPresence.CustomColorFlag | 3));
+        UnityEngine.Color first = DuetPresence.GetColor(DuetPresence.MakeRainbow(DuetPresence.MaxRainbowSpeed));
+        System.Threading.Thread.Sleep(250);
+        UnityEngine.Color later = DuetPresence.GetColor(DuetPresence.MakeRainbow(DuetPresence.MaxRainbowSpeed));
+        Expect("a rainbow changes color over time", first.r != later.r || first.g != later.g || first.b != later.b);
+        DuetPresence rainbowRound = DuetPresence.FromJson((Dictionary<string, object>)DuetJson.Read(DuetJson.Write(new DuetPresence { color = rainbow }.ToJson())));
+        Expect("a rainbow survives being sent", rainbowRound.color == rainbow);
+
+        // A selection from someone else is checked: too many objects, or nonsense, is cut out
+        List<object> flood = new List<object>();
+        for (int i = 0; i < DuetSelection.MaxItems + 100; ++i)
+        {
+            flood.Add((double)(int)SongObject.ID.Note);
+            flood.Add((double)i);
+            flood.Add((double)1);
+        }
+        flood.Add(99.0); flood.Add(5.0); flood.Add(0.0);    // No such kind of object
+        DuetSelection flooded = DuetSelection.FromJson(new Dictionary<string, object> { { "type", "selection" }, { "items", flood } });
+        Expect("a selection is capped", flooded.items.Count == DuetSelection.MaxItems);
+        DuetSelection odd = DuetSelection.FromJson(new Dictionary<string, object> { { "type", "selection" }, { "items", new List<object> { 99.0, 5.0, 0.0, 5.0, "x", 1.0, 5.0, 10.0, -3.0, 5.0, 20.0, 1.0 } } });
+        Expect("nonsense in a selection is skipped", odd.items.Count == 1 && odd.items[0].tick == 20);
+        DuetPresence badDrag = DuetPresence.FromJson(new Dictionary<string, object> { { "type", "presence" }, { "drag", new List<object> { double.NaN, 1.0, 2.0, 3.0, false } } });
+        Expect("a nonsense drag box is ignored", !badDrag.hasDrag);
 
         return s_failures;
     }

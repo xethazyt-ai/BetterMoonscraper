@@ -665,7 +665,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (!DuetPanel.isGuest)
             return false;
 
-        services.notificationBar.PushNotification("LEAVE THE DUET SESSION FIRST (F10) TO OPEN ANOTHER CHART", 3, true);
+        services.notificationBar.PushNotification("LEAVE THE COLLAB SESSION FIRST (F10) TO OPEN ANOTHER CHART", 3, true);
         return true;
     }
 
@@ -913,12 +913,13 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     /// Replaces the open song with one received in a Duet Mode session. keepView stays on the same
     /// instrument, difficulty and position, for when a joiner's copy is refreshed mid-session.
     /// </summary>
-    public void LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView)
+    /// keepFile keeps saving to the chart file that's open, for a host whose chart came back from a joiner after a crash.
+    public void LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView, bool keepFile = false)
     {
-        StartCoroutine(_LoadCollaborationSong(newSong, reloadAudio, keepView));
+        StartCoroutine(_LoadCollaborationSong(newSong, reloadAudio, keepView, keepFile));
     }
 
-    IEnumerator _LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView)
+    IEnumerator _LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView, bool keepFile)
     {
         isLoadingCollaborationSong = true;
 
@@ -945,7 +946,8 @@ public class ChartEditor : UnitySingleton<ChartEditor>
                 yield return null;
         }
 
-        lastLoadedFile = string.Empty;  // Saving asks where to save, rather than overwriting whatever was open before
+        if (!keepFile)
+            lastLoadedFile = string.Empty;  // Saving asks where to save, rather than overwriting whatever was open before
         currentSong = newSong;
         sessionFlags &= ~ChartEditorSessionFlags.CurrentChartSavedInProprietyFormat;
 
