@@ -84,7 +84,7 @@ public class NoteVisuals3DManager : NoteVisualsManager
                         colourIndex = isTool ? 4 : 0;
                 }
 
-                materials[2] = resources.openMaterials[colourIndex];
+                materials[2] = CustomNoteColors.Swap(gameMode, resources.openMaterials[colourIndex]);
             }
             else
             {

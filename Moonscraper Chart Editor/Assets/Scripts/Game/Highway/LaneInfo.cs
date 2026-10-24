@@ -95,7 +95,11 @@ public class LaneInfo : MonoBehaviour {
 
             for (int i = 0; i < colours.Length; ++i)
             {
-                colours[i] = laneColourPalette[paletteMap[i]];
+                Color profileColour;
+                if (CustomNoteColors.TryGetLaneColor(gameMode, laneCount, i, out profileColour))
+                    colours[i] = profileColour;     // From the Clone Hero color profile picked in Settings
+                else
+                    colours[i] = laneColourPalette[paletteMap[i]];
             }
 
             return colours;
