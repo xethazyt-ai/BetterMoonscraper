@@ -261,17 +261,21 @@ public class DuetPanel : MonoBehaviour
         string[] saved = PlayerPrefs.GetString(PrefRejoin, string.Empty).Split('\n');
         PlayerPrefs.DeleteKey(PrefRejoin);
 
-        if (saved.Length == 2 && saved[0] == "room" && DuetRooms.isAvailable)
+        // Each ends with the host's rejoin secret, which gets you back in even if the session was locked meanwhile
+        string token;
+        if (saved.Length == 3 && saved[0] == "room" && DuetRooms.isAvailable)
         {
             m_useRooms = true;
             m_roomCodeInput = saved[1];
+            token = saved[2];
         }
-        else if (saved.Length == 4 && saved[0] == "ip")
+        else if (saved.Length == 5 && saved[0] == "ip")
         {
             m_useRooms = false;
             m_address = saved[1];
             m_portText = saved[2];
             m_password = saved[3];
+            token = saved[4];
         }
         else
         {
@@ -280,6 +284,8 @@ public class DuetPanel : MonoBehaviour
 
         m_editor.services.notificationBar.PushNotification("REJOINING YOUR COLLAB SESSION", 3, true);
         StartJoining();
+        if (m_session != null && m_session.role == DuetSession.Role.Client)
+            m_session.rejoinToken = token;
     }
 
     bool useRooms { get { return m_useRooms && DuetRooms.isAvailable; } }
@@ -332,7 +338,8 @@ public class DuetPanel : MonoBehaviour
                 if (m_session.isActive && m_session.state == DuetSession.State.Connected && !m_rejoinSaved)
                 {
                     m_rejoinSaved = true;
-                    PlayerPrefs.SetString(PrefRejoin, m_sessionIsRoom ? "room\n" + m_joinedCode : "ip\n" + m_address + "\n" + m_session.port + "\n" + m_password);
+                    PlayerPrefs.SetString(PrefRejoin, (m_sessionIsRoom ? "room\n" + m_joinedCode : "ip\n" + m_address + "\n" + m_session.port + "\n" + m_password)
+                        + "\n" + (m_session.rejoinToken ?? string.Empty));
                     PlayerPrefs.Save();
                 }
                 else if (!m_session.isActive && m_rejoinSaved)

@@ -100,6 +100,9 @@ public class DuetSession
     // Hosting: while locked, nobody new can join. People already in stay.
     public bool isLocked { get; set; }
 
+    // Joining: the host's secret that lets you back in after losing the connection, even while it's locked
+    public string rejoinToken { get; set; }
+
     // Hosting: the most people allowed in at once, counting the host. Lowering it never removes anyone.
     int m_maxUsers = DuetRooms.MaxMembers;
     public int maxUsers
@@ -150,6 +153,12 @@ public class DuetSession
     // Hosting: who the host removed, or who got the code or password wrong too often, by IP or Epic ID. They can't
     // come back for the rest of the session.
     readonly HashSet<string> m_banned = new HashSet<string>();
+
+    // Hosting: a secret handed to each person who joins, so someone who lags out or closes Moonscraper can come back
+    // even while the session is locked. After a crash the host has forgotten them, so anyone coming back to the room
+    // after it counts too.
+    readonly HashSet<string> m_rejoinTokens = new HashSet<string>();
+    bool m_restartedAfterCrash = false;
     readonly Dictionary<string, int> m_wrongAttempts = new Dictionary<string, int>();
     const int MaxWrongAttempts = 5;
 
@@ -276,6 +285,14 @@ public class DuetSession
         End("You left the session");
     }
 
+    static string NewRejoinToken()
+    {
+        byte[] bytes = new byte[16];
+        using (System.Security.Cryptography.RandomNumberGenerator random = System.Security.Cryptography.RandomNumberGenerator.Create())
+            random.GetBytes(bytes);
+        return BitConverter.ToString(bytes).Replace("-", string.Empty);
+    }
+
     // Hosting again after a crash: the first joiner to come back sends their copy of the chart, which has every edit
     // made up to the crash, and it replaces the host's
     public void ExpectRecovery()
@@ -283,6 +300,7 @@ public class DuetSession
         if (role == Role.Host)
         {
             m_awaitingRecoveryChart = true;
+            m_restartedAfterCrash = true;
             Log("Restarted after a crash. Waiting for someone to come back with the latest chart.");
         }
     }
@@ -781,7 +799,10 @@ public class DuetSession
                 return;
             }
 
-            if (isLocked)
+            object recover;
+            bool recovering = message.TryGetValue("recover", out recover) && recover is bool && (bool)recover;
+            bool returning = m_rejoinTokens.Contains(DuetJson.GetString(message, "rejoin", string.Empty)) || (m_restartedAfterCrash && recovering);
+            if (isLocked && !returning)
             {
                 client.Send(Message("rejected", "reason", "The host has locked this session, so nobody new can join right now."));
                 client.CloseAfterSending("Session locked");
@@ -798,8 +819,7 @@ public class DuetSession
             }
 
             // Back after a crash: the first returning joiner sends their chart before joining, and the rest wait for it
-            object recover;
-            if (m_awaitingRecoveryChart && message.TryGetValue("recover", out recover) && recover is bool && (bool)recover)
+            if (m_awaitingRecoveryChart && recovering)
             {
                 if (m_waitingForChart.Count >= MaxWaitingConnections)
                 {
@@ -820,9 +840,16 @@ public class DuetSession
             DuetUser user = new DuetUser { id = client.id, name = UniqueName(CleanName(DuetJson.GetString(message, "name", "Charter"))) };
             users.Add(user);
             m_joinedClients.Add(client);
+            string token = DuetJson.GetString(message, "rejoin", string.Empty);
+            if (!m_rejoinTokens.Contains(token))
+            {
+                token = NewRejoinToken();
+                m_rejoinTokens.Add(token);
+            }
 
             Dictionary<string, object> welcome = SnapshotMessage("welcome", m_song.TakeSnapshot());
             welcome["you"] = (double)client.id;
+            welcome["rejoin"] = token;
             welcome["users"] = UsersJson();
             welcome["seq"] = (double)lastSeq;
             client.Send(welcome);
@@ -1102,6 +1129,8 @@ public class DuetSession
                 hello["password"] = m_joinPassword;
             if (m_recovering)
                 hello["recover"] = true;
+            if (!string.IsNullOrEmpty(rejoinToken))
+                hello["rejoin"] = rejoinToken;
             m_host.Send(hello);
             Log(m_recovering ? "Reached the host again" : "Connected, waiting for the host's chart");
         }
@@ -1218,6 +1247,7 @@ public class DuetSession
                 {
                     bool back = m_recovering && hasReceivedSong;
                     localUserId = (int)DuetJson.GetNumber(message, "you");
+                    rejoinToken = DuetJson.GetString(message, "rejoin", rejoinToken);
                     lastSeq = (int)DuetJson.GetNumber(message, "seq", lastSeq);
                     LoadSnapshot(message, back);    // Coming back keeps the audio already here, and where you were
                     hasReceivedSong = true;

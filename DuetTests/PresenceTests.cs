@@ -130,6 +130,17 @@ public static class PresenceTests
         all.Add(dave);
         SessionTests.Pump(all, () => !dave.isActive);
         Expect("nobody new can join a locked session", !dave.isActive && dave.endReason.Contains("locked") && carol.isActive && host.users.Count == 3);
+
+        // Someone already in who loses their connection can still come back while it's locked
+        string carolToken = carol.rejoinToken;
+        carol.Leave();
+        SessionTests.Pump(all, () => host.users.Count == 2);
+        DuetSession carolBack = DuetSession.Join(new SessionTests.TestSong("presence-carol-back"), "Casey", "127.0.0.1", host.port, "pw");
+        carolBack.rejoinToken = carolToken;
+        all.Add(carolBack);
+        SessionTests.Pump(all, () => carolBack.state == DuetSession.State.Connected || !carolBack.isActive);
+        Expect("someone who was in can rejoin a locked session", !string.IsNullOrEmpty(carolToken) && carolBack.state == DuetSession.State.Connected && host.users.Count == 3);
+        carol = carolBack;
         host.isLocked = false;
 
         // A full session turns new people away too
