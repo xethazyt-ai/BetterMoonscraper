@@ -135,7 +135,7 @@ public class DuetPanel : MonoBehaviour
         m_color = PlayerPrefs.GetInt(PrefColor, 0);
         if (!DuetPresence.IsValidColor(m_color))
             m_color = 0;
-        m_hexInput = DuetPresence.IsCustomColor(m_color) ? HexOf(m_color) : "#FFFFFF";
+        m_hexInput = SliderHexOf(m_color);
         m_rainbowSpeed = Mathf.Clamp(PlayerPrefs.GetInt(PrefRainbowSpeed, 5), 1, DuetPresence.MaxRainbowSpeed);
 
         m_rejoinPending = PlayerPrefs.HasKey(PrefRejoin);
@@ -675,7 +675,18 @@ public class DuetPanel : MonoBehaviour
         m_color = color;
         PlayerPrefs.SetInt(PrefColor, m_color);
         if (updateHex)
-            m_hexInput = DuetPresence.IsCustomColor(m_color) ? HexOf(m_color) : "#FFFFFF";   // As the custom sliders start
+            m_hexInput = SliderHexOf(m_color);
+    }
+
+    // Where the custom color sliders start: a rainbow has no one color, so it starts them on white
+    static Color SliderColorOf(int color)
+    {
+        return DuetPresence.IsRainbow(color) ? Color.white : DuetPresence.GetColor(color);
+    }
+
+    static string SliderHexOf(int color)
+    {
+        return DuetPresence.IsRainbow(color) ? "#FFFFFF" : HexOf(color);
     }
 
     static string HexOf(int color)
@@ -711,12 +722,13 @@ public class DuetPanel : MonoBehaviour
         bool custom = DuetPresence.IsCustomColor(m_color);
         bool rainbow = DuetPresence.IsRainbow(m_color);
         GUILayout.BeginHorizontal();
-        // Opened while on a preset or a rainbow, it starts out white until a slider or the hex code is changed
+        // The button stays white until a slider or the hex code picks a custom color. The sliders start on the preset
+        // you picked, so it can be fine tuned, or on white for a rainbow.
         bool customLook = custom || m_showCustomColor;
         GUI.backgroundColor = custom ? DuetPresence.GetColor(m_color) : customLook ? Color.white : background;
         bool showCustomColor = GUILayout.Toggle(m_showCustomColor, custom ? "* Custom color" : "Custom color", customLook ? DuetSkin.swatch : GUI.skin.button);
-        if (showCustomColor && !m_showCustomColor && !custom)
-            m_hexInput = "#FFFFFF";
+        if (showCustomColor && !m_showCustomColor)
+            m_hexInput = SliderHexOf(m_color);
         m_showCustomColor = showCustomColor;
         GUI.backgroundColor = rainbow ? DuetPresence.GetColor(m_color) : background;
         if (GUILayout.Toggle(rainbow, rainbow ? "* Rainbow" : "Rainbow", rainbow ? DuetSkin.swatch : GUI.skin.button) && !rainbow)
@@ -740,7 +752,7 @@ public class DuetPanel : MonoBehaviour
 
         if (m_showCustomColor)
         {
-            Color current = custom ? DuetPresence.GetColor(m_color) : Color.white;
+            Color current = SliderColorOf(m_color);
             float r = ColorSlider("Red", current.r);
             float g = ColorSlider("Green", current.g);
             float b = ColorSlider("Blue", current.b);
