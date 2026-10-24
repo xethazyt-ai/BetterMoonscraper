@@ -67,11 +67,25 @@ public class DisplayProperties : UpdateableService
 
     NpsTextValues lastUpdatedNpsTextValues = new NpsTextValues();
 
+    // The "Hyperspeed-" and "Highway Length-" labels, found by their text, so they can show the value next to them
+    Text hyperspeedLabel;
+    Text highwayLengthLabel;
+
     protected override void Start()
     {
         editor = ChartEditor.Instance;
         hyperspeedSlider.value = Globals.gameSettings.hyperspeed;
         highwayLengthSlider.value = Globals.gameSettings.highwayLength;
+
+        foreach (Text text in GetComponentsInChildren<Text>(true))
+        {
+            if (text.text.StartsWith("Hyperspeed"))
+                hyperspeedLabel = text;
+            else if (text.text.StartsWith("Highway Length"))
+                highwayLengthLabel = text;
+        }
+        UpdateHyperspeedText();
+        UpdateHighwayLengthText();
 
         UpdateGameSpeedText();
 
@@ -189,7 +203,28 @@ public class DisplayProperties : UpdateableService
     public void SetHyperspeed(float value)
     {
         Globals.gameSettings.hyperspeed.value = value;
+        UpdateHyperspeedText();
         editor.events.hyperspeedChangeEvent.Fire();
+    }
+
+    void UpdateHyperspeedText()
+    {
+        if (!hyperspeedLabel)
+            return;
+
+        hyperspeedLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        hyperspeedLabel.text = string.Format("Hyperspeed- {0:0.#}", (float)Globals.gameSettings.hyperspeed);
+    }
+
+    void UpdateHighwayLengthText()
+    {
+        if (!highwayLengthLabel)
+            return;
+
+        float range = highwayLengthSlider.maxValue - highwayLengthSlider.minValue;
+        float percent = range > 0 ? (Globals.gameSettings.highwayLength - highwayLengthSlider.minValue) / range * 100 : 100;
+        highwayLengthLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        highwayLengthLabel.text = string.Format("Highway Length- {0:0}%", percent);
     }
 
     public void SetGameSpeed(float value)
@@ -215,6 +250,7 @@ public class DisplayProperties : UpdateableService
         maxHighwayLength.transform.localPosition = pos;
 
         bgFade.AdjustHeight();
+        UpdateHighwayLengthText();
 
         editor.events.hyperspeedChangeEvent.Fire();
     }

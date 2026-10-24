@@ -486,12 +486,13 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
     public static float WorldYPositionToTime(float worldYPosition)
     {
-        return worldYPosition / (Globals.gameSettings.hyperspeed / Globals.gameSettings.gameSpeed);
+        // Notes are spaced by song time alone, like Clone Hero: speeding the song up makes the notes come faster, not closer together
+        return worldYPosition / Globals.gameSettings.hyperspeed;
     }
 
     public static float TimeToWorldYPosition(float time)
     {
-        return time * Globals.gameSettings.hyperspeed / Globals.gameSettings.gameSpeed;
+        return time * Globals.gameSettings.hyperspeed;
     }
 
     public static float WorldYPosition(SongObject songObject)
