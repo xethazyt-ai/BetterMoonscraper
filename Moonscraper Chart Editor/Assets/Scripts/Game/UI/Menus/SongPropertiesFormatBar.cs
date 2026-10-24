@@ -24,6 +24,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
     int m_selectionStart, m_selectionEnd;
     InputField m_sizeField;
     InputField m_colorField;
+    ColorWheelPicker m_wheel;
     Text m_preview;
     string m_previewSource;
     Action m_onChanged;
@@ -85,6 +86,27 @@ public class SongPropertiesFormatBar : MonoBehaviour
             x += 26;
         }
         y -= RowHeight + 4;
+
+        // Any color: pick it on the wheel, then press Color
+        const float WheelSize = 100;
+        bar.m_wheel = ColorWheelPicker.Build(content, Left, y, WheelSize);
+        bar.m_wheel.onPicked = picked => bar.m_colorField.text = "#" + ColorUtility.ToHtmlStringRGB(picked);
+        bar.m_colorField.onValueChanged.AddListener(typed =>
+        {
+            Color parsed;
+            string hex;
+            if (RichTextIni.TryParseColor(typed, out hex) && ColorUtility.TryParseHtmlString(hex, out parsed) && !ColorsMatch(parsed, bar.m_wheel.color))
+                bar.m_wheel.SetColor(parsed);
+        });
+        Color start;
+        if (ColorUtility.TryParseHtmlString(bar.m_colorField.text, out start))
+            bar.m_wheel.SetColor(start);
+        Text wheelHelp = Label(labelTemplate, content, "Pick any color on the wheel (brightness on the bar), select text above, then press Color.", Left + WheelSize + 80, y, Right - Left - WheelSize - 80);
+        wheelHelp.alignment = TextAnchor.UpperLeft;
+        wheelHelp.horizontalOverflow = HorizontalWrapMode.Wrap;
+        wheelHelp.verticalOverflow = VerticalWrapMode.Overflow;
+        Place(wheelHelp.rectTransform, Left + WheelSize + 80, y, Right - Left - WheelSize - 80, WheelSize);
+        y -= WheelSize + 8;
 
         bar.m_preview = Label(labelTemplate, content, string.Empty, Left, y, Right - Left);
         bar.m_preview.supportRichText = true;
@@ -260,6 +282,11 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
         m_colorField.text = hex;
         Wrap("<color=" + hex + ">", "</color>");
+    }
+
+    static bool ColorsMatch(Color a, Color b)
+    {
+        return ColorUtility.ToHtmlStringRGB(a) == ColorUtility.ToHtmlStringRGB(b);
     }
 
     float TagButton(Button template, RectTransform parent, string label, float x, float y, float width, string open, string close)

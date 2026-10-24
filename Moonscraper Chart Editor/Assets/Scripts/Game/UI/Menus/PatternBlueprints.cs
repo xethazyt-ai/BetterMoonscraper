@@ -8,17 +8,20 @@ using UnityEngine.SceneManagement;
 using MoonscraperChartEditor.Song;
 
 /// <summary>
-/// Pattern blueprints: select some notes, save them as a named pattern, and later put the pattern back anywhere,
-/// stretched or squeezed to another step (a 16th note pattern played as 8ths, say). Saved on this computer only,
-/// in a file that every Moonscraper version reads. Opened with F9; Ctrl+B pastes the picked pattern at the strikeline,
-/// even with the window closed (both rebindable in Controls).
+/// Pattern blueprints: select some notes, save them as a named pattern, and later put the pattern back anywhere.
+/// Fit to step re-spaces the same notes at another step (a 32nd pattern as 16ths takes twice the beat lines). The
+/// speed slider changes the step too: above 1x the pattern repeats to fill the same beat lines (2x of four 16ths is
+/// eight 32nds), below 1x it spreads over more of them (0.5x takes twice as many). Saved on this computer only,
+/// in a file that every Moonscraper version reads. Opened with F9; Ctrl+B pastes the picked pattern where the mouse
+/// points on the highway (or at the strikeline), even with the window closed. Both are rebindable in Controls.
 /// </summary>
 public class PatternBlueprints : MonoBehaviour
 {
     const int WindowId = 0x4250;
     const string FileName = "Pattern Blueprints.json";
-    const float MinScale = 1 / 16f;
-    const float MaxScale = 16f;
+    const float MinSpeed = 0.25f;
+    const float MaxSpeed = 4f;
+    const int MaxStep = 768;
 
     [Serializable]
     public class BlueprintNote
@@ -52,7 +55,8 @@ public class PatternBlueprints : MonoBehaviour
     bool m_visible = false;
     string m_newName = string.Empty;
     int m_selected = -1;
-    float m_scale = 1;
+    int m_fitStep = 16;             // The step the pattern is re-spaced at
+    float m_speed = 1;
     string m_targetStep = "16";
     string m_status = string.Empty;
     Vector2 m_listScroll;
@@ -62,6 +66,7 @@ public class PatternBlueprints : MonoBehaviour
     int m_pendingDelete = -1;
     int m_pendingSelect = -1;
     bool m_pasteRequested = false;
+    bool m_pasteAtMouse = false;
     bool m_showHelp = false;
 
     public static bool isTyping { get; private set; }
@@ -117,7 +122,10 @@ public class PatternBlueprints : MonoBehaviour
         if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprintPaste))
         {
             if (m_selected >= 0 && m_selected < m_file.blueprints.Count)
+            {
                 m_pasteRequested = true;
+                m_pasteAtMouse = true;
+            }
             else
                 m_editor.services.notificationBar.PushNotification("PICK A PATTERN IN PATTERN BLUEPRINTS (F9) FIRST", 3, true);
         }
@@ -126,11 +134,12 @@ public class PatternBlueprints : MonoBehaviour
         {
             m_pasteRequested = false;
             if (m_selected >= 0 && m_selected < m_file.blueprints.Count)
-                PasteAtStrikeline(m_file.blueprints[m_selected]);
+                Paste(m_file.blueprints[m_selected], m_pasteAtMouse);
+            m_pasteAtMouse = false;
         }
     }
 
-    void PasteAtStrikeline(Blueprint blueprint)
+    void Paste(Blueprint blueprint, bool atMouse)
     {
         if (m_editor.currentState != ChartEditor.State.Editor)
         {
@@ -148,8 +157,8 @@ public class PatternBlueprints : MonoBehaviour
         if (!CopyToClipboard(blueprint))
             return;
 
-        clipboard.PasteAtStrikeline();
-        m_status = "Pasted " + blueprint.notes.Count + (blueprint.notes.Count == 1 ? " note" : " notes") + " at the strikeline. Ctrl+Z undoes it.";
+        clipboard.PasteAtMouseOrStrikeline(atMouse);
+        m_status = "Pasted \"" + blueprint.name + "\". Ctrl+Z undoes it.";
     }
 
     public void Toggle()
@@ -232,8 +241,9 @@ public class PatternBlueprints : MonoBehaviour
         {
             GUILayout.Label("1. Select the notes of a pattern (drag a box with the cursor tool).");
             GUILayout.Label("2. Type a name and press Save selection. It's kept on this computer for every Moonscraper version.");
-            GUILayout.Label("3. Scroll so the strikeline is where the pattern should start, pick the pattern and press Paste at strikeline, or Ctrl+B (works with this window closed too). Ctrl+Z undoes it.");
-            GUILayout.Label("To change its speed: Twice as long spreads it out (16ths become 8ths), Half as long squeezes it. Or type a step (8, 12, 16, 24...) and press Fit.");
+            GUILayout.Label("3. Pick the pattern, point the mouse where it should start on the highway and press Ctrl+B (works with this window closed too). Or press Paste pattern to put it at the strikeline. Ctrl+Z undoes it.");
+            GUILayout.Label("Fit to step: type a step (8, 12, 16, 24, 32...) and press Fit. The same notes are re-spaced at that step, so 32nds fitted to 16 take twice the beat lines.");
+            GUILayout.Label("Speed: above 1x the pattern repeats faster in the same beat lines (2x of four 16ths is eight 32nds). Below 1x it spreads out over more beat lines (0.5x takes twice as many).");
         }
 
         GUILayout.BeginHorizontal();
@@ -255,7 +265,7 @@ public class PatternBlueprints : MonoBehaviour
             {
                 Blueprint blueprint = m_file.blueprints[i];
                 GUILayout.BeginHorizontal();
-                bool picked = GUILayout.Toggle(m_selected == i, blueprint.name + "  (" + Describe(blueprint, 1) + ")", "button");
+                bool picked = GUILayout.Toggle(m_selected == i, blueprint.name + "  (" + Describe(blueprint, OriginalStep(blueprint), 1) + ")", "button");
                 if (picked && m_selected != i)
                     m_pendingSelect = i;
                 if (GUILayout.Button("X", GUILayout.Width(26)))
@@ -286,8 +296,7 @@ public class PatternBlueprints : MonoBehaviour
         {
             Blueprint blueprint = m_file.blueprints[m_pendingSelect];
             m_selected = m_pendingSelect;
-            m_scale = 1;
-            m_targetStep = blueprint.step > 0 ? blueprint.step.ToString() : "16";
+            ResetShape(blueprint);
             m_status = string.Empty;
         }
         m_pendingSelect = -1;
@@ -308,54 +317,101 @@ public class PatternBlueprints : MonoBehaviour
     void DrawSelected(Blueprint blueprint)
     {
         GUILayout.Space(6);
-        GUILayout.Label("Scale: x" + m_scale.ToString("0.###") + "  ->  " + Describe(blueprint, m_scale));
+        GUILayout.Label("Pastes as: " + Describe(blueprint, m_fitStep, m_speed));
 
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("Half as long"))
-            m_scale = Mathf.Max(MinScale, m_scale / 2);
-        if (GUILayout.Button("Twice as long"))
-            m_scale = Mathf.Min(MaxScale, m_scale * 2);
+        GUILayout.Label("Fit to step", GUILayout.Width(80));
+        m_targetStep = GUILayout.TextField(m_targetStep, 3, GUILayout.Width(50));
+        int target;
+        if (GUILayout.Button("Fit", GUILayout.Width(50)) && int.TryParse(m_targetStep, out target) && target > 0)
+            m_fitStep = Mathf.Clamp(target, 1, MaxStep);
         if (GUILayout.Button("Reset", GUILayout.Width(56)))
-            m_scale = 1;
+            ResetShape(blueprint);
         GUILayout.EndHorizontal();
 
-        if (blueprint.step > 0)
-        {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Fit to step", GUILayout.Width(80));
-            m_targetStep = GUILayout.TextField(m_targetStep, 4, GUILayout.Width(50));
-            int target;
-            if (GUILayout.Button("Fit") && int.TryParse(m_targetStep, out target) && target > 0)
-                m_scale = Mathf.Clamp((float)blueprint.step / target, MinScale, MaxScale);
-            GUILayout.EndHorizontal();
-        }
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Speed " + m_speed.ToString("0.##") + "x", GUILayout.Width(80));
+        float speed = GUILayout.HorizontalSlider(m_speed, MinSpeed, MaxSpeed);
+        m_speed = Mathf.Clamp(Mathf.Round(speed * 4) / 4, MinSpeed, MaxSpeed);   // Quarter steps: 0.5x, 1.5x, 2x...
+        if (GUILayout.Button("1x", GUILayout.Width(32)))
+            m_speed = 1;
+        GUILayout.EndHorizontal();
 
         string currentMode = m_editor.currentChart != null ? m_editor.currentChart.gameMode.ToString() : string.Empty;
         if (!string.IsNullOrEmpty(blueprint.gameMode) && blueprint.gameMode != currentMode)
             GUILayout.Label("Made on a " + blueprint.gameMode + " chart, so lanes may not line up here.");
 
-        if (GUILayout.Button("Paste at strikeline (Ctrl+B)", GUILayout.Height(30)))
-            m_pasteRequested = true;    // Done in Update, away from drawing the window
-        if (GUILayout.Button("Copy instead (paste it yourself with Ctrl+V)"))
-        {
-            if (CopyToClipboard(blueprint))
-                m_status = "Copied. Ctrl+V pastes it where the mouse is, or at the strikeline.";
-        }
+        if (GUILayout.Button("Paste pattern (Ctrl+B)", GUILayout.Height(30)))
+            m_pasteRequested = true;    // Done in Update, away from drawing the window. The mouse is on this window, so it goes at the strikeline.
     }
 
-    static string Describe(Blueprint blueprint, float scale)
+    static int OriginalStep(Blueprint blueprint)
     {
-        double lastBeat = 0;
-        foreach (BlueprintNote note in blueprint.notes)
-            lastBeat = Math.Max(lastBeat, note.beat);
+        return blueprint.step > 0 ? blueprint.step : 16;
+    }
 
-        string text = blueprint.notes.Count + (blueprint.notes.Count == 1 ? " note" : " notes");
-        if (blueprint.step > 0)
+    void ResetShape(Blueprint blueprint)
+    {
+        m_fitStep = OriginalStep(blueprint);
+        m_targetStep = m_fitStep.ToString();
+        m_speed = 1;
+    }
+
+    static string Describe(Blueprint blueprint, int fitStep, float speed)
+    {
+        int count;
+        double span;
+        Arrange(blueprint, fitStep, speed, out count, out span);
+
+        float step = fitStep * speed;
+        string stepText = Mathf.Abs(step - Mathf.Round(step)) < 0.01f ? Mathf.RoundToInt(step).ToString() : step.ToString("0.##");
+        return count + (count == 1 ? " note" : " notes") + ", " + stepText + " step, " + span.ToString("0.##") + " beats";
+    }
+
+    struct Placed
+    {
+        public double beat;
+        public double lengthBeats;
+        public BlueprintNote note;
+    }
+
+    // Where each note goes. The pattern is cut into slots one step apart (a chord shares a slot, a rest is an empty
+    // one), re-spaced at fitStep and then sped up. Faster than 1x, it plays again until it fills the beat lines it
+    // took at 1x; slower, it plays once over more of them.
+    static List<Placed> Arrange(Blueprint blueprint, int fitStep, float speed, out int noteCount, out double span)
+    {
+        double originalGap = 4.0 / OriginalStep(blueprint);
+        double gap = 4.0 / Math.Max(1, fitStep) / speed;
+        double factor = gap / originalGap;
+
+        int slotCount = 0;
+        foreach (BlueprintNote note in blueprint.notes)
+            slotCount = Math.Max(slotCount, (int)Math.Round(note.beat / originalGap) + 1);
+        slotCount = Math.Max(1, slotCount);
+
+        int playedSlots = speed > 1 ? Math.Max(slotCount, (int)Math.Round(slotCount * speed)) : slotCount;
+        List<Placed> placed = new List<Placed>();
+        for (int repeat = 0; repeat * slotCount < playedSlots; ++repeat)
         {
-            float step = blueprint.step / scale;
-            text += ", " + (Mathf.Abs(step - Mathf.Round(step)) < 0.01f ? Mathf.RoundToInt(step).ToString() : step.ToString("0.##")) + " step";
+            foreach (BlueprintNote note in blueprint.notes)
+            {
+                int slot = (int)Math.Round(note.beat / originalGap);
+                int playedSlot = repeat * slotCount + slot;
+                if (playedSlot >= playedSlots)
+                    continue;
+
+                placed.Add(new Placed
+                {
+                    beat = playedSlot * gap + (note.beat - slot * originalGap) * factor,    // Keeps any off-grid nudge
+                    lengthBeats = note.lengthBeats * factor,
+                    note = note,
+                });
+            }
         }
-        return text + ", " + (lastBeat * scale).ToString("0.##") + " beats";
+
+        noteCount = placed.Count;
+        span = playedSlots * gap;
+        return placed;
     }
 
     void SaveSelection()
@@ -406,8 +462,7 @@ public class PatternBlueprints : MonoBehaviour
 
         m_file.blueprints.Add(blueprint);
         m_selected = m_file.blueprints.Count - 1;
-        m_scale = 1;
-        m_targetStep = blueprint.step > 0 ? blueprint.step.ToString() : "16";
+        ResetShape(blueprint);
         m_newName = string.Empty;
         m_status = "Saved \"" + blueprint.name + "\".";
         Save();
@@ -426,11 +481,13 @@ public class PatternBlueprints : MonoBehaviour
         float resolution = song.resolution;
         List<SongObject> notes = new List<SongObject>();
         uint last = 0;
-        foreach (BlueprintNote saved in blueprint.notes)
+        int count;
+        double span;
+        foreach (Placed placed in Arrange(blueprint, m_fitStep, m_speed, out count, out span))
         {
-            uint tick = (uint)Math.Round(saved.beat * m_scale * resolution);
-            uint length = (uint)Math.Round(saved.lengthBeats * m_scale * resolution);
-            notes.Add(new Note(tick, saved.rawNote, length, (Note.Flags)saved.flags));
+            uint tick = (uint)Math.Round(placed.beat * resolution);
+            uint length = (uint)Math.Round(placed.lengthBeats * resolution);
+            notes.Add(new Note(tick, placed.note.rawNote, length, (Note.Flags)placed.note.flags));
             last = Math.Max(last, tick);
         }
         notes.Sort((a, b) => a.tick.CompareTo(b.tick));

@@ -334,12 +334,24 @@ public class SongPropertiesPanelController : TabMenu
         bool byAudio = MusicBrainzLookup.canMatchAudio && !string.IsNullOrEmpty(audioPath);
         formatBar.SetStatus(byAudio ? "Listening to the song's audio and looking it up..." : "Looking up \"" + RichTextIni.Strip(songName.text) + "\" online...");
 
-        Action<MusicBrainzLookup.Result, string> fill = (result, error) =>
+        string audioFailure = null;
+        Action<MusicBrainzLookup.Result, string> fill = null;
+        fill = (result, error) =>
         {
+            if (result == null && byAudio)
+            {
+                // No exact audio match (chart audio is often trimmed or a different mix): search by name instead
+                byAudio = false;
+                audioFailure = error;
+                formatBar.SetStatus(error + " Searching by name and artist instead...");
+                StartCoroutine(MusicBrainzLookup.Find(songName.text, artist.text, fill));
+                return;
+            }
+
             lookingUp = false;
             if (result == null)
             {
-                formatBar.SetStatus(error);
+                formatBar.SetStatus((audioFailure != null ? audioFailure + " " : string.Empty) + error);
                 return;
             }
 
@@ -356,6 +368,8 @@ public class SongPropertiesPanelController : TabMenu
 
             string found = "Found \"" + result.title + "\" by " + result.artist + " from " + result.source + ": album " + (result.album ?? "unknown")
                 + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + ".";
+            if (audioFailure != null)
+                found = "No exact audio match, so this was matched by name. Check it's the right song. " + found;
             formatBar.SetStatus(found + (filled.Count > 0 ? " Filled in the " + string.Join(", ", filled.ToArray()) + "." : " Clear a field to have it filled in."));
         };
 
