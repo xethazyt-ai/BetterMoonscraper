@@ -144,8 +144,6 @@ public class DuetChat : MonoBehaviour
         m_window.Draw("Chat", DrawWindow, scale);
 
         // Keep it on screen, and remember where it was put
-        m_window.rect.x = Mathf.Clamp(m_window.rect.x, 0, Mathf.Max(0, Screen.width / scale - m_window.rect.width));
-        m_window.rect.y = Mathf.Clamp(m_window.rect.y, 0, Mathf.Max(0, Screen.height / scale - m_window.rect.height));
         if (m_window.rect.position != m_savedPosition && !Input.GetMouseButton(0))
         {
             m_savedPosition = m_window.rect.position;

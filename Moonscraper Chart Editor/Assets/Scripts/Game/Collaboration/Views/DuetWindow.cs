@@ -54,10 +54,15 @@ public class DuetWindow
             UpdateResize();
 
         m_content = content;
+        rect = DuetMenuCover.KeepOnScreen(rect, scale);
         if (m_fixedHeight)
             rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width), GUILayout.Height(rect.height));
         else
             rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width));
+
+        // Keep it on screen and below Moonscraper's menu bar, however it was dragged or resized
+        rect = DuetMenuCover.KeepOnScreen(rect, scale);
+        DuetInputBlocker.Block(m_id, rect, scale);
     }
 
     Vector2 MouseInGui()
@@ -92,7 +97,9 @@ public class DuetWindow
 
         if (top)
         {
-            resized.height = Mathf.Max(m_minSize.y, m_startRect.height - delta.y);
+            // Dragging the top edge stops at the menu bar instead of pushing the window down
+            float highest = DuetMenuCover.menuBarBottom / m_scale;
+            resized.height = Mathf.Max(m_minSize.y, Mathf.Min(m_startRect.height - delta.y, m_startRect.yMax - highest));
             resized.y = m_startRect.yMax - resized.height;
         }
         else

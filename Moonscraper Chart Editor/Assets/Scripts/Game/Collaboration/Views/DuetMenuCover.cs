@@ -19,6 +19,36 @@ public static class DuetMenuCover
     static readonly Vector3[] s_corners = new Vector3[4];
     static int s_foundFrame = -FindEveryFrames;
     static int s_updatedFrame = -1;
+    static RectTransform s_menuBar;
+
+    // The bottom of Moonscraper's menu bar (File, Instrument ... Waveform), in screen pixels from the top. The Duet
+    // windows stay below it.
+    public static float menuBarBottom
+    {
+        get
+        {
+            if (s_menuBar == null)
+            {
+                MenuBar menuBar = Object.FindObjectOfType<MenuBar>();
+                s_menuBar = menuBar != null ? menuBar.transform as RectTransform : null;
+                if (s_menuBar == null)
+                    return 0;
+            }
+            return ScreenRect(s_menuBar).yMax;
+        }
+    }
+
+    // Moves and if need be shrinks a window, given in scaled GUI units, so it's on screen and below the menu bar
+    public static Rect KeepOnScreen(Rect rect, float scale)
+    {
+        float top = menuBarBottom / scale;
+        float width = Screen.width / scale, height = Screen.height / scale;
+        rect.width = Mathf.Min(rect.width, width);
+        rect.height = Mathf.Min(rect.height, Mathf.Max(0, height - top));
+        rect.x = Mathf.Clamp(rect.x, 0, Mathf.Max(0, width - rect.width));
+        rect.y = Mathf.Clamp(rect.y, top, Mathf.Max(top, height - rect.height));
+        return rect;
+    }
 
     // True if an open list overlaps this rect, given in screen pixels with y going down (unscaled GUI coordinates)
     public static bool Covers(Rect screenRect)
