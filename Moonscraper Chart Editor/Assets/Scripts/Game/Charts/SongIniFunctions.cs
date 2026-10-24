@@ -40,13 +40,20 @@ public static class SongIniFunctions
 
         int songLength = (int)(songLengthSeconds * 1000);
 
-        ini.WriteValue(INI_SECTION_HEADER, "name ", PrefixSpaceToINIValue(song.name));
-        ini.WriteValue(INI_SECTION_HEADER, "artist ", PrefixSpaceToINIValue(metaData.artist));
-        ini.WriteValue(INI_SECTION_HEADER, "album ", PrefixSpaceToINIValue(metaData.album));
-        ini.WriteValue(INI_SECTION_HEADER, "genre ", PrefixSpaceToINIValue(metaData.genre));
+        ini.WriteValue(INI_SECTION_HEADER, "name ", PrefixSpaceToINIValue(KeepFormatting(ini, "name", song.name)));
+        ini.WriteValue(INI_SECTION_HEADER, "artist ", PrefixSpaceToINIValue(KeepFormatting(ini, "artist", metaData.artist)));
+        ini.WriteValue(INI_SECTION_HEADER, "album ", PrefixSpaceToINIValue(KeepFormatting(ini, "album", metaData.album)));
+        ini.WriteValue(INI_SECTION_HEADER, "genre ", PrefixSpaceToINIValue(KeepFormatting(ini, "genre", metaData.genre)));
         ini.WriteValue(INI_SECTION_HEADER, "year ", PrefixSpaceToINIValue(metaData.year));
         ini.WriteValue(INI_SECTION_HEADER, "song_length ", PrefixSpaceToINIValue(songLength.ToString()));
-        ini.WriteValue(INI_SECTION_HEADER, "charter ", PrefixSpaceToINIValue(metaData.charter));
+        ini.WriteValue(INI_SECTION_HEADER, "charter ", PrefixSpaceToINIValue(KeepFormatting(ini, "charter", metaData.charter)));
+    }
+
+    // The chart holds plain text, so keep song.ini's formatted version (bold, colors...) of the same text
+    static string KeepFormatting(INIParser ini, string key, string plain)
+    {
+        string current = RichTextIni.ReadIni(ini, key);
+        return RichTextIni.HasTags(current) && RichTextIni.Strip(current) == plain ? current : (plain ?? string.Empty);
     }
 
     delegate void AddTagFn(string key, string defaultVal);
