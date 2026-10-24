@@ -49,7 +49,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
         float y = top;
         Label(labelTemplate, content, "Formatting:", Left, y, 160);
-        MakeButton(buttonTemplate, content, "Fill song info online", Right - 160, y, 160, onLookUp);
+        MakeButton(buttonTemplate, content, "Fill from name+artist", Right - 160, y, 160, onLookUp);
         y -= RowHeight + 2;
 
         float x = Left;
@@ -101,12 +101,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         Color start;
         if (ColorUtility.TryParseHtmlString(bar.m_colorField.text, out start))
             bar.m_wheel.SetColor(start);
-        Text wheelHelp = Label(labelTemplate, content, "Pick any color on the wheel (brightness on the bar), select text above, then press Color.", Left + WheelSize + 80, y, Right - Left - WheelSize - 80);
-        wheelHelp.alignment = TextAnchor.UpperLeft;
-        wheelHelp.horizontalOverflow = HorizontalWrapMode.Wrap;
-        wheelHelp.verticalOverflow = VerticalWrapMode.Overflow;
-        Place(wheelHelp.rectTransform, Left + WheelSize + 80, y, Right - Left - WheelSize - 80, WheelSize);
-        y -= WheelSize + 8;
+        y -= WheelSize + 20;
 
         bar.m_preview = Label(labelTemplate, content, string.Empty, Left, y, Right - Left);
         bar.m_preview.supportRichText = true;
@@ -146,7 +141,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
+            m_preview.text = "Select text in a field above, then pick a format. For any color, pick it on the wheel (brightness on the bar) and press Color. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
         }
     }
 

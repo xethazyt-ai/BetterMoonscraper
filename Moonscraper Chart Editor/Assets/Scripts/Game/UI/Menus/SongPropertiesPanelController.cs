@@ -318,62 +318,36 @@ public class SongPropertiesPanelController : TabMenu
             field.characterLimit = 0;   // Tags make the text longer than it looks
 
         float bottom;
-        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpOnMusicBrainz, setSongProperties, out bottom);
+        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpSongInfo, setSongProperties, out bottom);
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
     }
 
-    // Fills in the song's details online. With audio matching in this build, the song is identified by its sound and
-    // only an exact match counts; otherwise it's searched for by name and artist. Only empty fields are filled.
-    void LookUpOnMusicBrainz()
+    // Fills the empty album, year and genre from the name and artist typed in
+    void LookUpSongInfo()
     {
         if (lookingUp || !formatBar)
             return;
 
         lookingUp = true;
-        string audioPath = editor.currentSong.GetAudioLocation(Song.AudioInstrument.Song);
-        bool byAudio = MusicBrainzLookup.canMatchAudio && !string.IsNullOrEmpty(audioPath);
-        formatBar.SetStatus(byAudio ? "Listening to the song's audio and looking it up..." : "Looking up \"" + RichTextIni.Strip(songName.text) + "\" online...");
-
-        string audioFailure = null;
-        Action<MusicBrainzLookup.Result, string> fill = null;
-        fill = (result, error) =>
+        formatBar.SetStatus("Looking up \"" + RichTextIni.Strip(songName.text) + "\" on iTunes...");
+        StartCoroutine(ITunesLookup.Find(songName.text, artist.text, (result, error) =>
         {
-            if (result == null && byAudio)
-            {
-                // No exact audio match (chart audio is often trimmed or a different mix): search by name instead
-                byAudio = false;
-                audioFailure = error;
-                formatBar.SetStatus(error + " Searching by name and artist instead...");
-                StartCoroutine(MusicBrainzLookup.Find(songName.text, artist.text, fill));
-                return;
-            }
-
             lookingUp = false;
             if (result == null)
             {
-                formatBar.SetStatus((audioFailure != null ? audioFailure + " " : string.Empty) + error);
+                formatBar.SetStatus(error);
                 return;
             }
 
             List<string> filled = new List<string>();
-            if (byAudio)
-            {
-                // An exact audio match knows the song, so it can fill in the name and artist too
-                FillIfEmpty(songName, result.title, "name", filled);
-                FillIfEmpty(artist, result.artist, "artist", filled);
-            }
             FillIfEmpty(album, result.album, "album", filled);
             FillIfEmpty(year, result.year, "year", filled);
             FillIfEmpty(genre, result.genre, "genre", filled);
 
-            string found = "Found \"" + result.title + "\" by " + result.artist + " from " + result.source + ": album " + (result.album ?? "unknown")
+            string found = "Found \"" + result.title + "\" by " + result.artist + " on iTunes: album " + (result.album ?? "unknown")
                 + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + ".";
-            if (audioFailure != null)
-                found = "No exact audio match, so this was matched by name. Check it's the right song. " + found;
             formatBar.SetStatus(found + (filled.Count > 0 ? " Filled in the " + string.Join(", ", filled.ToArray()) + "." : " Clear a field to have it filled in."));
-        };
-
-        StartCoroutine(byAudio ? MusicBrainzLookup.FindByAudio(audioPath, fill) : MusicBrainzLookup.Find(songName.text, artist.text, fill));
+        }));
     }
 
     static void FillIfEmpty(InputField field, string value, string what, List<string> filled)
