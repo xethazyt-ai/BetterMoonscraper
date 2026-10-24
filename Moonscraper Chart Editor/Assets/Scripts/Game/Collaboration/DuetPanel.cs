@@ -414,7 +414,10 @@ public class DuetPanel : MonoBehaviour
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
         Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - QuitPromptHeight) / 2, QuitPromptWidth, QuitPromptHeight);
         DuetInputBlocker.Block(QuitPromptId, new Rect(0, 0, Screen.width / scale, Screen.height / scale), scale);    // Nothing else can be clicked until it's answered
+        GUISkin oldSkin = GUI.skin;
+        GUI.skin = DuetSkin.skin;
         GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit Moonscraper?");
+        GUI.skin = oldSkin;
     }
 
     void DrawQuitPromptWindow(int id)

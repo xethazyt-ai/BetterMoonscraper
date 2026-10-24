@@ -327,6 +327,9 @@ public class DuetOverlay : MonoBehaviour
         background.Apply();
 
         GUIStyle style = new GUIStyle(GUI.skin.label);
+        Font font = DuetSkin.font;     // Moonscraper's own
+        if (font != null)
+            style.font = font;
         style.normal.background = background;
         style.fontStyle = FontStyle.Bold;
         style.padding = new RectOffset(5, 5, 2, 2);

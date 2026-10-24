@@ -55,10 +55,13 @@ public class DuetWindow
 
         m_content = content;
         rect = DuetMenuCover.KeepOnScreen(rect, scale);
+        GUISkin oldSkin = GUI.skin;
+        GUI.skin = DuetSkin.skin;   // Moonscraper's look. The window keeps the skin it was opened with.
         if (m_fixedHeight)
             rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width), GUILayout.Height(rect.height));
         else
             rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width));
+        GUI.skin = oldSkin;
 
         // Keep it on screen and below Moonscraper's menu bar, however it was dragged or resized
         rect = DuetMenuCover.KeepOnScreen(rect, scale);

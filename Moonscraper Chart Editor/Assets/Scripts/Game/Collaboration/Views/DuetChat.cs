@@ -6,7 +6,7 @@ using UnityEngine;
 
 /// <summary>
 /// A chat window during a Duet session, which can be dragged anywhere and scrolled back through. Press the chat key
-/// (Enter unless rebound in Controls) to write, Enter to send, Escape to stop writing. Also shows who's typing.
+/// (Enter unless rebound in Controls) to write, Enter to send and keep writing, and click elsewhere or press Escape to stop. Also shows who's typing.
 /// </summary>
 public class DuetChat : MonoBehaviour
 {
@@ -176,11 +176,11 @@ public class DuetChat : MonoBehaviour
 
         if (m_writing && e.type == EventType.KeyDown && GUI.GetNameOfFocusedControl() == InputName && Time.frameCount != m_startedFrame)
         {
+            // Stays in the box for the next message. Clicking off it or Escape goes back to the chart.
             if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter)
             {
                 session.SendChat(m_text);
                 m_text = string.Empty;
-                StopWriting();
                 e.Use();
             }
             else if (e.keyCode == KeyCode.Escape)
@@ -210,7 +210,7 @@ public class DuetChat : MonoBehaviour
             m_writing = false;  // Focus went somewhere else, such as the Duet window
         }
 
-        GUILayout.Label(m_writing ? "Enter to send, Escape to stop" : "Press Enter (or your chat key) to chat", m_typingStyle);
+        GUILayout.Label(m_writing ? "Enter to send. Click off the chat or press Escape to stop" : "Press Enter (or your chat key) to chat", m_typingStyle);
     }
 
     string TypingText(DuetSession session)
@@ -259,13 +259,12 @@ public class DuetChat : MonoBehaviour
 
     void MakeStyles()
     {
-        m_lineStyle = new GUIStyle(GUI.skin.label);
+        m_lineStyle = new GUIStyle(DuetSkin.skin.label);
         m_lineStyle.richText = true;
         m_lineStyle.wordWrap = true;
 
-        m_typingStyle = new GUIStyle(GUI.skin.label);
-        m_typingStyle.fontStyle = FontStyle.Italic;
-        m_typingStyle.fontSize = Mathf.Max(10, GUI.skin.label.fontSize - 1);
+        m_typingStyle = new GUIStyle(DuetSkin.skin.label);
+        m_typingStyle.fontSize = Mathf.Max(10, DuetSkin.skin.label.fontSize - 2);
         m_typingStyle.normal.textColor = new Color(1, 1, 1, 0.6f);
     }
 }
