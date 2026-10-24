@@ -21,6 +21,9 @@ public class HitWindowFeeder
         float time = editor.currentVisibleTime;
         Song song = editor.currentSong;
 
+        if (hitWindow != null)
+            hitWindow.RemoveDeletedNotes();
+
         if (feederNoteIndex <= 0)
         {
             uint currentTick = song.TimeToTick(time, song.resolution);
