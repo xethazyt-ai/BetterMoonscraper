@@ -136,8 +136,6 @@ public class DuetChat : MonoBehaviour
             return;
 
         m_window.Draw("Chat", DrawWindow, scale);  // Remembers where it was put
-
-    }
     }
 
     void DrawWindow(int id)
