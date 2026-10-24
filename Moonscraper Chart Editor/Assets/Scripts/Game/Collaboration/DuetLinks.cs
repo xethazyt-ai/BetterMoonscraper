@@ -60,7 +60,8 @@ public interface IDuetConnector
 public interface IDuetRoomProvider
 {
     string status { get; }
-    IDuetListener CreateRoom();
+    // code: a room code to open again, for a host back after a crash. Null for a new one.
+    IDuetListener CreateRoom(string code = null);
     IDuetConnector JoinRoom(string roomCode);
 }
 
@@ -134,6 +135,19 @@ public static class DuetKeepAlive
 public static class DuetRooms
 {
     public static IDuetRoomProvider provider;
+
+    // Moonscraper is closing normally. Sessions end here, while their connections can still say goodbye, so nobody
+    // takes it for a crash and waits.
+    public static event Action quitting;
+
+    public static void NotifyQuitting()
+    {
+        if (quitting != null)
+        {
+            try { quitting(); }
+            catch (Exception e) { UnityEngine.Debug.LogError("Duet: " + e); }
+        }
+    }
 
     public static bool isAvailable { get { return provider != null; } }
 

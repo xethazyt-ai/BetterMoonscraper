@@ -190,6 +190,19 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         return snapshot;
     }
 
+    public void LoadRecoveredChart(string chartText)
+    {
+        string path = Path.Combine(WorkingDirectory, "recovered" + MsceIOHelper.FileExtention);
+        File.WriteAllText(path, chartText);
+        Song song = ChartReader.ReadChart(path);
+
+        // The audio is the host's own, as already open, never a path written in someone else's chart
+        foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
+            song.SetAudioLocation(audio, m_editor.currentSong.GetAudioLocation(audio));
+
+        m_editor.LoadCollaborationSong(song, false, true, true);
+    }
+
     public void LoadSnapshot(DuetSongSnapshot snapshot, bool isResync)
     {
         string path = Path.Combine(WorkingDirectory, "session" + MsceIOHelper.FileExtention);

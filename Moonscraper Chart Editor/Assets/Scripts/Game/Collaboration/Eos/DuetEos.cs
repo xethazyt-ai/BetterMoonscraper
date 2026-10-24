@@ -85,14 +85,14 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         }
     }
 
-    public IDuetListener CreateRoom()
+    public IDuetListener CreateRoom(string code = null)
     {
         if (m_room != null)
             m_room.Stop();
 
         StartIfNeeded();
         m_waitingPeers.Clear();
-        m_room = new Room(this);
+        m_room = new Room(this, code == null ? null : DuetRooms.NormalizeCode(code));
         return m_room;
     }
 
@@ -251,22 +251,35 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
     void Shutdown()
     {
-        foreach (Link link in new List<Link>(m_links.Values))
-            link.Close("Online rooms shut down");
-        m_links.Clear();
-        m_waitingPeers.Clear();
-
         if (m_room != null)
         {
             m_room.Stop();
             m_room = null;
         }
 
-        // Give EOS a moment to tell everyone, so they see the session end straight away instead of timing out
+        // Give EOS a moment to deliver what's queued, such as a goodbye, before the connections close, so everyone
+        // sees the session end straight away instead of timing out
         if (m_platform != null && m_phase == Phase.Ready)
         {
             System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
             while (clock.ElapsedMilliseconds < ShutdownGraceMs)
+            {
+                foreach (Link link in new List<Link>(m_links.Values))
+                    link.Flush();
+                TickPlatform();
+                RunDeferred();
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+
+        foreach (Link link in new List<Link>(m_links.Values))
+            link.Close("Online rooms shut down");
+        m_links.Clear();
+        m_waitingPeers.Clear();
+
+        if (m_platform != null && m_phase == Phase.Ready)
+        {
+            for (int i = 0; i < 5; ++i)
             {
                 TickPlatform();
                 System.Threading.Thread.Sleep(10);
@@ -312,12 +325,24 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     void Awake()
     {
         m_mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
-        Application.quitting += Shutdown;
+        Application.quitting += OnQuitting;
     }
 
     void OnDestroy()
     {
-        Application.quitting -= Shutdown;
+        Application.quitting -= OnQuitting;
+    }
+
+    // Sessions end first and say goodbye, which goes out during Shutdown's grace period
+    void OnQuitting()
+    {
+        DuetRooms.NotifyQuitting();
+        if (m_platform != null && m_phase == Phase.Ready)
+        {
+            foreach (Link link in new List<Link>(m_links.Values))
+                link.Flush();
+        }
+        Shutdown();
     }
 
     #endregion
@@ -830,6 +855,8 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         readonly Queue<Dictionary<string, object>> m_incoming = new Queue<Dictionary<string, object>>();
         readonly DuetFraming.Assembler m_assembler;
         bool m_closeWhenSent = false;
+        System.Diagnostics.Stopwatch m_closeClock;
+        const int CloseGraceMs = 1000;
 
         public readonly ProductUserId peer;
         public readonly string lobbyId;     // Joiners only: the room to leave when this link closes
@@ -904,7 +931,8 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
                 m_outgoing.Dequeue();
             }
 
-            if (m_closeWhenSent && m_outgoing.Count <= 0)
+            // Closing the connection can drop what EOS hasn't delivered yet, such as a goodbye, so wait a moment
+            if (m_closeWhenSent && m_outgoing.Count <= 0 && m_closeClock.ElapsedMilliseconds >= CloseGraceMs)
                 Close(closeReason);
         }
 
@@ -940,6 +968,8 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         public void CloseAfterSending(string reason)
         {
             closeReason = reason;
+            if (!m_closeWhenSent)
+                m_closeClock = System.Diagnostics.Stopwatch.StartNew();
             m_closeWhenSent = true;
             Flush();
         }
@@ -963,9 +993,17 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         public string error { get; private set; }
         public bool isStopped { get; private set; }
 
-        public Room(DuetEos owner)
+        // Opening a room again after a crash: its code, and when to try next. Epic only closes the old room once it
+        // notices the host has gone, which can take a while, so this keeps trying until then.
+        readonly string m_fixedCode;
+        float m_retryAt = 0;
+        const float RetrySeconds = 5;
+        bool m_triedDestroy = false;
+
+        public Room(DuetEos owner, string fixedCode)
         {
             m_owner = owner;
+            m_fixedCode = fixedCode;
         }
 
         public bool TryAccept(out IDuetLink link)
@@ -980,11 +1018,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
                 return false;
             }
 
-            if (m_owner.m_phase == Phase.Ready && !m_createStarted)
+            if (m_owner.m_phase == Phase.Ready && !m_createStarted && Time.realtimeSinceStartup >= m_retryAt)
             {
                 m_createStarted = true;
                 ++m_attempts;
-                m_owner.CreateLobby(this, NewRoomCode());
+                m_owner.CreateLobby(this, m_fixedCode ?? NewRoomCode());
             }
 
             if (m_accepted.Count <= 0)
@@ -1012,6 +1050,20 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             {
                 roomCode = code;
                 m_lobbyId = lobbyId;
+                return;
+            }
+
+            // The room from before the crash is still open. It's ours, so try closing it, and keep trying to open it.
+            if (result == Result.LobbyLobbyAlreadyExists && m_fixedCode != null)
+            {
+                if (!m_triedDestroy)
+                {
+                    m_triedDestroy = true;
+                    Debug.Log("Duet EOS: the room from before is still open, waiting for Epic to close it");
+                    m_owner.DestroyLobby(LobbyIdFor(code));
+                }
+                m_retryAt = Time.realtimeSinceStartup + RetrySeconds;
+                m_createStarted = false;
                 return;
             }
 
