@@ -39,6 +39,9 @@ public interface IDuetSongHost
 
     // Joining: the host's files have arrived, by file name, at these paths on this computer
     void UseSongFiles(Dictionary<string, string> localPaths);
+
+    // Goes up each time a different song is opened, for example when the host opens another chart mid-session
+    int songNumber { get; }
 }
 
 public class DuetUser
@@ -166,6 +169,10 @@ public class DuetSession
     DuetPresence m_localPresence;
     string m_lastSentPresence;
     DuetSelection m_localSelection;
+
+    // Hosting: the song being shared, and the first edit number made to it
+    int m_songNumber;
+    int m_firstSeqOfSong = 0;
     string m_lastSentSelection;
     double m_lastPresenceTime = double.MinValue;
     Dictionary<string, string> m_knownSongInfo;  // As last sent or received; null until the song settles
@@ -214,6 +221,7 @@ public class DuetSession
     {
         DuetSession session = new DuetSession(song, username, Role.Host);
         session.m_listener = listener;
+        session.m_songNumber = song.songNumber;
         session.state = State.Connected;
         session.users.Add(new DuetUser { id = HostUserId, name = session.m_username });
         session.Log(logLine);
@@ -257,6 +265,8 @@ public class DuetSession
 
         if (state == State.Connected)
         {
+            if (role == Role.Host)
+                SendNewSongIfChanged();
             SendPresenceIfChanged();
             SendSongInfoIfChanged();
         }
@@ -494,6 +504,55 @@ public class DuetSession
 
     #region Host
 
+    // The details the snapshot leaves out, then the song's files, to a joiner that just got the song
+    void SendSongDetailsAndFiles(IDuetLink client)
+    {
+        // The snapshot carries most song details, but not the custom ini settings, so send them all
+        Dictionary<string, object> songInfo = new Dictionary<string, object>();
+        foreach (KeyValuePair<string, string> field in m_song.ReadSongInfo())
+            songInfo[field.Key] = field.Value;
+        client.Send(Message("songinfo", "fields", songInfo));
+
+        // Offer the song's files; the joiner asks for the ones it doesn't already have from an earlier session
+        DuetFileSender sender;
+        if (m_fileSenders.TryGetValue(client, out sender))
+        {
+            sender.Close();     // Files of a song that's no longer open
+            m_fileSenders.Remove(client);
+        }
+
+        Dictionary<string, string> offered = new Dictionary<string, string>();
+        List<object> files = new List<object>();
+        foreach (DuetFileEntry entry in DuetFiles.Describe(m_song.GetSongFilePaths(), offered))
+            files.Add(DuetFiles.ToJson(entry));
+        m_offeredFiles[client] = offered;
+        client.Send(Message("files", "files", files));
+    }
+
+    // The host opened a different song, so everyone switches to it, audio and all
+    void SendNewSongIfChanged()
+    {
+        if (m_song.songNumber == m_songNumber || m_song.isBusy)
+            return;
+
+        m_songNumber = m_song.songNumber;
+        m_knownSongInfo = null;
+
+        // Edits made before this were made to the old song. Numbering moves on so they're recognised and turned away.
+        ++lastSeq;
+        m_firstSeqOfSong = lastSeq;
+
+        Log("Sharing the newly opened chart with everyone");
+        DuetSongSnapshot snapshot = m_song.TakeSnapshot();
+        foreach (IDuetLink client in m_joinedClients)
+        {
+            Dictionary<string, object> message = SnapshotMessage("newsong", snapshot);
+            message["seq"] = (double)lastSeq;
+            client.Send(message);
+            SendSongDetailsAndFiles(client);
+        }
+    }
+
     void UpdateHost()
     {
         if (m_listener.error != null)
@@ -674,21 +733,9 @@ public class DuetSession
             Dictionary<string, object> welcome = SnapshotMessage("welcome", m_song.TakeSnapshot());
             welcome["you"] = (double)client.id;
             welcome["users"] = UsersJson();
+            welcome["seq"] = (double)lastSeq;
             client.Send(welcome);
-
-            // The snapshot carries most song details, but not the custom ini settings, so send them all
-            Dictionary<string, object> songInfo = new Dictionary<string, object>();
-            foreach (KeyValuePair<string, string> field in m_song.ReadSongInfo())
-                songInfo[field.Key] = field.Value;
-            client.Send(Message("songinfo", "fields", songInfo));
-
-            // Offer the song's files; the joiner asks for the ones it doesn't already have from an earlier session
-            Dictionary<string, string> offered = new Dictionary<string, string>();
-            List<object> files = new List<object>();
-            foreach (DuetFileEntry entry in DuetFiles.Describe(m_song.GetSongFilePaths(), offered))
-                files.Add(DuetFiles.ToJson(entry));
-            m_offeredFiles[client] = offered;
-            client.Send(Message("files", "files", files));
+            SendSongDetailsAndFiles(client);
 
             // Show the newcomer where everyone already is
             if (m_lastSentPresence != null)
@@ -733,6 +780,13 @@ public class DuetSession
             case "edit":
                 {
                     double editId = DuetJson.GetNumber(message, "id");
+                    if (DuetJson.GetNumber(message, "basedOn") < m_firstSeqOfSong)
+                    {
+                        // Made to the song that was open before. The joiner's newsong is on its way.
+                        client.Send(Message("nack", "id", editId, "reason", "made to the previous song", "oldsong", true));
+                        break;
+                    }
+
                     List<SongEditChange> changes = DuetSerialization.ChangesFromJson(DuetJson.GetArray(message, "changes"));
 
                     string failure;
@@ -1008,6 +1062,7 @@ public class DuetSession
 
             case "welcome":
                 localUserId = (int)DuetJson.GetNumber(message, "you");
+                lastSeq = (int)DuetJson.GetNumber(message, "seq", lastSeq);
                 LoadSnapshot(message, false);
                 hasReceivedSong = true;
                 ReadUsers(message);
@@ -1026,6 +1081,12 @@ public class DuetSession
                 break;
 
             case "nack":
+                object oldSong;
+                if (message.TryGetValue("oldsong", out oldSong) && oldSong is bool && (bool)oldSong)
+                {
+                    m_unacknowledgedEdits.Remove((int)DuetJson.GetNumber(message, "id"));
+                    break;  // The new song replaces it anyway
+                }
                 RequestResync("The host couldn't apply one of your edits because it clashed with another edit. Getting a fresh copy.");
                 break;
 
@@ -1047,6 +1108,16 @@ public class DuetSession
                     }
                     break;
                 }
+
+            case "newsong":
+                // A whole new song, so its own audio and files come next, as when joining
+                lastSeq = (int)DuetJson.GetNumber(message, "seq", lastSeq);
+                LoadSnapshot(message, false);
+                m_awaitingSnapshot = false;
+                m_unacknowledgedEdits.Clear();
+                m_songFilesUsed = false;
+                Log("The host opened another chart. You now have it.");
+                break;
 
             case "snapshot":
                 LoadSnapshot(message, true);

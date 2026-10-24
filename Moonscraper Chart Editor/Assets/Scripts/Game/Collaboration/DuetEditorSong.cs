@@ -45,6 +45,23 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         }
     }
 
+    // Compared by reference: opening or making a song always gives the editor a new Song
+    Song m_lastSong;
+    int m_songNumber = 0;
+
+    public int songNumber
+    {
+        get
+        {
+            if (m_editor.currentSong != m_lastSong)
+            {
+                m_lastSong = m_editor.currentSong;
+                ++m_songNumber;
+            }
+            return m_songNumber;
+        }
+    }
+
     public bool isBusy
     {
         get { return m_tracker.hasPendingEdit || m_editor.isLoadingCollaborationSong || m_editor.services.loadingTasksManager.isRunningTask; }

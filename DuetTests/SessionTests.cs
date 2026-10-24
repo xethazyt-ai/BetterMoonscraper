@@ -23,6 +23,7 @@ public static class SessionTests
         public TestSong(string name) { this.name = name; }
 
         public bool isBusy { get { return false; } }
+        public int songNumber { get; set; }
 
         public bool TryApplyRemoteEdit(IList<SongEditChange> changes, out string failure)
         {
