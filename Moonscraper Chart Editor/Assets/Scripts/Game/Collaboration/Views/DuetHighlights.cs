@@ -6,15 +6,16 @@ using MoonscraperChartEditor.Song;
 
 /// <summary>
 /// Other people's selections, drawn with the same yellow boxes Moonscraper puts around your own selected notes, and the
-/// box they're dragging with the select tool: yellow while selecting, red while deselecting (a Ctrl drag).
+/// box they're dragging with the select tool: green while selecting, red while deselecting (a Ctrl drag).
 /// The same colors for everyone, like Moonscraper's own.
 /// </summary>
 public class DuetHighlights
 {
     const int MaxHighlights = 512;  // Drawn at once, across everyone. Only what's on screen counts.
 
-    static readonly Color SelectingColor = new Color(1f, 0.92f, 0.016f);    // Unity's yellow, as Moonscraper's selection
-    static readonly Color DeselectingColor = Color.red;                     // As Moonscraper's own Ctrl drag
+    // As Moonscraper's own select tool colors its box
+    static readonly Color SelectingColor = Color.green;
+    static readonly Color DeselectingColor = Color.red;     // A Ctrl drag
 
     readonly GameObject m_highlightTemplate;
     readonly GroupSelect m_groupSelect;
