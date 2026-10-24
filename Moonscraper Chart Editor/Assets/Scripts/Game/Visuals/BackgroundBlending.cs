@@ -29,6 +29,32 @@ public class BackgroundBlending : MonoBehaviour
         LoadBackgrounds();
     }
 
+    // Settings > Customize can pick one background that replaces Moonscraper's own and any Custom Resources ones.
+    // Passing null goes back to those.
+    public void SetBackgroundOverride(Texture2D texture)
+    {
+        if (!ren)
+            return;
+
+        StopAllCoroutines();
+        fadeRunning = false;
+        delayTimer = 0;
+        currentBackground = 0;
+        ren.sharedMaterial.SetFloat("_Blend", 0);
+
+        if (texture)
+        {
+            enabled = false;
+            ren.sharedMaterial.mainTexture = texture;
+        }
+        else
+        {
+            enabled = true;
+            ren.sharedMaterial.mainTexture = initBGTex;
+            LoadBackgrounds();
+        }
+    }
+
     void LoadBackgrounds()
     {
         backgrounds = GetAllBackgrounds();
