@@ -3,8 +3,9 @@
 using UnityEngine;
 
 /// <summary>
-/// The look of the Collab Mode windows, matched to Moonscraper's own panels such as Settings: deep navy with a teal
-/// rounded border, white text in Moonscraper's unispace font, dark teal buttons and white input boxes.
+/// The look of the Collab Mode windows, made from Moonscraper's own panels such as the Note inspector: its panel image
+/// with the blue title bar, the title in unispace, other text in Yuri like the Settings panel, Moonscraper's white
+/// input boxes, and dark teal buttons.
 /// </summary>
 public static class DuetSkin
 {
@@ -22,13 +23,17 @@ public static class DuetSkin
 
     public const int FontSize = 15;    // As the Settings panel
 
-    // Moonscraper's panels and inspectors use unispace bold, but its own import is a fixed size font (32 pixels), which
-    // IMGUI can't scale. This copy of it is imported as a dynamic font so it can be drawn at any size.
+    // Copies of Moonscraper's own art. Its unispace bold is imported at a fixed size (32 pixels), which IMGUI can't
+    // scale, so the copy is imported as a dynamic font. The panel and box images keep Moonscraper's slicing.
     const string FontResource = "Collab/Collab Font";
+    const string TextFontResource = "Collab/Collab Text Font";
+    const string PanelResource = "Collab/Collab Panel";
+    const string BoxResource = "Collab/Collab Box";
+    static readonly RectOffset PanelBorderSlices = new RectOffset(3, 4, 28, 4);    // As its sprite: title bar on top
+    const int TitleBarHeight = 28;
 
     static GUISkin s_skin;
     static GUIStyle s_swatch;
-    static GUIStyle s_header;
     static Font s_font;
 
     public static GUISkin skin
@@ -52,27 +57,6 @@ public static class DuetSkin
         }
     }
 
-    // The window's name in a small box at the top middle, as the Settings panel's "< Settings >". Call inside the window.
-    public static void DrawHeader(string title, float windowWidth)
-    {
-        if (string.IsNullOrEmpty(title))
-            return;
-
-        if (s_header == null)
-        {
-            s_header = new GUIStyle(skin.label);
-            s_header.normal.background = Rounded(Button, PanelBorder, 1, 4);
-            s_header.border = new RectOffset(5, 5, 5, 5);
-            s_header.alignment = TextAnchor.MiddleCenter;
-            s_header.padding = new RectOffset(14, 14, 1, 1);
-        }
-
-        GUIContent content = new GUIContent(title);
-        Vector2 size = s_header.CalcSize(content);
-        float width = Mathf.Min(size.x, windowWidth - 12);
-        GUI.Label(new Rect((windowWidth - width) / 2, 5, width, size.y), content, s_header);
-    }
-
     // A plain color box for the color picker, tinted by GUI.backgroundColor. White outline when picked.
     public static GUIStyle swatch
     {
@@ -94,26 +78,38 @@ public static class DuetSkin
     {
         GUISkin made = Object.Instantiate(GUI.skin);
         made.name = "Collab Mode";
-        Font moonscraperFont = font;
-        if (moonscraperFont != null)
-            made.font = moonscraperFont;
+        Font textFont = Resources.Load<Font>(TextFontResource);
+        if (textFont != null)
+            made.font = textFont;
 
         GUIStyle window = made.window;
-        window.normal.background = window.onNormal.background = Rounded(Panel, PanelBorder, 3, 7);
+        Texture2D panel = Resources.Load<Texture2D>(PanelResource);
+        if (panel != null)
+        {
+            window.normal.background = window.onNormal.background = panel;
+            window.border = PanelBorderSlices;
+        }
+        else
+        {
+            window.normal.background = window.onNormal.background = Rounded(Panel, PanelBorder, 3, 7);
+            window.border = new RectOffset(10, 10, 10, 10);
+        }
         window.normal.textColor = window.onNormal.textColor = Color.white;
-        window.border = new RectOffset(10, 10, 10, 10);
-        window.padding = new RectOffset(10, 10, 32, 10);
-        window.font = made.font;
-        window.fontSize = FontSize;
+        window.padding = new RectOffset(8, 8, TitleBarHeight + 6, 8);
+        if (font != null)
+            window.font = font;
+        window.fontSize = FontSize + 1;
         window.fontStyle = FontStyle.Normal;
         window.alignment = TextAnchor.UpperCenter;
-        window.contentOffset = new Vector2(0, -20);
+        // The title is placed from the top of the contents, so this lifts it into the middle of the title bar
+        window.contentOffset = new Vector2(0, -(TitleBarHeight + 6) + (TitleBarHeight - (FontSize + 5)) / 2);
 
         foreach (GUIStyle text in new[] { made.label, made.toggle })
         {
             text.normal.textColor = text.hover.textColor = text.active.textColor = Color.white;
             text.onNormal.textColor = text.onHover.textColor = text.onActive.textColor = Color.white;
             text.fontSize = FontSize;
+            text.wordWrap = true;
         }
 
         GUIStyle button = made.button;
@@ -126,13 +122,15 @@ public static class DuetSkin
         button.onNormal.textColor = button.onHover.textColor = button.onActive.textColor = Color.white;
         button.border = new RectOffset(5, 5, 5, 5);
         button.fontSize = FontSize;
+        button.wordWrap = true;     // A long name goes onto two lines rather than past the window's edge
 
+        Texture2D box = Resources.Load<Texture2D>(BoxResource);
         foreach (GUIStyle field in new[] { made.textField, made.textArea })
         {
-            field.normal.background = field.hover.background = field.focused.background = field.active.background = Rounded(Field, FieldBorder, 1, 2);
+            field.normal.background = field.hover.background = field.focused.background = field.active.background = box != null ? box : Rounded(Field, FieldBorder, 1, 2);
             field.normal.textColor = field.hover.textColor = field.focused.textColor = field.active.textColor = Color.black;
-            field.border = new RectOffset(3, 3, 3, 3);
-            field.padding = new RectOffset(5, 5, 3, 3);
+            field.border = box != null ? new RectOffset(7, 7, 7, 7) : new RectOffset(3, 3, 3, 3);
+            field.padding = new RectOffset(6, 6, 5, 5);
             field.fontSize = FontSize;
         }
         made.settings.cursorColor = Color.black;

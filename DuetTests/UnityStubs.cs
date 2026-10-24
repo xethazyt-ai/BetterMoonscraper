@@ -103,6 +103,8 @@ namespace UnityEngine
         public static void BeginHorizontal() { }
         public static void EndHorizontal() { }
         public static GUILayoutOption Width(float width) { return new GUILayoutOption(); }
+        public static GUILayoutOption MinWidth(float width) { return new GUILayoutOption(); }
+        public static GUILayoutOption ExpandWidth(bool expand) { return new GUILayoutOption(); }
     }
     public static class PlayerPrefs
     {

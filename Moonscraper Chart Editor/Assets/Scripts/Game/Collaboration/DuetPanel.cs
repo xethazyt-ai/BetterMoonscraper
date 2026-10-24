@@ -600,7 +600,7 @@ public class DuetPanel : MonoBehaviour
                 m_session.isLocked = locked;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Room size: " + m_session.maxUsers, GUILayout.Width(110));
+            GUILayout.Label("Room size: " + m_session.maxUsers, GUILayout.Width(130));
             float size = GUILayout.HorizontalSlider(m_session.maxUsers, 2, DuetRooms.MaxMembers);
             m_session.maxUsers = Mathf.RoundToInt(size);
             GUILayout.EndHorizontal();
@@ -701,7 +701,7 @@ public class DuetPanel : MonoBehaviour
         for (int i = 0; i < DuetPresence.ColorCount; ++i)
         {
             GUI.backgroundColor = DuetPresence.GetColor(i);
-            if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", DuetSkin.swatch, GUILayout.Width(36)) && i != m_color)
+            if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", DuetSkin.swatch, GUILayout.MinWidth(16), GUILayout.ExpandWidth(true)) && i != m_color)
                 SetColor(i);
         }
         GUI.backgroundColor = background;
@@ -722,7 +722,7 @@ public class DuetPanel : MonoBehaviour
         if (rainbow)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Speed " + DuetPresence.RainbowSpeed(m_color), GUILayout.Width(70));
+            GUILayout.Label("Speed " + DuetPresence.RainbowSpeed(m_color), GUILayout.Width(85));
             int speed = Mathf.RoundToInt(GUILayout.HorizontalSlider(DuetPresence.RainbowSpeed(m_color), 1, DuetPresence.MaxRainbowSpeed));
             GUILayout.EndHorizontal();
             if (speed != DuetPresence.RainbowSpeed(m_color))
