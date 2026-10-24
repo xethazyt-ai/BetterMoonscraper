@@ -133,6 +133,14 @@ public class DuetSession
     // Hosting: when each connection that hasn't said hello yet arrived. Anyone can open a connection, so ones that
     // never join are dropped, and only a few may wait at once.
     string m_joinCode;
+    string m_joinPassword;
+    string m_password;
+
+    // Hosting: who the host removed, or who got the code or password wrong too often, by IP or Epic ID. They can't
+    // come back for the rest of the session.
+    readonly HashSet<string> m_banned = new HashSet<string>();
+    readonly Dictionary<string, int> m_wrongAttempts = new Dictionary<string, int>();
+    const int MaxWrongAttempts = 5;
 
     readonly Dictionary<IDuetLink, double> m_waitingSince = new Dictionary<IDuetLink, double>();
     const double HelloTimeoutSeconds = 30;
@@ -173,11 +181,14 @@ public class DuetSession
     }
 
     // Hosts on a port that others connect to directly by address
-    public static DuetSession Host(IDuetSongHost song, string username, int port)
+    // Hosts on a port that others connect to directly by address. Anyone who can reach the port could try to join,
+    // so joiners need the password.
+    public static DuetSession Host(IDuetSongHost song, string username, int port, string password)
     {
         DuetListener listener = new DuetListener(port);
         DuetSession session = Host(song, username, listener, "Hosting on port " + listener.port);
         session.port = listener.port;
+        session.m_password = password;
         return session;
     }
 
@@ -191,10 +202,11 @@ public class DuetSession
         return session;
     }
 
-    public static DuetSession Join(IDuetSongHost song, string username, string address, int port)
+    public static DuetSession Join(IDuetSongHost song, string username, string address, int port, string password)
     {
         DuetSession session = Join(song, username, new DuetTcpConnector(address, port), "Connecting to " + address + ":" + port);
         session.port = port;
+        session.m_joinPassword = password;
         return session;
     }
 
@@ -568,13 +580,26 @@ public class DuetSession
                 return;
             }
 
-            // Anyone using Epic's services can find a room and connect to it, so only those with the code get in
-            string code = m_listener.roomCode;
-            if (code != null && DuetRooms.NormalizeCode(DuetJson.GetString(message, "room", string.Empty)) != code)
+            if (m_banned.Contains(client.peerKey))
             {
-                client.Send(Message("rejected", "reason", "Wrong room code."));
-                client.CloseAfterSending("Wrong room code");
-                Log("Someone tried to join without the right room code");
+                Reject(client, "You can't join this session again.", "Turned away someone the host removed");
+                return;
+            }
+
+            // Anyone using Epic's services can find a room and connect to it, so only those with the code get in.
+            // And anyone who can reach a direct IP session's port needs its password.
+            string code = m_listener.roomCode;
+            bool wrongCode = code != null && DuetRooms.NormalizeCode(DuetJson.GetString(message, "room", string.Empty)) != code;
+            bool wrongPassword = !string.IsNullOrEmpty(m_password) && DuetJson.GetString(message, "password", string.Empty) != m_password;
+            if (wrongCode || wrongPassword)
+            {
+                int attempts;
+                m_wrongAttempts.TryGetValue(client.peerKey, out attempts);
+                m_wrongAttempts[client.peerKey] = ++attempts;
+                if (attempts >= MaxWrongAttempts)
+                    m_banned.Add(client.peerKey);
+
+                Reject(client, wrongCode ? "Wrong room code." : "Wrong password.", "Someone tried to join with the wrong " + (wrongCode ? "room code" : "password"));
                 return;
             }
 
@@ -702,6 +727,37 @@ public class DuetSession
         }
     }
 
+    void Reject(IDuetLink client, string reason, string logLine)
+    {
+        client.Send(Message("rejected", "reason", reason));
+        client.CloseAfterSending(reason);
+        Log(logLine);
+    }
+
+    // Hosting: removes someone from the session. They can't rejoin until the host starts a new one.
+    public void Kick(int userId)
+    {
+        if (role != Role.Host || userId == HostUserId)
+            return;
+
+        foreach (IDuetLink client in m_joinedClients)
+        {
+            if (client.id == userId)
+            {
+                string name = UserName(userId);
+                m_banned.Add(client.peerKey);
+                Reject(client, "The host removed you from the session.", name + " was removed by the host");
+
+                // Gone straight away for everyone, rather than once their connection finishes closing
+                m_joinedClients.Remove(client);
+                users.RemoveAll(u => u.id == userId);
+                presences.Remove(userId);
+                BroadcastUsers();
+                return;
+            }
+        }
+    }
+
     void RelayChat(IDuetLink client, Dictionary<string, object> message)
     {
         string text = CleanChat(DuetJson.GetString(message, "text", string.Empty));
@@ -799,6 +855,8 @@ public class DuetSession
             Dictionary<string, object> hello = Message("hello", "protocol", (double)ProtocolVersion, "name", m_username);
             if (m_joinCode != null)
                 hello["room"] = m_joinCode;
+            if (m_joinPassword != null)
+                hello["password"] = m_joinPassword;
             m_host.Send(hello);
             Log("Connected, waiting for the host's chart");
         }

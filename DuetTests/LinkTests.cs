@@ -144,6 +144,7 @@ public static class LinkTests
 
         public int id { get; set; }
         public string remoteAddress { get { return "an online room"; } }
+        public string peerKey { get { return "packet-" + GetHashCode(); } }
         public bool isClosed { get; private set; }
         public string closeReason { get; private set; }
         public long queuedBytes { get { return 0; } }

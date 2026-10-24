@@ -18,8 +18,8 @@ public static class PresenceTests
         hostSong.song.metaData.artist = "DragonForce";
         hostSong.song.iniProperties = SongIniFunctions.SongIniFromString("delay = 0\nloading_phrase = Hold on tight");
 
-        DuetSession host = DuetSession.Host(hostSong, "Robert", 0);
-        DuetSession alice = DuetSession.Join(aliceSong, "Alex", "127.0.0.1", host.port);
+        DuetSession host = DuetSession.Host(hostSong, "Robert", 0, "pw");
+        DuetSession alice = DuetSession.Join(aliceSong, "Alex", "127.0.0.1", host.port, "pw");
         List<DuetSession> all = new List<DuetSession> { host, alice };
 
         // The host is already pointing somewhere before Alex joins
@@ -38,7 +38,7 @@ public static class PresenceTests
         Expect("a joiner knows their own user id", alice.localUserId == 1);
 
         // Alex moves; the host and a second joiner see it
-        DuetSession bob = DuetSession.Join(bobSong, "Sam", "127.0.0.1", host.port);
+        DuetSession bob = DuetSession.Join(bobSong, "Sam", "127.0.0.1", host.port, "pw");
         all.Add(bob);
         SessionTests.Pump(all, () => bob.state == DuetSession.State.Connected && bob.users.Count == 3 && alice.users.Count == 3);
 
@@ -85,14 +85,14 @@ public static class PresenceTests
         Expect("a joiner that got the chart says so", alice.hasReceivedSong && bob.hasReceivedSong);
 
         SessionTests.TestSong carolSong = new SessionTests.TestSong("presence-carol");
-        DuetSession carol = DuetSession.Join(carolSong, "Casey", "127.0.0.1", host.port);
+        DuetSession carol = DuetSession.Join(carolSong, "Casey", "127.0.0.1", host.port, "pw");
         all.Add(carol);
         SessionTests.Pump(all, () => carol.state == DuetSession.State.Connected && carol.chat.Count == 2);
         Expect("someone joining later sees what was said", carol.chat.Count == 2 && carol.chat[0].name == "Alex" && carol.chat[1].text == "sure");
 
         // A locked session turns new people away but keeps everyone already in
         host.isLocked = true;
-        DuetSession dave = DuetSession.Join(new SessionTests.TestSong("presence-dave"), "Dev", "127.0.0.1", host.port);
+        DuetSession dave = DuetSession.Join(new SessionTests.TestSong("presence-dave"), "Dev", "127.0.0.1", host.port, "pw");
         all.Add(dave);
         SessionTests.Pump(all, () => !dave.isActive);
         Expect("nobody new can join a locked session", !dave.isActive && dave.endReason.Contains("locked") && carol.isActive && host.users.Count == 3);
@@ -100,7 +100,7 @@ public static class PresenceTests
 
         // A full session turns new people away too
         host.maxUsers = 3;
-        DuetSession erin = DuetSession.Join(new SessionTests.TestSong("presence-erin"), "Erin", "127.0.0.1", host.port);
+        DuetSession erin = DuetSession.Join(new SessionTests.TestSong("presence-erin"), "Erin", "127.0.0.1", host.port, "pw");
         all.Add(erin);
         SessionTests.Pump(all, () => !erin.isActive);
         Expect("nobody new can join a full session", !erin.isActive && erin.endReason.Contains("full") && host.users.Count == 3);
@@ -108,6 +108,22 @@ public static class PresenceTests
         Expect("the room size stays between 2 and 64", host.maxUsers == 2);
         host.maxUsers = 100;
         Expect("the room size can't go past 64", host.maxUsers == 64);
+
+        // A direct IP session needs its password
+        DuetSession frank = DuetSession.Join(new SessionTests.TestSong("presence-frank"), "Frank", "127.0.0.1", host.port, "nope");
+        all.Add(frank);
+        SessionTests.Pump(all, () => !frank.isActive);
+        Expect("the wrong password is turned away", !frank.isActive && frank.endReason.Contains("Wrong password") && host.users.Count == 3);
+
+        // The host can remove someone, who then can't come back. Last, since everyone here shares one address.
+        int casey = host.users.Find(u => u.name == "Casey").id;
+        host.Kick(casey);
+        SessionTests.Pump(all, () => !carol.isActive);
+        Expect("the host can remove someone", !carol.isActive && carol.endReason.Contains("removed") && host.users.Count == 2 && !host.users.Exists(u => u.id == casey));
+        DuetSession again = DuetSession.Join(new SessionTests.TestSong("presence-again"), "Casey", "127.0.0.1", host.port, "pw");
+        all.Add(again);
+        SessionTests.Pump(all, () => !again.isActive);
+        Expect("someone removed can't rejoin", !again.isActive && again.endReason.Contains("can't join"));
 
         host.Leave();
         SessionTests.Pump(all, () => !bob.isActive && !carol.isActive);

@@ -39,7 +39,7 @@ public static class FileTests
         SessionTests.TestSong hostSong = new SessionTests.TestSong("files-host");
         hostSong.sharedFiles = found;
 
-        DuetSession host = DuetSession.Host(hostSong, "Robert", 0);
+        DuetSession host = DuetSession.Host(hostSong, "Robert", 0, "pw");
         SessionTests.TestSong joinerSong = Join(host, "files-joiner-1");
         Expect("every file arrives byte for byte", joinerSong.receivedFiles != null && SameFiles(found, joinerSong.receivedFiles));
 
@@ -76,7 +76,7 @@ public static class FileTests
     static SessionTests.TestSong Join(DuetSession host, string name, out DuetSession joiner)
     {
         SessionTests.TestSong song = new SessionTests.TestSong(name);
-        DuetSession session = DuetSession.Join(song, name, "127.0.0.1", host.port);
+        DuetSession session = DuetSession.Join(song, name, "127.0.0.1", host.port, "pw");
         joiner = session;
         SessionTests.Pump(new List<DuetSession> { host, session }, () => song.receivedFiles != null);
         return song;

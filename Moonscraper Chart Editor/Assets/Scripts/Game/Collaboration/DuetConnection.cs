@@ -24,6 +24,7 @@ public class DuetConnection : IDuetLink
 
     public int id { get; set; }
     public string remoteAddress { get; private set; }
+    public string peerKey { get; private set; }
     public bool isClosed { get { return m_closed; } }
     public string closeReason { get; private set; }
     public long queuedBytes { get { return Interlocked.Read(ref m_queuedBytes); } }
@@ -34,7 +35,9 @@ public class DuetConnection : IDuetLink
         m_client = client;
         m_client.NoDelay = true;
         m_stream = client.GetStream();
-        remoteAddress = client.Client.RemoteEndPoint != null ? client.Client.RemoteEndPoint.ToString() : "unknown";
+        IPEndPoint endPoint = client.Client.RemoteEndPoint as IPEndPoint;
+        remoteAddress = endPoint != null ? endPoint.ToString() : "unknown";
+        peerKey = endPoint != null ? endPoint.Address.ToString() : remoteAddress;
 
         new Thread(ReadLoop) { IsBackground = true, Name = "Duet read" }.Start();
         new Thread(WriteLoop) { IsBackground = true, Name = "Duet write" }.Start();

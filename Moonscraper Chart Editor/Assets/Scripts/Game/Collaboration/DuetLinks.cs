@@ -14,6 +14,7 @@ public interface IDuetLink
 {
     int id { get; set; }
     string remoteAddress { get; }
+    string peerKey { get; }     // Who's on the other end, the same each time they connect: their IP, or their Epic ID
     bool isClosed { get; }
     string closeReason { get; }
 

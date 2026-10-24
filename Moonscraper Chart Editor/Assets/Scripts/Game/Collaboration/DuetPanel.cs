@@ -94,6 +94,8 @@ public class DuetPanel : MonoBehaviour
     string m_username;
     string m_portText;
     string m_address;
+    string m_password = string.Empty;
+    const int MinPasswordLength = 4;   // Direct IP only. Not saved, except to rejoin after closing Moonscraper.
     string m_roomCodeInput = string.Empty;
     bool m_useRooms = true;
     bool m_sessionIsRoom = false;
@@ -144,11 +146,12 @@ public class DuetPanel : MonoBehaviour
             m_useRooms = true;
             m_roomCodeInput = saved[1];
         }
-        else if (saved.Length == 3 && saved[0] == "ip")
+        else if (saved.Length == 4 && saved[0] == "ip")
         {
             m_useRooms = false;
             m_address = saved[1];
             m_portText = saved[2];
+            m_password = saved[3];
         }
         else
         {
@@ -202,7 +205,7 @@ public class DuetPanel : MonoBehaviour
                 if (m_session.isActive && m_session.state == DuetSession.State.Connected && !m_rejoinSaved)
                 {
                     m_rejoinSaved = true;
-                    PlayerPrefs.SetString(PrefRejoin, m_sessionIsRoom ? "room\n" + m_joinedCode : "ip\n" + m_address + "\n" + m_session.port);
+                    PlayerPrefs.SetString(PrefRejoin, m_sessionIsRoom ? "room\n" + m_joinedCode : "ip\n" + m_address + "\n" + m_session.port + "\n" + m_password);
                     PlayerPrefs.Save();
                 }
                 else if (!m_session.isActive && m_rejoinSaved)
@@ -370,6 +373,8 @@ public class DuetPanel : MonoBehaviour
             GUILayout.Space(8);
             GUILayout.Label("Port");
             m_portText = GUILayout.TextField(m_portText, 5);
+            GUILayout.Label("Password (the host picks it, joiners type the same)");
+            m_password = GUILayout.PasswordField(m_password, '*', 64);
         }
 
         GUILayout.Space(8);
@@ -461,8 +466,17 @@ public class DuetPanel : MonoBehaviour
         GUILayout.Space(8);
         string count = m_session.users.Count + "/" + m_session.maxUsers;
         GUILayout.Label("In this session (" + count + "):" + (m_session.isLocked ? "  (locked)" : string.Empty));
+        int kick = -1;
         foreach (DuetUser user in m_session.users)
+        {
+            GUILayout.BeginHorizontal();
             GUILayout.Label("    " + user.name + (user.id == 0 ? " (host)" : string.Empty));
+            if (isHost && user.id != 0 && GUILayout.Button("Kick", GUILayout.Width(50)))
+                kick = user.id;
+            GUILayout.EndHorizontal();
+        }
+        if (kick >= 0)
+            m_session.Kick(kick);   // After the loop, since kicking changes the list
 
         GUILayout.Space(8);
         DrawColorPicker();
@@ -590,6 +604,11 @@ public class DuetPanel : MonoBehaviour
             m_error = "The port must be a number from 1 to 65535.";
             return false;
         }
+        if (m_password.Length < MinPasswordLength)
+        {
+            m_error = "Direct IP needs a password of at least " + MinPasswordLength + " characters.";
+            return false;
+        }
         PlayerPrefs.SetInt(PrefPort, port);
         return true;
     }
@@ -609,7 +628,7 @@ public class DuetPanel : MonoBehaviour
 
         try
         {
-            m_session = DuetSession.Host(m_song, m_username, port);
+            m_session = DuetSession.Host(m_song, m_username, port, m_password);
             m_localAddresses = null;
         }
         catch (SocketException e)
@@ -652,7 +671,7 @@ public class DuetPanel : MonoBehaviour
         else
         {
             PlayerPrefs.SetString(PrefAddress, m_address);
-            m_session = DuetSession.Join(m_song, m_username, m_address, port);
+            m_session = DuetSession.Join(m_song, m_username, m_address, port, m_password);
         }
     }
 

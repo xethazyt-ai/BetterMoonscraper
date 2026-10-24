@@ -717,6 +717,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
         public int id { get; set; }
         public string remoteAddress { get { return "an online room"; } }
+        public string peerKey { get { return peer.ToString(); } }
         public bool isClosed { get; private set; }
         public string closeReason { get; private set; }
 

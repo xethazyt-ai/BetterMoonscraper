@@ -95,6 +95,7 @@ namespace UnityEngine
         public static void Label(string text, params GUILayoutOption[] options) { }
         public static float HorizontalSlider(float value, float left, float right) { return value; }
         public static string TextField(string text, int maxLength) { return text; }
+        public static string PasswordField(string text, char mask, int maxLength) { return text; }
         public static bool Button(string text, params GUILayoutOption[] options) { return false; }
         public static bool Toggle(bool value, string text, GUIStyle style, params GUILayoutOption[] options) { return value; }
         public static bool Toggle(bool value, string text, params GUILayoutOption[] options) { return value; }
