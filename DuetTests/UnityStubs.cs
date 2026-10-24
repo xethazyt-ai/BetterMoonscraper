@@ -85,7 +85,7 @@ namespace UnityEngine
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
     public class GUIStyle { }
     public class GUISkin { public GUIStyle button = new GUIStyle(); }
-    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static Color backgroundColor; public static void DragWindow() { } public static Rect ModalWindow(int id, Rect rect, WindowFunction func, string text) { return rect; } }
+    public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static Color backgroundColor; public static Color contentColor; public static void DragWindow() { } public static Rect ModalWindow(int id, Rect rect, WindowFunction func, string text) { return rect; } }
     public static class GUILayout
     {
         public static Rect Window(int id, Rect rect, GUI.WindowFunction func, string text) { return rect; }

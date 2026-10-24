@@ -560,7 +560,7 @@ public class DuetPanel : MonoBehaviour
                 GUILayout.Label("The host disconnected. Don't leave: you'll be reconnected as soon as they're back.");
                 break;
             default:
-                GUILayout.Label(isHost ? (m_sessionIsRoom ? "Hosting an online room" : "Hosting on port " + m_session.port) : "Joined. Edit number " + m_session.lastSeq);
+                GUILayout.Label(isHost ? (m_sessionIsRoom ? "Hosting an online room" : "Hosting on port " + m_session.port) : "Joined " + HostName() + "'s session");
                 break;
         }
 
@@ -609,8 +609,17 @@ public class DuetPanel : MonoBehaviour
         int kick = -1;
         foreach (DuetUser user in m_session.users)
         {
+            // In each person's own color, as on their cursor
+            DuetPresence presence;
+            Color content = GUI.contentColor;
+            if (user.id == m_session.localUserId)
+                GUI.contentColor = DuetPresence.GetColor(m_color);
+            else if (m_session.presences.TryGetValue(user.id, out presence))
+                GUI.contentColor = DuetPresence.GetColor(presence.color);
+
             GUILayout.BeginHorizontal();
             GUILayout.Label("    " + user.name + (user.id == 0 ? " (host)" : string.Empty));
+            GUI.contentColor = content;
             if (isHost && user.id != 0 && GUILayout.Button("Kick", GUILayout.Width(50)))
                 kick = user.id;
             GUILayout.EndHorizontal();
@@ -650,6 +659,12 @@ public class DuetPanel : MonoBehaviour
         bool waiting = !isHost && m_session.hostLostSeconds > 0 && m_session.state != DuetSession.State.Connected;
         if (GUILayout.Button(isHost ? "End session" : waiting ? "Stop waiting and leave" : "Leave session"))
             m_session.Leave();
+    }
+
+    string HostName()
+    {
+        DuetUser host = m_session.users.Find(u => u.id == 0);
+        return host != null ? host.name : "the host";
     }
 
     void SetColor(int color, bool updateHex = true)
