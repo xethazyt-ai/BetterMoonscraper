@@ -91,7 +91,6 @@ public class DuetPanel : MonoBehaviour
 
     bool m_visible = false;
     readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Window", new Rect(0, 0, 360, 10), new Vector2(280, 160), false, true);
-    bool m_windowPlaced = false;
 
     string m_username;
     string m_portText;
@@ -382,12 +381,7 @@ public class DuetPanel : MonoBehaviour
         float scale = GuiScale;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
 
-        if (!m_windowPlaced)
-        {
-            m_window.rect.x = Screen.width / scale - m_window.rect.width - 20;
-            m_window.rect.y = 60;
-            m_windowPlaced = true;
-        }
+        m_window.PlaceOnce(new Vector2(Screen.width / scale - m_window.rect.width - 20, 60));
 
         // Clicking anywhere outside the window gives keyboard input back to the editor
         if (Event.current.type == EventType.MouseDown && !m_window.rect.Contains(Event.current.mousePosition) && !DuetChat.IsPointerOver())

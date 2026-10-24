@@ -260,6 +260,8 @@ public class SongPropertiesPanelController : TabMenu
 
     public void OnIniInputValueChanged()
     {
+        // Keep the song's ini up to date while typing, so Collab Mode can send it to everyone straight away
+        UpdateIni();
         ChartEditor.isDirty = true;
     }
 

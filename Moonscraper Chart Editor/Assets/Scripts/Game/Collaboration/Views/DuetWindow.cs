@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// An IMGUI window that can be dragged by its title and resized by dragging any of its corners, like a Windows
-/// window. Its size is remembered between runs.
+/// window. Its size and position are remembered between runs (and across Moonscraper versions).
 /// </summary>
 public class DuetWindow
 {
@@ -23,6 +23,8 @@ public class DuetWindow
     Vector2 m_scroll;
     GUI.WindowFunction m_content;
     float m_scale = 1;
+    bool m_placed = false;
+    Vector2 m_savedPosition;
 
     // scrollWhenSized: once someone picks a height, scroll the contents if they don't fit
     public DuetWindow(int id, string prefKey, Rect initial, Vector2 minSize, bool fixedHeight, bool scrollWhenSized)
@@ -46,6 +48,19 @@ public class DuetWindow
     }
 
     public bool isResizing { get { return m_corner >= 0; } }
+    public bool isPlaced { get { return m_placed; } }
+
+    // Puts the window where it was last left, or at fallback the first time. Call before the first Draw.
+    public void PlaceOnce(Vector2 fallback)
+    {
+        if (m_placed)
+            return;
+
+        rect.x = PlayerPrefs.GetFloat(m_prefKey + ".X", fallback.x);
+        rect.y = PlayerPrefs.GetFloat(m_prefKey + ".Y", fallback.y);
+        m_savedPosition = rect.position;
+        m_placed = true;
+    }
 
     public void Draw(string title, GUI.WindowFunction content, float scale)
     {
@@ -66,6 +81,15 @@ public class DuetWindow
         // Keep it on screen and below Moonscraper's menu bar, however it was dragged or resized
         rect = DuetMenuCover.KeepOnScreen(rect, scale);
         DuetInputBlocker.Block(m_id, rect, scale);
+
+        // Remember where it was moved to once it's let go. Saved straight away, so a crash doesn't lose it.
+        if (m_placed && rect.position != m_savedPosition && !Input.GetMouseButton(0))
+        {
+            m_savedPosition = rect.position;
+            PlayerPrefs.SetFloat(m_prefKey + ".X", rect.x);
+            PlayerPrefs.SetFloat(m_prefKey + ".Y", rect.y);
+            PlayerPrefs.Save();
+        }
     }
 
     Vector2 MouseInGui()
@@ -80,6 +104,7 @@ public class DuetWindow
             m_corner = -1;
             PlayerPrefs.SetFloat(m_prefKey + ".Width", rect.width);
             PlayerPrefs.SetFloat(m_prefKey + ".Height", rect.height);
+            PlayerPrefs.Save();
             return;
         }
 

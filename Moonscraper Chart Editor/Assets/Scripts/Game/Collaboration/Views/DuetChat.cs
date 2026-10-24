@@ -22,9 +22,7 @@ public class DuetChat : MonoBehaviour
 
     ChartEditor m_editor;
     readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Chat", new Rect(0, 0, Width, Height), new Vector2(220, 150), true, false);
-    bool m_windowPlaced = false;
     bool m_hidden = false;     // Put away with the hide chat key (F11 unless rebound in Controls)
-    Vector2 m_savedPosition;
     Vector2 m_scroll;
     int m_seenChatCount = -1;
     string m_text = string.Empty;
@@ -125,13 +123,9 @@ public class DuetChat : MonoBehaviour
         float scale = DuetPanel.GuiScale;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
 
-        if (!m_windowPlaced)
-        {
-            m_window.rect.x = PlayerPrefs.GetFloat(PrefX, 20);
-            m_window.rect.y = PlayerPrefs.GetFloat(PrefY, Screen.height / scale - m_window.rect.height - 60);
-            m_savedPosition = m_window.rect.position;
-            m_windowPlaced = true;
-        }
+        // Older builds kept the chat's position under its own keys, so start from those
+        if (!m_window.isPlaced)
+            m_window.PlaceOnce(new Vector2(PlayerPrefs.GetFloat(PrefX, 20), PlayerPrefs.GetFloat(PrefY, Screen.height / scale - m_window.rect.height - 60)));
 
         // Clicking outside the window while writing stops writing
         if (m_writing && UnityEngine.Event.current.type == EventType.MouseDown && !m_window.rect.Contains(UnityEngine.Event.current.mousePosition))
@@ -141,15 +135,9 @@ public class DuetChat : MonoBehaviour
         if (DuetMenuCover.Covers(m_window.rect, scale))
             return;
 
-        m_window.Draw("Chat", DrawWindow, scale);
+        m_window.Draw("Chat", DrawWindow, scale);  // Remembers where it was put
 
-        // Keep it on screen, and remember where it was put
-        if (m_window.rect.position != m_savedPosition && !Input.GetMouseButton(0))
-        {
-            m_savedPosition = m_window.rect.position;
-            PlayerPrefs.SetFloat(PrefX, m_savedPosition.x);
-            PlayerPrefs.SetFloat(PrefY, m_savedPosition.y);
-        }
+    }
     }
 
     void DrawWindow(int id)
