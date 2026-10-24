@@ -19,7 +19,7 @@ public class DuetOverlay : MonoBehaviour
     DuetPresence m_localPresence;
     DuetGhostNotes m_ghostNotes;
     DuetHighlights m_highlights;
-    GroupSelect m_groupSelect;
+    CursorSelect m_cursorSelect;
     float m_nextSelectionCheck = 0;
     const float SelectionCheckSeconds = 0.2f;
 
@@ -39,15 +39,18 @@ public class DuetOverlay : MonoBehaviour
                 m_placeNotes.Add(placeNote);
         }
 
-        foreach (GroupSelect groupSelect in Resources.FindObjectsOfTypeAll<GroupSelect>())
+        // The cursor tool draws the select box. (Moonscraper's separate Group Select tool isn't used any more.)
+        foreach (CursorSelect cursorSelect in Resources.FindObjectsOfTypeAll<CursorSelect>())
         {
-            if (groupSelect.gameObject.scene.IsValid())
+            if (cursorSelect.gameObject.scene.IsValid())
             {
-                m_groupSelect = groupSelect;
+                m_cursorSelect = cursorSelect;
                 break;
             }
         }
-        m_highlights = new DuetHighlights(m_editor.assets.selectedHighlight, m_groupSelect);
+        m_highlights = m_cursorSelect != null
+            ? new DuetHighlights(m_editor.assets.selectedHighlight, m_cursorSelect.dragAreaRenderer, m_cursorSelect.dragAreaColor)
+            : new DuetHighlights(m_editor.assets.selectedHighlight, null, Color.clear);
 
         m_arrow = MakeArrowTexture(24, 34);
         m_marker = MakeMarkerTexture(32);
@@ -171,9 +174,9 @@ public class DuetOverlay : MonoBehaviour
         presence.difficulty = MenuBar.currentDifficulty.ToString();
         presence.isTyping = DuetChat.isTyping;
 
-        if (m_groupSelect != null && m_editor.currentState == ChartEditor.State.Editor)
+        if (m_cursorSelect != null && m_editor.currentState == ChartEditor.State.Editor)
         {
-            presence.hasDrag = m_groupSelect.TryGetDragArea(out presence.dragX1, out presence.dragTick1, out presence.dragX2, out presence.dragTick2, out presence.dragRemoving);
+            presence.hasDrag = m_cursorSelect.TryGetDragArea(out presence.dragX1, out presence.dragTick1, out presence.dragX2, out presence.dragTick2, out presence.dragRemoving);
         }
 
         Vector2? mouse = m_editor.services.mouseMonitorSystem.world2DPosition;

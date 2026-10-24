@@ -6,29 +6,30 @@ using MoonscraperChartEditor.Song;
 
 /// <summary>
 /// Other people's selections, drawn with the same yellow boxes Moonscraper puts around your own selected notes, and the
-/// box they're dragging with the select tool: green while selecting, red while deselecting (a Ctrl drag).
+/// box they're dragging with the cursor tool: blue while selecting, red while deselecting (a Ctrl drag).
 /// The same colors for everyone, like Moonscraper's own.
 /// </summary>
 public class DuetHighlights
 {
     const int MaxHighlights = 512;  // Drawn at once, across everyone. Only what's on screen counts.
 
-    // As Moonscraper's own select tool colors its box
-    static readonly Color SelectingColor = Color.green;
+    // As Moonscraper's cursor tool colors its own box
+    readonly Color m_selectingColor;
     static readonly Color DeselectingColor = Color.red;     // A Ctrl drag
 
     readonly GameObject m_highlightTemplate;
-    readonly GroupSelect m_groupSelect;
+    readonly SpriteRenderer m_dragTemplate;   // The cursor tool's own select box
     readonly Transform m_root;
     readonly List<GameObject> m_highlights = new List<GameObject>();
     readonly List<SpriteRenderer> m_dragBoxes = new List<SpriteRenderer>();
     int m_highlightsUsed = 0;
     int m_dragBoxesUsed = 0;
 
-    public DuetHighlights(GameObject highlightTemplate, GroupSelect groupSelect)
+    public DuetHighlights(GameObject highlightTemplate, SpriteRenderer dragTemplate, Color selectingColor)
     {
         m_highlightTemplate = highlightTemplate;
-        m_groupSelect = groupSelect;
+        m_dragTemplate = dragTemplate;
+        m_selectingColor = selectingColor;
         m_root = new GameObject("Duet Highlights").transform;
     }
 
@@ -71,7 +72,7 @@ public class DuetHighlights
     public void ShowDrag(DuetPresence presence)
     {
         ChartEditor editor = ChartEditor.Instance;
-        if (!presence.hasDrag || m_groupSelect == null || editor.currentSong == null)
+        if (!presence.hasDrag || m_dragTemplate == null || editor.currentSong == null)
             return;
 
         SpriteRenderer box = m_dragBoxesUsed < m_dragBoxes.Count ? m_dragBoxes[m_dragBoxesUsed] : AddDragBox();
@@ -79,15 +80,15 @@ public class DuetHighlights
         if (box == null)
             return;
 
-        // Placed the way the select tool places its own box
+        // Placed the way the cursor tool places its own box
         float y1 = editor.currentSong.TickToWorldYPosition(presence.dragTick1);
         float y2 = editor.currentSong.TickToWorldYPosition(presence.dragTick2);
         Transform transform = box.transform;
-        transform.localScale = new Vector3(Mathf.Abs(presence.dragX1 - presence.dragX2), Mathf.Abs(y1 - y2), m_groupSelect.transform.localScale.z);
-        transform.position = new Vector3((presence.dragX1 + presence.dragX2) / 2, (y1 + y2) / 2, m_groupSelect.transform.position.z);
+        transform.localScale = new Vector3(Mathf.Abs(presence.dragX1 - presence.dragX2), Mathf.Abs(y1 - y2), m_dragTemplate.transform.localScale.z);
+        transform.position = new Vector3((presence.dragX1 + presence.dragX2) / 2, (y1 + y2) / 2, m_dragTemplate.transform.position.z);
 
-        Color color = presence.dragRemoving ? DeselectingColor : SelectingColor;
-        color.a = m_groupSelect.GetComponent<SpriteRenderer>().color.a;
+        Color color = presence.dragRemoving ? DeselectingColor : m_selectingColor;
+        color.a = m_dragTemplate.color.a;
         box.color = color;
 
         if (!box.gameObject.activeSelf)
@@ -175,19 +176,15 @@ public class DuetHighlights
             highlight.SetActive(true);
     }
 
-    // A box that looks like the select tool's, without any of its scripts
+    // A box that looks like the cursor tool's, without any of its scripts
     SpriteRenderer AddDragBox()
     {
-        SpriteRenderer source = m_groupSelect.GetComponent<SpriteRenderer>();
-        if (source == null)
-        {
-            m_dragBoxes.Add(null);
-            return null;
-        }
+        SpriteRenderer source = m_dragTemplate;
 
+        // Kept out of the cursor tool, which is switched off while you use another tool
         GameObject go = new GameObject("Duet Drag Box");
-        go.transform.SetParent(m_groupSelect.transform.parent, false);
-        go.layer = m_groupSelect.gameObject.layer;
+        go.transform.SetParent(m_root, false);
+        go.layer = source.gameObject.layer;
 
         SpriteRenderer box = go.AddComponent<SpriteRenderer>();
         box.sprite = source.sprite;
