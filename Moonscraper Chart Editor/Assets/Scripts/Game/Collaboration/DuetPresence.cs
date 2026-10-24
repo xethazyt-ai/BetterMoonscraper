@@ -2,6 +2,7 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using MoonscraperChartEditor.Song;
 
 /// <summary>
 /// Where someone is in the song and what they're pointing at, sent many times a second so everyone can see each
@@ -29,6 +30,12 @@ public class DuetPresence
     public uint pointerTick;
 
     public List<Ghost> ghosts = new List<Ghost>();
+
+    // The box they're dragging with the select tool, corner to corner, if any. Removing is a Ctrl drag that deselects.
+    public bool hasDrag;
+    public float dragX1, dragX2;
+    public uint dragTick1, dragTick2;
+    public bool dragRemoving;
 
     public bool isTyping;   // Writing a chat message
 
@@ -105,6 +112,9 @@ public class DuetPresence
         if (hasPointer)
             json["pointer"] = new List<object> { (double)pointerX, (double)pointerTick };
 
+        if (hasDrag)
+            json["drag"] = new List<object> { (double)dragX1, (double)dragTick1, (double)dragX2, (double)dragTick2, dragRemoving };
+
         if (ghosts.Count > 0)
         {
             List<object> list = new List<object>();
@@ -137,6 +147,18 @@ public class DuetPresence
             presence.pointerTick = ToTick((double)pointer[1]);
         }
 
+        List<object> drag = DuetJson.GetArray(json, "drag");
+        if (drag != null && drag.Count >= 5 && drag[0] is double && drag[1] is double && drag[2] is double && drag[3] is double && drag[4] is bool
+            && IsSensibleX((double)drag[0]) && IsSensibleX((double)drag[2]))
+        {
+            presence.hasDrag = true;
+            presence.dragX1 = (float)(double)drag[0];
+            presence.dragTick1 = ToTick((double)drag[1]);
+            presence.dragX2 = (float)(double)drag[2];
+            presence.dragTick2 = ToTick((double)drag[3]);
+            presence.dragRemoving = (bool)drag[4];
+        }
+
         List<object> ghosts = DuetJson.GetArray(json, "ghosts");
         if (ghosts != null)
         {
@@ -158,22 +180,127 @@ public class DuetPresence
     public const int MaxGhosts = 64;
     public const int MaxRawNote = 6;    // The highest note number any instrument uses (Guitar Hero Live's open note)
 
-    static string Short(string text)
+    // The highway is a few units wide, so anything far outside it is nonsense that could upset the drawing
+    static bool IsSensibleX(double x)
+    {
+        return !double.IsNaN(x) && x > -1000 && x < 1000;
+    }
+
+    public static string Short(string text)
     {
         return text.Length > 32 ? text.Substring(0, 32) : text;
     }
 
-    static int ToSmallInt(double value)
+    public static int ToSmallInt(double value)
     {
         if (double.IsNaN(value) || value < 0 || value > ushort.MaxValue)
             return 0;
         return (int)value;
     }
 
-    static uint ToTick(double value)
+    public static uint ToTick(double value)
     {
         if (value <= 0 || double.IsNaN(value))
             return 0;
         return value >= uint.MaxValue ? uint.MaxValue : (uint)value;
+    }
+}
+
+/// <summary>
+/// What someone has selected, so everyone sees it highlighted the way Moonscraper highlights their own selection.
+/// Sent only when it changes. Each object is named by its type, tick and note (or drum roll kind), which is enough to
+/// find it in everyone's copy of the chart.
+/// </summary>
+public class DuetSelection
+{
+    public struct Item
+    {
+        public int classID;     // SongObject.ID
+        public uint tick;
+        public int extra;       // The note's number, or the drum roll's kind
+    }
+
+    public const int MaxItems = 4096;   // Each one is looked up and drawn, so there's a limit
+    const int MaxClassID = (int)SongObject.ID.DrumRoll;
+    const int MaxExtra = 255;
+
+    public string instrument = string.Empty;
+    public string difficulty = string.Empty;
+    public List<Item> items = new List<Item>();
+
+    public static bool IsChartObject(int classID)
+    {
+        return classID == (int)SongObject.ID.Note || classID == (int)SongObject.ID.Starpower
+            || classID == (int)SongObject.ID.ChartEvent || classID == (int)SongObject.ID.DrumRoll;
+    }
+
+    public static Item ItemFor(SongObject songObject)
+    {
+        Item item = new Item { classID = songObject.classID, tick = songObject.tick };
+        Note note = songObject as Note;
+        DrumRoll drumRoll = songObject as DrumRoll;
+        if (note != null)
+            item.extra = note.rawNote;
+        else if (drumRoll != null)
+            item.extra = (int)drumRoll.type;
+        return item;
+    }
+
+    public bool Matches(Item item, SongObject songObject)
+    {
+        if (songObject.classID != item.classID || songObject.tick != item.tick)
+            return false;
+
+        Note note = songObject as Note;
+        DrumRoll drumRoll = songObject as DrumRoll;
+        if (note != null)
+            return note.rawNote == item.extra;
+        if (drumRoll != null)
+            return (int)drumRoll.type == item.extra;
+        return true;
+    }
+
+    public Dictionary<string, object> ToJson()
+    {
+        List<object> flat = new List<object>(items.Count * 3);
+        foreach (Item item in items)
+        {
+            flat.Add((double)item.classID);
+            flat.Add((double)item.tick);
+            flat.Add((double)item.extra);
+        }
+
+        return new Dictionary<string, object>
+        {
+            { "type", "selection" },
+            { "instrument", instrument },
+            { "difficulty", difficulty },
+            { "items", flat },
+        };
+    }
+
+    public static DuetSelection FromJson(Dictionary<string, object> json)
+    {
+        DuetSelection selection = new DuetSelection();
+        selection.instrument = DuetPresence.Short(DuetJson.GetString(json, "instrument", string.Empty));
+        selection.difficulty = DuetPresence.Short(DuetJson.GetString(json, "difficulty", string.Empty));
+
+        List<object> flat = DuetJson.GetArray(json, "items");
+        if (flat == null)
+            return selection;
+
+        for (int i = 0; i + 2 < flat.Count && selection.items.Count < MaxItems; i += 3)
+        {
+            if (!(flat[i] is double) || !(flat[i + 1] is double) || !(flat[i + 2] is double))
+                continue;
+
+            double classID = (double)flat[i], extra = (double)flat[i + 2];
+            if (!(classID >= 0 && classID <= MaxClassID) || !(extra >= 0 && extra <= MaxExtra))
+                continue;
+
+            selection.items.Add(new Item { classID = (int)classID, tick = DuetPresence.ToTick((double)flat[i + 1]), extra = (int)extra });
+        }
+
+        return selection;
     }
 }

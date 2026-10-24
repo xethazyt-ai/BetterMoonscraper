@@ -69,6 +69,17 @@ public class GroupSelect : ToolObject {
     }
 
     bool userDraggingSelectArea = false;
+
+    // The box being dragged right now, for Duet Mode to show everyone else. Corners are a world x and a tick.
+    public bool TryGetDragArea(out float x1, out uint tick1, out float x2, out uint tick2, out bool removing)
+    {
+        x1 = initWorld2DPos.x;
+        x2 = endWorld2DPos.x;
+        tick1 = startWorld2DChartPos;
+        tick2 = endWorld2DChartPos;
+        removing = !addMode;
+        return userDraggingSelectArea && isActiveAndEnabled;
+    }
     protected override void Update()
     {
         if (prevChart != editor.currentChart || prevSong != editor.currentSong)

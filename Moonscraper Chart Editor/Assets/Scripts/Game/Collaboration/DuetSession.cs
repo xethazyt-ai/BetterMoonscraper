@@ -68,7 +68,7 @@ public class DuetChatLine
 /// </summary>
 public class DuetSession
 {
-    public const int ProtocolVersion = 3;  // 2: song files sent on join. 3: joiners prove they have the room code
+    public const int ProtocolVersion = 4;  // 2: song files sent on join. 3: joiners prove they have the room code. 4: selections
     public const int DefaultPort = 47820;
     const int HostUserId = 0;
     const int MaxLogLines = 8;
@@ -107,6 +107,9 @@ public class DuetSession
 
     // Everyone else's latest presence, by user id
     public Dictionary<int, DuetPresence> presences { get; private set; }
+
+    // What everyone else has selected, by user id
+    public Dictionary<int, DuetSelection> selections { get; private set; }
 
     // The chat, oldest first, and how many lines have ever arrived (so the chat box can tell when there's a new one)
     public List<DuetChatLine> chat { get; private set; }
@@ -162,12 +165,26 @@ public class DuetSession
     readonly System.Diagnostics.Stopwatch m_clock = System.Diagnostics.Stopwatch.StartNew();
     DuetPresence m_localPresence;
     string m_lastSentPresence;
+    DuetSelection m_localSelection;
+    string m_lastSentSelection;
     double m_lastPresenceTime = double.MinValue;
     Dictionary<string, string> m_knownSongInfo;  // As last sent or received; null until the song settles
     double m_lastSongInfoTime = double.MinValue;
 
     public int unacknowledgedEditCount { get { return m_unacknowledgedEdits.Count; } }
     public bool isActive { get { return state != State.Ended; } }
+
+    // A line on what the session is doing, for the Duet log
+    public string Describe()
+    {
+        int sending = 0;
+        foreach (DuetFileSender sender in m_fileSenders.Values)
+        {
+            if (!sender.isDone)
+                ++sending;
+        }
+        return role + ", " + state + ", " + users.Count + " in the session, edit " + lastSeq + (sending > 0 ? ", sending files to " + sending : string.Empty);
+    }
 
     DuetSession(IDuetSongHost song, string username, Role role)
     {
@@ -177,6 +194,7 @@ public class DuetSession
         users = new List<DuetUser>();
         log = new List<string>();
         presences = new Dictionary<int, DuetPresence>();
+        selections = new Dictionary<int, DuetSelection>();
         chat = new List<DuetChatLine>();
     }
 
@@ -308,6 +326,32 @@ public class DuetSession
         m_localPresence = presence;
         if (state == State.Connected)
             SendPresenceIfChanged();
+    }
+
+    // Call whenever the local user's selection might have changed. Sent only when it has.
+    public void SetLocalSelection(DuetSelection selection)
+    {
+        if (state != State.Connected || selection == null)
+            return;
+
+        Dictionary<string, object> message = selection.ToJson();
+        string json = DuetJson.Write(message);
+        if (json == m_lastSentSelection)
+            return;
+
+        m_localSelection = selection;
+        m_lastSentSelection = json;
+
+        if (role == Role.Host)
+        {
+            message["user"] = (double)HostUserId;
+            foreach (IDuetLink client in m_joinedClients)
+                client.Send(message);
+        }
+        else
+        {
+            m_host.Send(message);
+        }
     }
 
     void SendPresenceIfChanged()
@@ -514,6 +558,7 @@ public class DuetSession
                     DuetUser user = users.Find(u => u.id == client.id);
                     users.Remove(user);
                     presences.Remove(client.id);
+                    selections.Remove(client.id);
                     Log((user != null ? user.name : "Someone") + " left (" + client.closeReason + ")");
                     BroadcastUsers();
                 }
@@ -533,12 +578,14 @@ public class DuetSession
 
             // Cursors and chat keep going even while the song is busy
             string type = DuetJson.GetString(message, "type");
-            if (type == "presence" || type == "chat")
+            if (type == "presence" || type == "selection" || type == "chat")
             {
                 if (m_joinedClients.Contains(client))
                 {
                     if (type == "presence")
                         RelayPresence(client, message);
+                    else if (type == "selection")
+                        RelaySelection(client, message);
                     else
                         RelayChat(client, message);
                 }
@@ -656,6 +703,18 @@ public class DuetSession
                 other["user"] = (double)pair.Key;
                 client.Send(other);
             }
+            if (m_localSelection != null)
+            {
+                Dictionary<string, object> hostSelection = m_localSelection.ToJson();
+                hostSelection["user"] = (double)HostUserId;
+                client.Send(hostSelection);
+            }
+            foreach (KeyValuePair<int, DuetSelection> pair in selections)
+            {
+                Dictionary<string, object> other = pair.Value.ToJson();
+                other["user"] = (double)pair.Key;
+                client.Send(other);
+            }
 
             // And what's been said lately
             for (int i = Math.Max(0, chat.Count - ChatHistoryForJoiners); i < chat.Count; ++i)
@@ -752,6 +811,7 @@ public class DuetSession
                 m_joinedClients.Remove(client);
                 users.RemoveAll(u => u.id == userId);
                 presences.Remove(userId);
+                selections.Remove(userId);
                 BroadcastUsers();
                 return;
             }
@@ -767,6 +827,21 @@ public class DuetSession
         string name = UserName(client.id);
         AddChat(client.id, name, text);
         BroadcastChat(client.id, name, text, client);
+    }
+
+    void RelaySelection(IDuetLink client, Dictionary<string, object> message)
+    {
+        // Passed on as it was understood, so nobody can send the others more than the limit
+        DuetSelection selection = DuetSelection.FromJson(message);
+        selections[client.id] = selection;
+
+        Dictionary<string, object> relayed = selection.ToJson();
+        relayed["user"] = (double)client.id;
+        foreach (IDuetLink other in m_joinedClients)
+        {
+            if (other != client)
+                other.Send(relayed);
+        }
     }
 
     void RelayPresence(IDuetLink client, Dictionary<string, object> message)
@@ -881,6 +956,15 @@ public class DuetSession
                 int userId = (int)DuetJson.GetNumber(message, "user", -1);
                 if (userId >= 0 && userId != localUserId && users.Exists(u => u.id == userId))
                     presences[userId] = DuetPresence.FromJson(message);
+                continue;
+            }
+            if (type == "selection")
+            {
+                // Kept even before the user list says who this is, since a selection is only sent when it changes.
+                // The user list clears out anyone who isn't there.
+                int userId = (int)DuetJson.GetNumber(message, "user", -1);
+                if (userId >= 0 && userId != localUserId && (selections.ContainsKey(userId) || selections.Count < DuetRooms.MaxMembers))
+                    selections[userId] = DuetSelection.FromJson(message);
                 continue;
             }
             if (type == "chat")
@@ -1093,8 +1177,16 @@ public class DuetSession
             if (!users.Exists(u => u.id == id))
                 gone.Add(id);
         }
+        foreach (int id in selections.Keys)
+        {
+            if (!users.Exists(u => u.id == id) && !gone.Contains(id))
+                gone.Add(id);
+        }
         foreach (int id in gone)
+        {
             presences.Remove(id);
+            selections.Remove(id);
+        }
     }
 
     #endregion
