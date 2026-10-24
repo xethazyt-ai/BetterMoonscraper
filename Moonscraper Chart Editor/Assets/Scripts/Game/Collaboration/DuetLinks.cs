@@ -75,6 +75,10 @@ public static class DuetKeepAlive
     public static Action tick;      // Set by the online rooms provider. Always called under tickLock.
     public static readonly object tickLock = new object();
 
+    // How many Windows pop-ups are holding up Moonscraper right now
+    public static int blockedCount { get { return s_blockedCount; } }
+    static volatile int s_blockedCount = 0;
+
     // Wrap a call that blocks the main thread: using (DuetKeepAlive.WhileBlocked()) { ... }
     public static IDisposable WhileBlocked()
     {
@@ -87,6 +91,7 @@ public static class DuetKeepAlive
 
         public Scope()
         {
+            ++s_blockedCount;
             if (tick != null)
                 new Thread(Loop) { IsBackground = true, Name = "Duet keep alive" }.Start();
         }
@@ -117,6 +122,9 @@ public static class DuetKeepAlive
 
         public void Dispose()
         {
+            if (m_done)
+                return;
+            --s_blockedCount;
             m_done = true;
             lock (tickLock) { }     // Wait for a tick in progress, so the main thread has it to itself again
         }

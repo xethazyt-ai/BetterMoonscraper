@@ -66,6 +66,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     readonly HashSet<string> m_waitingPeers = new HashSet<string>();
     const int MaxWaitingPeers = 32;
 
+    // EOS calls back from inside Tick, and DuetKeepAlive ticks from a background thread while a Windows pop-up is
+    // open. Callbacks wait here and run on the main thread once it's free, so nothing in Duet runs on two threads.
+    readonly Queue<Action> m_deferred = new Queue<Action>();
+    int m_mainThreadId;
+
     public string status
     {
         get
@@ -120,7 +125,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         }
 
         CreateDeviceIdOptions deviceOptions = new CreateDeviceIdOptions { DeviceModel = SystemInfo.deviceModel };
-        m_platform.GetConnectInterface().CreateDeviceId(ref deviceOptions, null, OnDeviceIdCreated);
+        m_platform.GetConnectInterface().CreateDeviceId(ref deviceOptions, null, (ref CreateDeviceIdCallbackInfo info) =>
+        {
+            Result result = info.ResultCode;
+            OnMainThread(() => OnDeviceIdCreated(result));
+        });
     }
 
     string StartPlatform()
@@ -145,7 +154,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         m_sdkInitialized = true;
 
         LoggingInterface.SetLogLevel(LogCategory.AllCategories, LogLevel.Warning);
-        LoggingInterface.SetCallback((ref LogMessage message) => Debug.LogWarning("EOS [" + message.Category + "] " + message.Message));
+        LoggingInterface.SetCallback((ref LogMessage message) =>
+        {
+            try { Debug.LogWarning("EOS [" + message.Category + "] " + message.Message); }
+            catch (Exception) { }   // Never let an error escape into EOS's own code
+        });
 
         string cacheDirectory = Path.Combine(Application.temporaryCachePath, "EOS");
         Directory.CreateDirectory(cacheDirectory);
@@ -169,12 +182,15 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         return null;
     }
 
-    void OnDeviceIdCreated(ref CreateDeviceIdCallbackInfo info)
+    void OnDeviceIdCreated(Result result)
     {
+        if (m_platform == null)
+            return;
+
         // DuplicateNotAllowed means this PC already has a device ID, which is fine
-        if (info.ResultCode != Result.Success && info.ResultCode != Result.DuplicateNotAllowed)
+        if (result != Result.Success && result != Result.DuplicateNotAllowed)
         {
-            Fail("couldn't create a device ID (" + info.ResultCode + ")");
+            Fail("couldn't create a device ID (" + result + ")");
             return;
         }
 
@@ -183,18 +199,26 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             Credentials = new Credentials { Type = ExternalCredentialType.DeviceidAccessToken, Token = null },
             UserLoginInfo = new UserLoginInfo { DisplayName = "Moonscraper Duet" },
         };
-        m_platform.GetConnectInterface().Login(ref loginOptions, null, OnLoggedIn);
+        m_platform.GetConnectInterface().Login(ref loginOptions, null, (ref LoginCallbackInfo info) =>
+        {
+            Result loginResult = info.ResultCode;
+            ProductUserId user = info.LocalUserId;
+            OnMainThread(() => OnLoggedIn(loginResult, user));
+        });
     }
 
-    void OnLoggedIn(ref LoginCallbackInfo info)
+    void OnLoggedIn(Result result, ProductUserId user)
     {
-        if (info.ResultCode != Result.Success)
+        if (m_platform == null)
+            return;
+
+        if (result != Result.Success || user == null)
         {
-            Fail("couldn't sign in (" + info.ResultCode + ")");
+            Fail("couldn't sign in (" + result + ")");
             return;
         }
 
-        m_localUser = info.LocalUserId;
+        m_localUser = user;
         m_socket = new SocketId { SocketName = SocketName };
 
         P2PInterface p2p = m_platform.GetP2PInterface();
@@ -279,12 +303,15 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         }
 
         m_localUser = null;
+        lock (m_deferred)
+            m_deferred.Clear();
     }
 
     // Not OnApplicationQuit: Unity sends that as soon as the window's X is clicked, before Moonscraper has asked whether
     // to quit, so cancelling would still close the room. Application.quitting only comes once it's really quitting.
     void Awake()
     {
+        m_mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
         Application.quitting += Shutdown;
     }
 
@@ -303,14 +330,55 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             return;
 
         TickPlatform();
+        RunDeferred();
 
-        if (m_phase != Phase.Ready)
+        if (m_platform == null || m_phase != Phase.Ready)
             return;
 
         ReceivePackets();
 
         foreach (Link link in new List<Link>(m_links.Values))
             link.Flush();
+    }
+
+    void OnMainThread(Action action)
+    {
+        if (System.Threading.Thread.CurrentThread.ManagedThreadId == m_mainThreadId)
+        {
+            RunSafely(action);
+            return;
+        }
+
+        lock (m_deferred)
+            m_deferred.Enqueue(action);
+    }
+
+    void RunDeferred()
+    {
+        while (true)
+        {
+            Action action;
+            lock (m_deferred)
+            {
+                if (m_deferred.Count <= 0)
+                    return;
+                action = m_deferred.Dequeue();
+            }
+            RunSafely(action);
+        }
+    }
+
+    // An error thrown back into EOS's native code would close Moonscraper on the spot, so log it instead
+    static void RunSafely(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("Duet EOS: " + e);
+        }
     }
 
     void TickPlatform()
@@ -352,10 +420,15 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
     void OnConnectionRequest(ref OnIncomingConnectionRequestInfo info)
     {
-        if (info.SocketId == null || info.SocketId.Value.SocketName != SocketName)
+        if (info.SocketId == null || info.SocketId.Value.SocketName != SocketName || info.RemoteUserId == null)
             return;
 
-        FindOrAcceptLink(info.RemoteUserId);
+        ProductUserId peer = info.RemoteUserId;
+        OnMainThread(() =>
+        {
+            if (m_platform != null && m_localUser != null)
+                FindOrAcceptLink(peer);
+        });
     }
 
     // A known peer's link, or a new one for someone joining the room being hosted. Null for anyone else.
@@ -391,9 +464,17 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
     void OnConnectionClosed(ref OnRemoteConnectionClosedInfo info)
     {
-        Link link;
-        if (m_links.TryGetValue(info.RemoteUserId.ToString(), out link))
-            link.Close(DescribeClose(info.Reason));
+        if (info.RemoteUserId == null)
+            return;
+
+        string peer = info.RemoteUserId.ToString();
+        ConnectionClosedReason reason = info.Reason;
+        OnMainThread(() =>
+        {
+            Link link;
+            if (m_links.TryGetValue(peer, out link))
+                link.Close(DescribeClose(reason));
+        });
     }
 
     bool IsRoomMember(ProductUserId peer)
@@ -421,22 +502,34 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
     void OnLobbyMemberStatus(ref LobbyMemberStatusReceivedCallbackInfo info)
     {
-        if (info.CurrentStatus == LobbyMemberStatus.Joined && info.TargetUserId != null && m_waitingPeers.Contains(info.TargetUserId.ToString())
-            && m_room != null && info.LobbyId == m_room.lobbyId)
+        ProductUserId target = info.TargetUserId;
+        string lobbyId = info.LobbyId;
+        LobbyMemberStatus status = info.CurrentStatus;
+        OnMainThread(() => OnLobbyMemberStatus(target, lobbyId, status));
+    }
+
+    void OnLobbyMemberStatus(ProductUserId target, string lobbyId, LobbyMemberStatus status)
+    {
+        if (m_platform == null || m_localUser == null)
+            return;
+
+        string targetKey = target != null ? target.ToString() : null;
+        if (status == LobbyMemberStatus.Joined && targetKey != null && m_waitingPeers.Contains(targetKey)
+            && m_room != null && lobbyId == m_room.lobbyId)
         {
-            FindOrAcceptLink(info.TargetUserId);
+            FindOrAcceptLink(target);
             return;
         }
 
-        bool gone = info.CurrentStatus == LobbyMemberStatus.Left || info.CurrentStatus == LobbyMemberStatus.Disconnected
-            || info.CurrentStatus == LobbyMemberStatus.Kicked || info.CurrentStatus == LobbyMemberStatus.Closed;
+        bool gone = status == LobbyMemberStatus.Left || status == LobbyMemberStatus.Disconnected
+            || status == LobbyMemberStatus.Kicked || status == LobbyMemberStatus.Closed;
         if (!gone)
             return;
 
         foreach (Link link in new List<Link>(m_links.Values))
         {
-            bool roomClosed = info.CurrentStatus == LobbyMemberStatus.Closed && link.lobbyId == info.LobbyId;
-            if (roomClosed || link.peer.ToString() == info.TargetUserId.ToString())
+            bool roomClosed = status == LobbyMemberStatus.Closed && link.lobbyId == lobbyId;
+            if (roomClosed || (targetKey != null && link.peer.ToString() == targetKey))
                 link.Close(roomClosed ? "The host closed the room" : "Left the room");
         }
     }
@@ -551,10 +644,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             LobbyId = LobbyIdFor(code),
             EnableJoinById = true,
         };
-        m_platform.GetLobbyInterface().CreateLobby(ref options, room, (ref CreateLobbyCallbackInfo info) =>
+        m_platform.GetLobbyInterface().CreateLobby(ref options, null, (ref CreateLobbyCallbackInfo info) =>
         {
-            Room callbackRoom = (Room)info.ClientData;
-            callbackRoom.OnCreated(info.ResultCode, code, info.LobbyId);
+            Result result = info.ResultCode;
+            string lobbyId = info.LobbyId;
+            OnMainThread(() => room.OnCreated(result, code, lobbyId));
         });
     }
 
@@ -586,28 +680,40 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         search.Find(ref findOptions, null, (ref LobbySearchFindCallbackInfo info) =>
         {
             Result found = info.ResultCode;
-            LobbyDetails details = null;
-            if (found == Result.Success)
-            {
-                LobbySearchGetSearchResultCountOptions countOptions = new LobbySearchGetSearchResultCountOptions();
-                if (search.GetSearchResultCount(ref countOptions) > 0)
-                {
-                    LobbySearchCopySearchResultByIndexOptions copyOptions = new LobbySearchCopySearchResultByIndexOptions { LobbyIndex = 0 };
-                    search.CopySearchResultByIndex(ref copyOptions, out details);
-                }
-            }
-            search.Release();
-
-            if (details == null)
-            {
-                join.OnFailed(found == Result.Success || found == Result.NotFound
-                    ? "No room with the code " + join.code + ". Check the code, or ask the host to make a new room."
-                    : "Couldn't search for the room (" + found + ")");
-                return;
-            }
-
-            JoinLobby(join, details);
+            OnMainThread(() => OnLobbyFound(join, search, found));
         });
+    }
+
+    void OnLobbyFound(Join join, LobbySearch search, Result found)
+    {
+        if (m_platform == null || m_localUser == null)
+        {
+            search.Release();
+            join.OnFailed("Online rooms shut down");
+            return;
+        }
+
+        LobbyDetails details = null;
+        if (found == Result.Success)
+        {
+            LobbySearchGetSearchResultCountOptions countOptions = new LobbySearchGetSearchResultCountOptions();
+            if (search.GetSearchResultCount(ref countOptions) > 0)
+            {
+                LobbySearchCopySearchResultByIndexOptions copyOptions = new LobbySearchCopySearchResultByIndexOptions { LobbyIndex = 0 };
+                search.CopySearchResultByIndex(ref copyOptions, out details);
+            }
+        }
+        search.Release();
+
+        if (details == null)
+        {
+            join.OnFailed(found == Result.Success || found == Result.NotFound
+                ? "No room with the code " + join.code + ". Check the code, or ask the host to make a new room."
+                : "Couldn't search for the room (" + found + ")");
+            return;
+        }
+
+        JoinLobby(join, details);
     }
 
     void JoinLobby(Join join, LobbyDetails details)
@@ -618,39 +724,52 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         JoinLobbyOptions options = new JoinLobbyOptions { LobbyDetailsHandle = details, LocalUserId = m_localUser, PresenceEnabled = false };
         m_platform.GetLobbyInterface().JoinLobby(ref options, null, (ref JoinLobbyCallbackInfo info) =>
         {
-            details.Release();
-
-            if (join.isCancelled)
-            {
-                if (info.ResultCode == Result.Success)
-                {
-                    LeaveLobbyOptions leaveOptions = new LeaveLobbyOptions { LocalUserId = m_localUser, LobbyId = info.LobbyId };
-                    m_platform.GetLobbyInterface().LeaveLobby(ref leaveOptions, null, (ref LeaveLobbyCallbackInfo leaveInfo) => { });
-                }
-                return;
-            }
-
-            if (info.ResultCode != Result.Success)
-            {
-                join.OnFailed(info.ResultCode == Result.LobbyTooManyPlayers ? "That room is full." : "Couldn't join the room (" + info.ResultCode + ")");
-                return;
-            }
-
-            if (owner == null || !owner.IsValid() || owner.ToString() == m_localUser.ToString())
-            {
-                join.OnFailed("That room's host can't be reached. Ask them to make a new room.");
-                return;
-            }
-
-            Link existing;
-            if (m_links.TryGetValue(owner.ToString(), out existing))
-                existing.Close("Replaced");
-
-            Accept(owner);
-            Link link = new Link(this, owner, info.LobbyId);
-            m_links[owner.ToString()] = link;
-            join.OnJoined(link);
+            Result result = info.ResultCode;
+            string lobbyId = info.LobbyId;
+            OnMainThread(() => OnLobbyJoined(join, details, owner, result, lobbyId));
         });
+    }
+
+    void OnLobbyJoined(Join join, LobbyDetails details, ProductUserId owner, Result result, string lobbyId)
+    {
+        details.Release();
+
+        if (m_platform == null || m_localUser == null)
+        {
+            join.OnFailed("Online rooms shut down");
+            return;
+        }
+
+        if (join.isCancelled)
+        {
+            if (result == Result.Success)
+            {
+                LeaveLobbyOptions leaveOptions = new LeaveLobbyOptions { LocalUserId = m_localUser, LobbyId = lobbyId };
+                m_platform.GetLobbyInterface().LeaveLobby(ref leaveOptions, null, (ref LeaveLobbyCallbackInfo leaveInfo) => { });
+            }
+            return;
+        }
+
+        if (result != Result.Success)
+        {
+            join.OnFailed(result == Result.LobbyTooManyPlayers ? "That room is full." : "Couldn't join the room (" + result + ")");
+            return;
+        }
+
+        if (owner == null || !owner.IsValid() || owner.ToString() == m_localUser.ToString())
+        {
+            join.OnFailed("That room's host can't be reached. Ask them to make a new room.");
+            return;
+        }
+
+        Link existing;
+        if (m_links.TryGetValue(owner.ToString(), out existing))
+            existing.Close("Replaced");
+
+        Accept(owner);
+        Link link = new Link(this, owner, lobbyId);
+        m_links[owner.ToString()] = link;
+        join.OnJoined(link);
     }
 
     #endregion
