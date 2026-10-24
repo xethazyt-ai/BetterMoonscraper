@@ -330,6 +330,7 @@ public class DuetOverlay : MonoBehaviour
         Font font = DuetSkin.font;     // Moonscraper's own
         if (font != null)
             style.font = font;
+        style.fontSize = DuetSkin.FontSize;
         style.normal.background = background;
         style.fontStyle = FontStyle.Bold;
         style.padding = new RectOffset(5, 5, 2, 2);

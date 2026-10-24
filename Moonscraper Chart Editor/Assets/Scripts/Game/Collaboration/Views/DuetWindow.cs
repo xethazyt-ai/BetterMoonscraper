@@ -22,6 +22,7 @@ public class DuetWindow
     Vector2 m_startMouse;
     Vector2 m_scroll;
     GUI.WindowFunction m_content;
+    string m_title;
     float m_scale = 1;
 
     // scrollWhenSized: once someone picks a height, scroll the contents if they don't fit
@@ -54,13 +55,14 @@ public class DuetWindow
             UpdateResize();
 
         m_content = content;
+        m_title = title;
         rect = DuetMenuCover.KeepOnScreen(rect, scale);
         GUISkin oldSkin = GUI.skin;
         GUI.skin = DuetSkin.skin;   // Moonscraper's look. The window keeps the skin it was opened with.
         if (m_fixedHeight)
-            rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width), GUILayout.Height(rect.height));
+            rect = GUILayout.Window(m_id, rect, DrawContent, string.Empty, GUILayout.Width(rect.width), GUILayout.Height(rect.height));
         else
-            rect = GUILayout.Window(m_id, rect, DrawContent, title, GUILayout.Width(rect.width));
+            rect = GUILayout.Window(m_id, rect, DrawContent, string.Empty, GUILayout.Width(rect.width));
         GUI.skin = oldSkin;
 
         // Keep it on screen and below Moonscraper's menu bar, however it was dragged or resized
@@ -141,6 +143,8 @@ public class DuetWindow
                 }
             }
         }
+
+        DuetSkin.DrawHeader(m_title, width);
 
         if (m_fixedHeight && m_scrollWhenSized)
         {

@@ -20,9 +20,16 @@ public static class DuetSkin
     static readonly Color Thumb = new Color32(185, 185, 185, 255);
     static readonly Color ScrollTrack = new Color32(0, 24, 40, 255);
 
-    const string FontName = "unispace bold";   // Moonscraper's panels and inspectors use it
+    public const int FontSize = 15;    // As the Settings panel
+
+    // Moonscraper's panels and inspectors use unispace bold, but its own import is a fixed size font (32 pixels), which
+    // IMGUI can't scale. This copy of it is imported as a dynamic font so it can be drawn at any size.
+    const string FontResource = "Collab/Collab Font";
 
     static GUISkin s_skin;
+    static GUIStyle s_swatch;
+    static GUIStyle s_header;
+    static Font s_font;
 
     public static GUISkin skin
     {
@@ -34,17 +41,52 @@ public static class DuetSkin
         }
     }
 
-    // Moonscraper's font, if it's loaded (it always is once the editor is up)
+    // Moonscraper's font, at a size of our choosing
     public static Font font
     {
         get
         {
-            foreach (Font f in Resources.FindObjectsOfTypeAll<Font>())
+            if (s_font == null)
+                s_font = Resources.Load<Font>(FontResource);
+            return s_font;
+        }
+    }
+
+    // The window's name in a small box at the top middle, as the Settings panel's "< Settings >". Call inside the window.
+    public static void DrawHeader(string title, float windowWidth)
+    {
+        if (string.IsNullOrEmpty(title))
+            return;
+
+        if (s_header == null)
+        {
+            s_header = new GUIStyle(skin.label);
+            s_header.normal.background = Rounded(Button, PanelBorder, 1, 4);
+            s_header.border = new RectOffset(5, 5, 5, 5);
+            s_header.alignment = TextAnchor.MiddleCenter;
+            s_header.padding = new RectOffset(14, 14, 1, 1);
+        }
+
+        GUIContent content = new GUIContent(title);
+        Vector2 size = s_header.CalcSize(content);
+        float width = Mathf.Min(size.x, windowWidth - 12);
+        GUI.Label(new Rect((windowWidth - width) / 2, 5, width, size.y), content, s_header);
+    }
+
+    // A plain color box for the color picker, tinted by GUI.backgroundColor. White outline when picked.
+    public static GUIStyle swatch
+    {
+        get
+        {
+            if (s_swatch == null)
             {
-                if (f.name == FontName)
-                    return f;
+                s_swatch = new GUIStyle(skin.button);
+                s_swatch.normal.background = s_swatch.hover.background = s_swatch.active.background = Rounded(Color.white, new Color32(150, 150, 150, 255), 1, 4);
+                s_swatch.onNormal.background = s_swatch.onHover.background = s_swatch.onActive.background = Rounded(Color.white, Color.white, 3, 4);
+                s_swatch.normal.textColor = s_swatch.hover.textColor = s_swatch.active.textColor = Color.black;
+                s_swatch.onNormal.textColor = s_swatch.onHover.textColor = s_swatch.onActive.textColor = Color.black;
             }
-            return null;
+            return s_swatch;
         }
     }
 
@@ -60,8 +102,9 @@ public static class DuetSkin
         window.normal.background = window.onNormal.background = Rounded(Panel, PanelBorder, 3, 7);
         window.normal.textColor = window.onNormal.textColor = Color.white;
         window.border = new RectOffset(10, 10, 10, 10);
-        window.padding = new RectOffset(10, 10, 28, 10);
-        window.fontSize = 15;
+        window.padding = new RectOffset(10, 10, 32, 10);
+        window.font = made.font;
+        window.fontSize = FontSize;
         window.fontStyle = FontStyle.Normal;
         window.alignment = TextAnchor.UpperCenter;
         window.contentOffset = new Vector2(0, -20);
@@ -70,7 +113,7 @@ public static class DuetSkin
         {
             text.normal.textColor = text.hover.textColor = text.active.textColor = Color.white;
             text.onNormal.textColor = text.onHover.textColor = text.onActive.textColor = Color.white;
-            text.fontSize = 13;
+            text.fontSize = FontSize;
         }
 
         GUIStyle button = made.button;
@@ -82,7 +125,7 @@ public static class DuetSkin
         button.normal.textColor = button.hover.textColor = button.active.textColor = Color.white;
         button.onNormal.textColor = button.onHover.textColor = button.onActive.textColor = Color.white;
         button.border = new RectOffset(5, 5, 5, 5);
-        button.fontSize = 13;
+        button.fontSize = FontSize;
 
         foreach (GUIStyle field in new[] { made.textField, made.textArea })
         {
@@ -90,7 +133,7 @@ public static class DuetSkin
             field.normal.textColor = field.hover.textColor = field.focused.textColor = field.active.textColor = Color.black;
             field.border = new RectOffset(3, 3, 3, 3);
             field.padding = new RectOffset(5, 5, 3, 3);
-            field.fontSize = 13;
+            field.fontSize = FontSize;
         }
         made.settings.cursorColor = Color.black;
         made.settings.selectionColor = new Color32(17, 129, 220, 120);

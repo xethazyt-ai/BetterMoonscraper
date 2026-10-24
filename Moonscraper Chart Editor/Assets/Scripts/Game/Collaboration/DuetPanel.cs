@@ -701,7 +701,7 @@ public class DuetPanel : MonoBehaviour
         for (int i = 0; i < DuetPresence.ColorCount; ++i)
         {
             GUI.backgroundColor = DuetPresence.GetColor(i);
-            if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", GUI.skin.button, GUILayout.Width(36)) && i != m_color)
+            if (GUILayout.Toggle(i == m_color, i == m_color ? "*" : " ", DuetSkin.swatch, GUILayout.Width(36)) && i != m_color)
                 SetColor(i);
         }
         GUI.backgroundColor = background;
@@ -712,9 +712,9 @@ public class DuetPanel : MonoBehaviour
         bool rainbow = DuetPresence.IsRainbow(m_color);
         GUILayout.BeginHorizontal();
         GUI.backgroundColor = custom ? DuetPresence.GetColor(m_color) : background;
-        m_showCustomColor = GUILayout.Toggle(m_showCustomColor, custom ? "* Custom color" : "Custom color", GUI.skin.button);
+        m_showCustomColor = GUILayout.Toggle(m_showCustomColor, custom ? "* Custom color" : "Custom color", custom ? DuetSkin.swatch : GUI.skin.button);
         GUI.backgroundColor = rainbow ? DuetPresence.GetColor(m_color) : background;
-        if (GUILayout.Toggle(rainbow, rainbow ? "* Rainbow" : "Rainbow", GUI.skin.button) && !rainbow)
+        if (GUILayout.Toggle(rainbow, rainbow ? "* Rainbow" : "Rainbow", rainbow ? DuetSkin.swatch : GUI.skin.button) && !rainbow)
             SetColor(DuetPresence.MakeRainbow(m_rainbowSpeed));
         GUI.backgroundColor = background;
         GUILayout.EndHorizontal();
