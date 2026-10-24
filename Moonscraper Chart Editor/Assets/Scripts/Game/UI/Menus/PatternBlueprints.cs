@@ -60,6 +60,8 @@ public class PatternBlueprints : MonoBehaviour
     bool m_pendingSave = false;
     int m_pendingDelete = -1;
     int m_pendingSelect = -1;
+    bool m_pasteRequested = false;
+    bool m_showHelp = false;
 
     public static bool isTyping { get; private set; }
 
@@ -110,6 +112,35 @@ public class PatternBlueprints : MonoBehaviour
     {
         if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprints))
             Toggle();
+
+        if (m_pasteRequested)
+        {
+            m_pasteRequested = false;
+            if (m_selected >= 0 && m_selected < m_file.blueprints.Count)
+                PasteAtStrikeline(m_file.blueprints[m_selected]);
+        }
+    }
+
+    void PasteAtStrikeline(Blueprint blueprint)
+    {
+        if (m_editor.currentState != ChartEditor.State.Editor)
+        {
+            m_status = "Stop playing first, then paste.";
+            return;
+        }
+
+        ClipboardObjectController clipboard = ClipboardObjectController.instance ? ClipboardObjectController.instance : FindObjectOfType<ClipboardObjectController>();
+        if (!clipboard)
+        {
+            m_status = "Couldn't find Moonscraper's paste tool. Use Copy, then Ctrl+V.";
+            return;
+        }
+
+        if (!CopyToClipboard(blueprint))
+            return;
+
+        clipboard.PasteAtStrikeline();
+        m_status = "Pasted " + blueprint.notes.Count + (blueprint.notes.Count == 1 ? " note" : " notes") + " at the strikeline. Ctrl+Z undoes it.";
     }
 
     public void Toggle()
@@ -187,7 +218,14 @@ public class PatternBlueprints : MonoBehaviour
 
     void DrawWindow(int id)
     {
-        GUILayout.Label("Select notes, name the pattern, then save it. Pick a saved pattern to put it back, at any step.");
+        m_showHelp = GUILayout.Toggle(m_showHelp, m_showHelp ? "Hide how it works" : "How it works", "button");
+        if (m_showHelp)
+        {
+            GUILayout.Label("1. Select the notes of a pattern (drag a box with the cursor tool).");
+            GUILayout.Label("2. Type a name and press Save selection. It's kept on this computer for every Moonscraper version.");
+            GUILayout.Label("3. Scroll so the strikeline is where the pattern should start, pick the pattern and press Paste at strikeline. Ctrl+Z undoes it.");
+            GUILayout.Label("To change its speed: Twice as long spreads it out (16ths become 8ths), Half as long squeezes it. Or type a step (8, 12, 16, 24...) and press Fit.");
+        }
 
         GUILayout.BeginHorizontal();
         GUI.SetNextControlName("BlueprintName");
@@ -287,28 +325,13 @@ public class PatternBlueprints : MonoBehaviour
         if (!string.IsNullOrEmpty(blueprint.gameMode) && blueprint.gameMode != currentMode)
             GUILayout.Label("Made on a " + blueprint.gameMode + " chart, so lanes may not line up here.");
 
-        GUILayout.BeginHorizontal();
-        if (GUILayout.Button("Copy (then Ctrl+V)"))
+        if (GUILayout.Button("Paste at strikeline", GUILayout.Height(30)))
+            m_pasteRequested = true;    // Done in Update, away from drawing the window
+        if (GUILayout.Button("Copy instead (paste it yourself with Ctrl+V)"))
         {
             if (CopyToClipboard(blueprint))
-                m_status = "Copied. Paste it with Ctrl+V like any copied notes.";
+                m_status = "Copied. Ctrl+V pastes it where the mouse is, or at the strikeline.";
         }
-        if (GUILayout.Button("Paste at strikeline"))
-        {
-            if (CopyToClipboard(blueprint))
-            {
-                if (ClipboardObjectController.instance && m_editor.currentState == ChartEditor.State.Editor)
-                {
-                    ClipboardObjectController.instance.PasteAtCursor();
-                    m_status = "Pasted. Ctrl+Z undoes it.";
-                }
-                else
-                {
-                    m_status = "Copied. Paste it with Ctrl+V.";
-                }
-            }
-        }
-        GUILayout.EndHorizontal();
     }
 
     static string Describe(Blueprint blueprint, float scale)

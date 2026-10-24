@@ -55,10 +55,10 @@ public class ClipboardObjectController : Snapable {
         gameObject.SetActive(editorState == ChartEditor.State.Editor);
     }
 
-    // Pastes where Ctrl+V would: at the mouse over the highway, otherwise at the strikeline
-    public void PasteAtCursor()
+    // Pattern Blueprints paste here, where a pattern starts
+    public void PasteAtStrikeline()
     {
-        Paste(pastePos);
+        Paste(editor.currentSong.WorldPositionToSnappedTick(strikeline.position.y, Globals.gameSettings.step));
         groupSelectTool.reset();
     }
 

@@ -33,7 +33,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
         float y = top;
         Label(labelTemplate, content, "Formatting:", Left, y, 160);
-        MakeButton(buttonTemplate, content, "Fill from MusicBrainz", Right - 160, y, 160, onLookUp);
+        MakeButton(buttonTemplate, content, "Fill song info online", Right - 160, y, 160, onLookUp);
         y -= RowHeight + 2;
 
         float x = Left;

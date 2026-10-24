@@ -302,14 +302,14 @@ public class SongPropertiesPanelController : TabMenu
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
     }
 
-    // Fills in the album, year and genre from MusicBrainz, by the song's name and artist. Only empty fields are filled.
+    // Fills in the album, year and genre from MusicBrainz or iTunes, by the song's name and artist. Only empty fields are filled.
     void LookUpOnMusicBrainz()
     {
         if (lookingUp || !formatBar)
             return;
 
         lookingUp = true;
-        formatBar.SetStatus("Looking up \"" + RichTextIni.Strip(songName.text) + "\" on MusicBrainz...");
+        formatBar.SetStatus("Looking up \"" + RichTextIni.Strip(songName.text) + "\" online...");
         StartCoroutine(MusicBrainzLookup.Find(songName.text, artist.text, (result, error) =>
         {
             lookingUp = false;
@@ -324,7 +324,7 @@ public class SongPropertiesPanelController : TabMenu
             FillIfEmpty(year, result.year, "year", filled);
             FillIfEmpty(genre, result.genre, "genre", filled);
 
-            string found = "Found \"" + result.title + "\" by " + result.artist + ": album " + (result.album ?? "unknown")
+            string found = "Found \"" + result.title + "\" by " + result.artist + " on " + result.source + ": album " + (result.album ?? "unknown")
                 + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + ".";
             formatBar.SetStatus(found + (filled.Count > 0 ? " Filled in the " + string.Join(", ", filled.ToArray()) + "." : " Clear a field to have it filled in."));
         }));
