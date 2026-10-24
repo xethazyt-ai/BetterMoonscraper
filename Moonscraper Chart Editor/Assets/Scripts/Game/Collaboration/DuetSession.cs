@@ -753,7 +753,7 @@ public class DuetSession
             int protocol = (int)DuetJson.GetNumber(message, "protocol");
             if (protocol != ProtocolVersion)
             {
-                client.Send(Message("rejected", "reason", string.Format("Version mismatch: the host has Duet Mode version {0} and you have version {1}. You both need the same build.", ProtocolVersion, protocol)));
+                client.Send(Message("rejected", "reason", string.Format("Version mismatch: the host has Collab Mode version {0} and you have version {1}. You both need the same build.", ProtocolVersion, protocol)));
                 client.CloseAfterSending("Version mismatch");
                 return;
             }

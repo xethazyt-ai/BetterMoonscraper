@@ -8,7 +8,7 @@ using System.Threading;
 using UnityEngine;
 
 /// <summary>
-/// Keeps a copy of the log for each of the last few runs in the "Duet Logs" folder beside Unity's own log, which is
+/// Keeps a copy of the log for each of the last few runs in the "Collab Logs" folder beside Unity's own log, which is
 /// wiped every time Moonscraper starts. Also notes in it when Moonscraper stops responding, and what Duet was doing,
 /// so a crash or a freeze can be looked into afterwards.
 /// </summary>
@@ -29,7 +29,7 @@ public class DuetLogKeeper : MonoBehaviour
     float m_nextStatus = 0;
     string m_lastStatus;
 
-    public static string folder { get { return Path.Combine(Application.persistentDataPath, "Duet Logs"); } }
+    public static string folder { get { return Path.Combine(Application.persistentDataPath, "Collab Logs"); } }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void Register()

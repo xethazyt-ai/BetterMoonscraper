@@ -209,7 +209,7 @@ public class DuetPanel : MonoBehaviour
         bool locked = saved[offset + 1] == "1";
         string chart = saved[offset + 2];
 
-        m_editor.services.notificationBar.PushNotification("RESTARTING YOUR DUET SESSION", 3, true);
+        m_editor.services.notificationBar.PushNotification("RESTARTING YOUR COLLAB SESSION", 3, true);
         if (!string.IsNullOrEmpty(chart) && System.IO.File.Exists(chart))
         {
             yield return m_editor.StartCoroutine(m_editor._Load(chart));
@@ -278,7 +278,7 @@ public class DuetPanel : MonoBehaviour
             return;
         }
 
-        m_editor.services.notificationBar.PushNotification("REJOINING YOUR DUET SESSION", 3, true);
+        m_editor.services.notificationBar.PushNotification("REJOINING YOUR COLLAB SESSION", 3, true);
         StartJoining();
     }
 
@@ -390,7 +390,7 @@ public class DuetPanel : MonoBehaviour
         if (DuetMenuCover.Covers(m_window.rect, scale))
             return;
 
-        m_window.Draw("Duet Mode", DrawWindow, scale);
+        m_window.Draw("Collab Mode", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
     }
 
@@ -426,7 +426,7 @@ public class DuetPanel : MonoBehaviour
         GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, QuitPromptHeight - 34));
 
         if (inSession)
-            GUILayout.Label(isGuest ? "You'll leave the Duet session." : "Everyone in your Duet session will be disconnected.");
+            GUILayout.Label(isGuest ? "You'll leave the Collab session." : "Everyone in your Collab session will be disconnected.");
         if (askToSave)
             GUILayout.Label("You have unsaved changes. Do you want to save them first?");
 
@@ -576,7 +576,7 @@ public class DuetPanel : MonoBehaviour
                 GUILayout.Label("Room code:  " + code.Substring(0, 3) + " " + code.Substring(3));
                 if (GUILayout.Button("Copy room code"))
                     GUIUtility.systemCopyBuffer = code;
-                GUILayout.Label("Your buddy picks Room code in their Duet window, types this in and joins. Works from any network.");
+                GUILayout.Label("Your buddy picks Room code in their Collab window, types this in and joins. Works from any network.");
             }
         }
         else if (isHost)
