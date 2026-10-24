@@ -175,7 +175,7 @@ public class PatternBlueprints : MonoBehaviour
             m_window.PlaceOnce(new Vector2(Screen.width / scale - m_window.rect.width - 400, 60));
 
         // Clicking outside the window gives the keyboard back to the editor
-        if (Event.current.type == EventType.MouseDown && !m_window.rect.Contains(Event.current.mousePosition))
+        if (UnityEngine.Event.current.type == EventType.MouseDown && !m_window.rect.Contains(UnityEngine.Event.current.mousePosition))
             GUIUtility.keyboardControl = 0;
 
         if (DuetMenuCover.Covers(m_window.rect, scale))
