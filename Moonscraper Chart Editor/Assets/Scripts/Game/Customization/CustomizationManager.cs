@@ -15,7 +15,7 @@ public class CustomizationManager : MonoBehaviour
 
     Renderer m_highway;
     Texture m_defaultHighwayTexture;
-    BackgroundBlending m_background;
+    BackgroundBlending[] m_backgrounds = new BackgroundBlending[0];     // The editor scene has more than one
 
     CustomImage m_highwayImage;
     CustomImage m_backgroundImage;
@@ -55,7 +55,7 @@ public class CustomizationManager : MonoBehaviour
             m_highway = highwaySetup.fretboard;
             m_defaultHighwayTexture = m_highway.sharedMaterial.mainTexture;
         }
-        m_background = FindObjectOfType<BackgroundBlending>();
+        m_backgrounds = FindObjectsOfType<BackgroundBlending>();
 
         ApplyColorProfile();
         ApplyHighway();
@@ -139,7 +139,7 @@ public class CustomizationManager : MonoBehaviour
 
     public string ApplyBackground()
     {
-        if (!m_background)
+        if (m_backgrounds.Length == 0)
             return null;
 
         string error = null;
@@ -150,7 +150,11 @@ public class CustomizationManager : MonoBehaviour
         if (path != null)
             error = TryLoad(path, TextureWrapMode.Clamp, out m_backgroundImage);
 
-        m_background.SetBackgroundOverride(m_backgroundImage != null ? m_backgroundImage.texture : null);
+        foreach (BackgroundBlending background in m_backgrounds)
+        {
+            if (background)
+                background.SetBackgroundOverride(m_backgroundImage != null ? m_backgroundImage.texture : null);
+        }
         DisposeImage(ref old);
 
         return error;
