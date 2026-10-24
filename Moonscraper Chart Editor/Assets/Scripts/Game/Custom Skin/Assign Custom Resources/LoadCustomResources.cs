@@ -138,12 +138,28 @@ public class LoadCustomResources : MonoBehaviour {
 
         Debug.Log("Loading skin from directory " + skinDirectory);
 
-        if (Directory.Exists(skinDirectory))
+        // The note skin picked in Settings > Customize. Its files win over Custom Resources files with the same name.
+        string noteSkinDirectory = CustomizationPrefs.GetStored(CustomizationPrefs.Kind.NoteSkin);
+        if (noteSkinDirectory != null)
+            Debug.Log("Loading note skin from directory " + noteSkinDirectory);
+
+        if (Directory.Exists(skinDirectory) || noteSkinDirectory != null)
         {
             SetupResourcesToLoad();
 
             // Collect all the files
-            string[] filepaths = GetAllFiles(skinDirectory).ToArray();
+            List<string> allFiles = Directory.Exists(skinDirectory) ? GetAllFiles(skinDirectory) : new List<string>();
+            if (noteSkinDirectory != null)
+            {
+                List<string> noteSkinFiles = GetAllFiles(noteSkinDirectory);
+                HashSet<string> noteSkinKeys = new HashSet<string>();
+                foreach (string path in noteSkinFiles)
+                    noteSkinKeys.Add(Path.GetFileNameWithoutExtension(path));
+
+                allFiles.RemoveAll(path => noteSkinKeys.Contains(Path.GetFileNameWithoutExtension(path)));
+                allFiles.InsertRange(0, noteSkinFiles);
+            }
+            string[] filepaths = allFiles.ToArray();
             Dictionary<string, string> filepathsDictionary = new Dictionary<string, string>();
 
             int bgCount = 0;

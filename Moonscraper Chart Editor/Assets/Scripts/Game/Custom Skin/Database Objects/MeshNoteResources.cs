@@ -73,21 +73,21 @@ public class MeshNoteResources : ScriptableObject {
     {
         int[] paletteMap = LookupPaletteMapForGameMode(gameMode, laneInfo);
 
-        return strumColorPalette[paletteMap[noteIndex]];
+        return CustomNoteColors.Swap(gameMode, strumColorPalette[paletteMap[noteIndex]]);
     }
 
     public Material GetTapMaterial(Chart.GameMode gameMode, LaneInfo laneInfo, int noteIndex)
     {
         int[] paletteMap = LookupPaletteMapForGameMode(gameMode, laneInfo);
 
-        return tapColorPalette[paletteMap[noteIndex]];
+        return CustomNoteColors.Swap(gameMode, tapColorPalette[paletteMap[noteIndex]]);
     }
 
     public Material GetCymbalMaterial(Chart.GameMode gameMode, LaneInfo laneInfo, int noteIndex)
     {
         int[] paletteMap = LookupPaletteMapForGameMode(gameMode, laneInfo);
 
-        return cymbalColorPalette[paletteMap[noteIndex]];
+        return CustomNoteColors.Swap(gameMode, cymbalColorPalette[paletteMap[noteIndex]]);
     }
 
     public Material GetToolStrumMaterial(Chart.GameMode gameMode, LaneInfo laneInfo, int noteIndex)
