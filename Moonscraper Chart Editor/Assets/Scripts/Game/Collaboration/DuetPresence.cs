@@ -60,6 +60,38 @@ public class DuetPresence
 
     public static bool IsCustomColor(int color) { return (color & CustomColorFlag) != 0; }
 
+    // Or a rainbow, cycling through every color: this flag plus a speed from 1 (slow) to MaxRainbowSpeed (fast)
+    public const int RainbowFlag = 0x2000000;
+    public const int MaxRainbowSpeed = 20;
+    static readonly System.Diagnostics.Stopwatch s_rainbowClock = System.Diagnostics.Stopwatch.StartNew();
+
+    public static bool IsRainbow(int color) { return (color & RainbowFlag) != 0; }
+    public static int RainbowSpeed(int color) { return Mathf.Clamp(color & 0xFF, 1, MaxRainbowSpeed); }
+    public static int MakeRainbow(int speed) { return RainbowFlag | Mathf.Clamp(speed, 1, MaxRainbowSpeed); }
+
+    // Speed 1 takes 20 seconds to go round all the colors, the top speed one second
+    static Color RainbowNow(int speed)
+    {
+        double turns = s_rainbowClock.Elapsed.TotalSeconds * speed / MaxRainbowSpeed;
+        return FromHue((float)(turns - System.Math.Floor(turns)));
+    }
+
+    // A fully bright, fully colorful color with this hue, from 0 to 1
+    static Color FromHue(float hue)
+    {
+        float h = hue * 6;
+        float x = 1 - Mathf.Abs(h % 2 - 1);
+        switch ((int)h % 6)
+        {
+            case 0: return new Color(1, x, 0);
+            case 1: return new Color(x, 1, 0);
+            case 2: return new Color(0, 1, x);
+            case 3: return new Color(0, x, 1);
+            case 4: return new Color(x, 0, 1);
+            default: return new Color(1, 0, x);
+        }
+    }
+
     public static int MakeCustomColor(Color color)
     {
         int r = Mathf.Clamp(Mathf.RoundToInt(color.r * 255), 0, 255);
@@ -70,6 +102,9 @@ public class DuetPresence
 
     public static Color GetColor(int color)
     {
+        if (IsRainbow(color))
+            return RainbowNow(RainbowSpeed(color));
+
         if (IsCustomColor(color))
             return new Color(((color >> 16) & 0xFF) / 255f, ((color >> 8) & 0xFF) / 255f, (color & 0xFF) / 255f);
 
@@ -80,6 +115,8 @@ public class DuetPresence
 
     public static string GetColorName(int color)
     {
+        if (IsRainbow(color))
+            return "Rainbow";
         if (!IsCustomColor(color))
             return ColorNames[color >= 0 && color < ColorNames.Length ? color : 0];
         return "#" + (color & 0xFFFFFF).ToString("X6");
@@ -87,6 +124,8 @@ public class DuetPresence
 
     public static bool IsValidColor(int color)
     {
+        if (IsRainbow(color))
+            return (color & ~(RainbowFlag | 0xFF)) == 0 && (color & 0xFF) >= 1 && (color & 0xFF) <= MaxRainbowSpeed;
         return IsCustomColor(color) ? (color & ~(CustomColorFlag | 0xFFFFFF)) == 0 : color >= 0 && color < s_colors.Length;
     }
 

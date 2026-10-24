@@ -173,6 +173,18 @@ public static class PresenceTests
         DuetPresence round = DuetPresence.FromJson((Dictionary<string, object>)DuetJson.Read(DuetJson.Write(robert.ToJson())));
         Expect("presence survives being written and read", DuetJson.Write(round.ToJson()) == DuetJson.Write(robert.ToJson()));
 
+        int rainbow = DuetPresence.MakeRainbow(7);
+        Expect("a rainbow keeps its speed", DuetPresence.IsRainbow(rainbow) && DuetPresence.RainbowSpeed(rainbow) == 7 && DuetPresence.IsValidColor(rainbow)
+            && !DuetPresence.IsCustomColor(rainbow) && DuetPresence.GetColorName(rainbow) == "Rainbow");
+        Expect("a nonsense rainbow isn't valid", !DuetPresence.IsValidColor(DuetPresence.RainbowFlag) && !DuetPresence.IsValidColor(DuetPresence.RainbowFlag | 99)
+            && !DuetPresence.IsValidColor(DuetPresence.RainbowFlag | DuetPresence.CustomColorFlag | 3));
+        UnityEngine.Color first = DuetPresence.GetColor(DuetPresence.MakeRainbow(DuetPresence.MaxRainbowSpeed));
+        System.Threading.Thread.Sleep(250);
+        UnityEngine.Color later = DuetPresence.GetColor(DuetPresence.MakeRainbow(DuetPresence.MaxRainbowSpeed));
+        Expect("a rainbow changes color over time", first.r != later.r || first.g != later.g || first.b != later.b);
+        DuetPresence rainbowRound = DuetPresence.FromJson((Dictionary<string, object>)DuetJson.Read(DuetJson.Write(new DuetPresence { color = rainbow }.ToJson())));
+        Expect("a rainbow survives being sent", rainbowRound.color == rainbow);
+
         // A selection from someone else is checked: too many objects, or nonsense, is cut out
         List<object> flood = new List<object>();
         for (int i = 0; i < DuetSelection.MaxItems + 100; ++i)

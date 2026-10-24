@@ -20,6 +20,7 @@ public class DuetPanel : MonoBehaviour
     const string PrefUseRooms = "Duet.UseRooms";
     const string PrefColor = "Duet.Color";
     const string PrefShowGhosts = "Duet.ShowGhostNotes";
+    const string PrefRainbowSpeed = "Duet.RainbowSpeed";
 
     static DuetPanel s_instance;
 
@@ -110,6 +111,7 @@ public class DuetPanel : MonoBehaviour
     int m_color = 0;
     string m_hexInput = string.Empty;
     bool m_showCustomColor = false;
+    int m_rainbowSpeed = 5;
     bool m_showGhosts = true;
     string m_error = null;
     List<string> m_localAddresses = null;
@@ -134,6 +136,7 @@ public class DuetPanel : MonoBehaviour
         if (!DuetPresence.IsValidColor(m_color))
             m_color = 0;
         m_hexInput = HexOf(m_color);
+        m_rainbowSpeed = Mathf.Clamp(PlayerPrefs.GetInt(PrefRainbowSpeed, 5), 1, DuetPresence.MaxRainbowSpeed);
 
         m_rejoinPending = PlayerPrefs.HasKey(PrefRejoin);
         m_rehostPending = PlayerPrefs.HasKey(PrefRehost);
@@ -686,13 +689,31 @@ public class DuetPanel : MonoBehaviour
         GUI.backgroundColor = background;
         GUILayout.EndHorizontal();
 
-        // Any color at all, by sliders or by typing its hex code
+        // Any color at all, by sliders or by typing its hex code, or a rainbow
         bool custom = DuetPresence.IsCustomColor(m_color);
+        bool rainbow = DuetPresence.IsRainbow(m_color);
         GUILayout.BeginHorizontal();
         GUI.backgroundColor = custom ? DuetPresence.GetColor(m_color) : background;
         m_showCustomColor = GUILayout.Toggle(m_showCustomColor, custom ? "* Custom color" : "Custom color", GUI.skin.button);
+        GUI.backgroundColor = rainbow ? DuetPresence.GetColor(m_color) : background;
+        if (GUILayout.Toggle(rainbow, rainbow ? "* Rainbow" : "Rainbow", GUI.skin.button) && !rainbow)
+            SetColor(DuetPresence.MakeRainbow(m_rainbowSpeed));
         GUI.backgroundColor = background;
         GUILayout.EndHorizontal();
+
+        if (rainbow)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Speed " + DuetPresence.RainbowSpeed(m_color), GUILayout.Width(70));
+            int speed = Mathf.RoundToInt(GUILayout.HorizontalSlider(DuetPresence.RainbowSpeed(m_color), 1, DuetPresence.MaxRainbowSpeed));
+            GUILayout.EndHorizontal();
+            if (speed != DuetPresence.RainbowSpeed(m_color))
+            {
+                m_rainbowSpeed = speed;
+                PlayerPrefs.SetInt(PrefRainbowSpeed, speed);
+                SetColor(DuetPresence.MakeRainbow(speed));
+            }
+        }
 
         if (m_showCustomColor)
         {
@@ -700,7 +721,8 @@ public class DuetPanel : MonoBehaviour
             float r = ColorSlider("Red", current.r);
             float g = ColorSlider("Green", current.g);
             float b = ColorSlider("Blue", current.b);
-            if (r != current.r || g != current.g || b != current.b)
+            // Compared at the sliders' own precision, so a rainbow isn't swapped for whatever color it shows right now
+            if (r != Mathf.Round(current.r * 255) / 255f || g != Mathf.Round(current.g * 255) / 255f || b != Mathf.Round(current.b * 255) / 255f)
                 SetColor(DuetPresence.MakeCustomColor(new Color(r, g, b)));
 
             GUILayout.BeginHorizontal();
