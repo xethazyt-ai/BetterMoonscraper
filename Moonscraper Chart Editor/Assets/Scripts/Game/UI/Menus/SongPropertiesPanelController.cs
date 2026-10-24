@@ -48,6 +48,7 @@ public class SongPropertiesPanelController : TabMenu
     InputField loadingPhrase;
     SongPropertiesFormatBar formatBar;
     const string LoadingPhraseKey = "loading_phrase";
+    bool lookingUp = false;
 
     TimeSpan customTime = new TimeSpan();
 
@@ -93,6 +94,7 @@ public class SongPropertiesPanelController : TabMenu
         base.OnEnable();
 
         BuildFormatting();
+        lookingUp = false;      // A look up still going when the menu closed was stopped
 
         init = true;
         Song song = editor.currentSong;
@@ -296,8 +298,45 @@ public class SongPropertiesPanelController : TabMenu
             field.characterLimit = 0;   // Tags make the text longer than it looks
 
         float bottom;
-        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, out bottom);
+        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpOnMusicBrainz, out bottom);
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
+    }
+
+    // Fills in the album, year and genre from MusicBrainz, by the song's name and artist. Only empty fields are filled.
+    void LookUpOnMusicBrainz()
+    {
+        if (lookingUp || !formatBar)
+            return;
+
+        lookingUp = true;
+        formatBar.SetStatus("Looking up \"" + RichTextIni.Strip(songName.text) + "\" on MusicBrainz...");
+        StartCoroutine(MusicBrainzLookup.Find(songName.text, artist.text, (result, error) =>
+        {
+            lookingUp = false;
+            if (result == null)
+            {
+                formatBar.SetStatus(error);
+                return;
+            }
+
+            List<string> filled = new List<string>();
+            FillIfEmpty(album, result.album, "album", filled);
+            FillIfEmpty(year, result.year, "year", filled);
+            FillIfEmpty(genre, result.genre, "genre", filled);
+
+            string found = "Found \"" + result.title + "\" by " + result.artist + ": album " + (result.album ?? "unknown")
+                + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + ".";
+            formatBar.SetStatus(found + (filled.Count > 0 ? " Filled in the " + string.Join(", ", filled.ToArray()) + "." : " Clear a field to have it filled in."));
+        }));
+    }
+
+    static void FillIfEmpty(InputField field, string value, string what, List<string> filled)
+    {
+        if (string.IsNullOrEmpty(value) || !string.IsNullOrEmpty(field.text.Trim()))
+            return;
+
+        field.text = value;     // Goes through setSongProperties like typing it, so Collab Mode shares it
+        filled.Add(what);
     }
 
     public void UpdateIni()

@@ -26,13 +26,14 @@ public class SongPropertiesFormatBar : MonoBehaviour
     string m_previewSource;
 
     // Builds the bar below the last row of content. Returns how far down it goes.
-    public static SongPropertiesFormatBar Build(RectTransform content, float top, InputField[] fields, InputField fieldTemplate, Text labelTemplate, Button buttonTemplate, out float bottom)
+    public static SongPropertiesFormatBar Build(RectTransform content, float top, InputField[] fields, InputField fieldTemplate, Text labelTemplate, Button buttonTemplate, UnityEngine.Events.UnityAction onLookUp, out float bottom)
     {
         SongPropertiesFormatBar bar = content.gameObject.AddComponent<SongPropertiesFormatBar>();
         bar.m_fields = fields;
 
         float y = top;
         Label(labelTemplate, content, "Formatting:", Left, y, 160);
+        MakeButton(buttonTemplate, content, "Fill from MusicBrainz", Right - 160, y, 160, onLookUp);
         y -= RowHeight + 2;
 
         float x = Left;
@@ -75,10 +76,9 @@ public class SongPropertiesFormatBar : MonoBehaviour
         bar.m_preview.alignment = TextAnchor.UpperLeft;
         bar.m_preview.horizontalOverflow = HorizontalWrapMode.Wrap;
         bar.m_preview.verticalOverflow = VerticalWrapMode.Overflow;
-        bar.m_preview.GetComponent<RectTransform>().sizeDelta = new Vector2(Right - Left, 48);
-        Place(bar.m_preview.GetComponent<RectTransform>(), Left, y, Right - Left, 48);
+        Place(bar.m_preview.GetComponent<RectTransform>(), Left, y, Right - Left, 64);
 
-        bottom = y - 52;
+        bottom = y - 68;
         return bar;
     }
 
@@ -103,6 +103,13 @@ public class SongPropertiesFormatBar : MonoBehaviour
                 ? "Preview: " + RichTextIni.ToPreview(m_previewSource, m_preview.fontSize)
                 : "Select text in a field above, then pick a format. Clone Hero shows it from song.ini.";
         }
+    }
+
+    // Shows a message where the preview goes, until the text changes
+    public void SetStatus(string message)
+    {
+        if (m_preview)
+            m_preview.text = message;
     }
 
     InputField target { get { return m_target ? m_target : m_fields[0]; } }
@@ -157,7 +164,6 @@ public class SongPropertiesFormatBar : MonoBehaviour
         {
             text.supportRichText = true;
             text.text = label;
-            text.resizeTextForBestFit = false;
         }
         Place(button.GetComponent<RectTransform>(), x, y, width, RowHeight);
         return x + width + 4;
