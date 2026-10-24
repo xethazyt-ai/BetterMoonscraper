@@ -14,10 +14,14 @@ public interface IDuetLink
 {
     int id { get; set; }
     string remoteAddress { get; }
+    string peerKey { get; }     // Who's on the other end, the same each time they connect: their IP, or their Epic ID
     bool isClosed { get; }
     string closeReason { get; }
 
     void Send(Dictionary<string, object> message);
+
+    // Bytes sent but not yet on their way, so big transfers can wait instead of piling up ahead of edits
+    long queuedBytes { get; }
     bool TryReceive(out Dictionary<string, object> message);
     void Close(string reason = "Disconnected");
 
@@ -60,11 +64,72 @@ public interface IDuetRoomProvider
     IDuetConnector JoinRoom(string roomCode);
 }
 
+/// <summary>
+/// A Windows pop-up (the save prompt, a file window) freezes Moonscraper until it's closed. Online rooms need ticking
+/// to stay connected, so while one is open this ticks them from a background thread instead, and nobody is dropped.
+/// </summary>
+public static class DuetKeepAlive
+{
+    const int TickIntervalMs = 30;
+
+    public static Action tick;      // Set by the online rooms provider. Always called under tickLock.
+    public static readonly object tickLock = new object();
+
+    // Wrap a call that blocks the main thread: using (DuetKeepAlive.WhileBlocked()) { ... }
+    public static IDisposable WhileBlocked()
+    {
+        return new Scope();
+    }
+
+    class Scope : IDisposable
+    {
+        volatile bool m_done = false;
+
+        public Scope()
+        {
+            if (tick != null)
+                new Thread(Loop) { IsBackground = true, Name = "Duet keep alive" }.Start();
+        }
+
+        void Loop()
+        {
+            while (!m_done)
+            {
+                Thread.Sleep(TickIntervalMs);
+                lock (tickLock)
+                {
+                    if (m_done)
+                        return;
+
+                    Action current = tick;
+                    try
+                    {
+                        if (current != null)
+                            current();
+                    }
+                    catch (Exception e)
+                    {
+                        UnityEngine.Debug.LogWarning("Duet: keeping the connection alive failed: " + e.Message);
+                    }
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            m_done = true;
+            lock (tickLock) { }     // Wait for a tick in progress, so the main thread has it to itself again
+        }
+    }
+}
+
 public static class DuetRooms
 {
     public static IDuetRoomProvider provider;
 
     public static bool isAvailable { get { return provider != null; } }
+
+    public const int MaxMembers = 64;   // The most Epic allows in a lobby, counting the host
 
     // Room codes are typed by hand, so accept lowercase, spaces and dashes
     public static string NormalizeCode(string code)
@@ -84,7 +149,8 @@ public static class DuetRooms
 /// </summary>
 public static class DuetFraming
 {
-    public const int MaxMessageBytes = 64 * 1024 * 1024;
+    public const int MaxMessageBytes = 64 * 1024 * 1024;     // From the host, whose snapshots carry the whole chart
+    public const int MaxJoinerMessageBytes = 8 * 1024 * 1024;  // From joiners, which only send edits, cursors and chat
 
     public static byte[] Encode(Dictionary<string, object> message)
     {
@@ -110,6 +176,12 @@ public static class DuetFraming
     {
         byte[] m_buffer = new byte[4096];
         int m_count = 0;
+        readonly int m_maxBytes;
+
+        public Assembler(int maxMessageBytes = MaxMessageBytes)
+        {
+            m_maxBytes = maxMessageBytes;
+        }
 
         public void Append(byte[] data, int offset, int count, List<Dictionary<string, object>> messagesOut)
         {
@@ -126,7 +198,7 @@ public static class DuetFraming
             while (m_count - start >= 4)
             {
                 int length = (m_buffer[start] << 24) | (m_buffer[start + 1] << 16) | (m_buffer[start + 2] << 8) | m_buffer[start + 3];
-                if (length < 0 || length > MaxMessageBytes)
+                if (length < 0 || length > m_maxBytes)
                     throw new InvalidDataException("Message too large: " + length + " bytes");
 
                 if (m_count - start - 4 < length)

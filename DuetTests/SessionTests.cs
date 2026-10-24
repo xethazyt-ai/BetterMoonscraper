@@ -49,6 +49,11 @@ public static class SessionTests
                 ++resyncs;
         }
 
+        public List<string> sharedFiles = new List<string>();
+        public Dictionary<string, string> receivedFiles;
+        public List<string> GetSongFilePaths() { return sharedFiles; }
+        public void UseSongFiles(Dictionary<string, string> localPaths) { receivedFiles = new Dictionary<string, string>(localPaths); }
+
         public Dictionary<string, string> ReadSongInfo() { return DuetSongInfo.Read(song); }
         public void ApplySongInfo(Dictionary<string, string> info) { DuetSongInfo.Apply(song, info); }
 
@@ -73,8 +78,8 @@ public static class SessionTests
 
         hostSong.Edit(Add(new Note(0, 0)), Add(new Note(192, 1, 96)), Add(new BPM(768, 140000)));
 
-        DuetSession host = DuetSession.Host(hostSong, "Robert", 0);  // Port 0 picks any free port
-        DuetSession alice = DuetSession.Join(aliceSong, "Alex", "127.0.0.1", host.port);
+        DuetSession host = DuetSession.Host(hostSong, "Robert", 0, "pw");  // Port 0 picks any free port
+        DuetSession alice = DuetSession.Join(aliceSong, "Alex", "127.0.0.1", host.port, "pw");
         List<DuetSession> all = new List<DuetSession> { host, alice };
 
         Pump(all, () => alice.state == DuetSession.State.Connected && host.users.Count == 2);
@@ -91,7 +96,7 @@ public static class SessionTests
         Expect("joiner's edit reaches the host", Same(hostSong, aliceSong));
         Expect("host acknowledges the joiner's edit", alice.unacknowledgedEditCount == 0 && alice.lastSeq == host.lastSeq);
 
-        DuetSession bob = DuetSession.Join(bobSong, "Alex", "127.0.0.1", host.port);
+        DuetSession bob = DuetSession.Join(bobSong, "Alex", "127.0.0.1", host.port, "pw");
         all.Add(bob);
         Pump(all, () => bob.state == DuetSession.State.Connected && host.users.Count == 3);
         Expect("a second joiner gets the current chart", Same(hostSong, bobSong));
@@ -146,11 +151,11 @@ public static class SessionTests
         editor.songEditGestureTracker = new SongEditGestureTracker(stack);
 
         DuetEditorSong hostSong = new DuetEditorSong(editor, editor.songEditGestureTracker);
-        DuetSession host = DuetSession.Host(hostSong, "Robert", 0);
+        DuetSession host = DuetSession.Host(hostSong, "Robert", 0, "pw");
         editor.songEditGestureTracker.onEditFinished.Register((in SongEditGestureTracker.FinishedEdit edit) => host.OnLocalEdit(edit.changes));
 
         TestSong joinerSong = new TestSong("editor-joiner");
-        DuetSession joiner = DuetSession.Join(joinerSong, "Alex", "127.0.0.1", host.port);
+        DuetSession joiner = DuetSession.Join(joinerSong, "Alex", "127.0.0.1", host.port, "pw");
         List<DuetSession> all = new List<DuetSession> { host, joiner };
 
         UnityEngine.Input.anyKey = false;

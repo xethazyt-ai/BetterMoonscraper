@@ -18,7 +18,23 @@ public static class LinkTests
         CheckAssembler();
         CheckSessionOverPackets();
         CheckRoomCodes();
+        CheckKeepAlive();
         return s_failures;
+    }
+
+    // While a Windows pop-up freezes the main thread, online rooms keep ticking; afterwards they stop
+    static void CheckKeepAlive()
+    {
+        int ticks = 0;
+        DuetKeepAlive.tick = () => System.Threading.Interlocked.Increment(ref ticks);
+        using (DuetKeepAlive.WhileBlocked())
+            System.Threading.Thread.Sleep(300);
+        int afterwards = ticks;
+        System.Threading.Thread.Sleep(150);
+        DuetKeepAlive.tick = null;
+
+        Expect("rooms keep ticking while a pop-up is open", afterwards >= 3);
+        Expect("and stop once it closes", ticks == afterwards);
     }
 
     static void CheckAssembler()
@@ -73,8 +89,13 @@ public static class LinkTests
 
         PacketRoom room = new PacketRoom("K7Q2MX");
         DuetSession host = DuetSession.Host(hostSong, "Robert", room, "Opening an online room");
-        DuetSession joiner = DuetSession.Join(joinerSong, "Alex", room.Join(), "Looking for room K7Q2MX");
+        DuetSession joiner = DuetSession.Join(joinerSong, "Alex", room.Join(), "Looking for room K7Q2MX", "K7Q2MX");
         List<DuetSession> all = new List<DuetSession> { host, joiner };
+
+        // Someone who reached the room without its code, as anyone could through Epic's lobby search, is turned away
+        DuetSession stranger = DuetSession.Join(new SessionTests.TestSong("packets-stranger"), "Stranger", room.Join(), "Looking for room", "AAAAAA");
+        SessionTests.Pump(new List<DuetSession> { host, stranger }, () => !stranger.isActive);
+        Expect("the room code is checked by the host", !stranger.isActive && stranger.endReason.Contains("Wrong room code") && host.users.Count == 1);
 
         SessionTests.Pump(all, () => joiner.state == DuetSession.State.Connected);
         Expect("joiner gets a large chart split into packets", SessionTests.Same(hostSong, joinerSong) && room.packetsSent > 100);
@@ -96,6 +117,11 @@ public static class LinkTests
 
     static void CheckRoomCodes()
     {
+        bool refused = false;
+        try { DuetJson.Read(new string('[', 100000)); }
+        catch (FormatException) { refused = true; }
+        Expect("a message nested thousands deep is refused, not a crash", refused);
+
         Expect("room codes ignore case, spaces and dashes", DuetRooms.NormalizeCode(" k7q-2mx ") == "K7Q2MX");
     }
 
@@ -118,8 +144,10 @@ public static class LinkTests
 
         public int id { get; set; }
         public string remoteAddress { get { return "an online room"; } }
+        public string peerKey { get { return "packet-" + GetHashCode(); } }
         public bool isClosed { get; private set; }
         public string closeReason { get; private set; }
+        public long queuedBytes { get { return 0; } }
 
         public void Send(Dictionary<string, object> message)
         {

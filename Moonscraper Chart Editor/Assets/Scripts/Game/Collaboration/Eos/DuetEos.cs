@@ -27,10 +27,10 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     const string SocketName = "DuetMode";
     const string LobbyIdPrefix = "duet";
     const string BucketId = "duet";
-    const uint MaxRoomMembers = 4;
     const int RoomCodeLength = 6;
     const string RoomCodeLetters = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";    // No 0/O or 1/I/L, so codes are easy to read out
     const int MaxPacketsPerFrame = 4096;
+    const int ShutdownGraceMs = 400;
 
     enum Phase { Idle, SigningIn, Ready, Failed }
 
@@ -61,6 +61,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     readonly byte[] m_receiveBuffer = new byte[P2PInterface.MAX_PACKET_SIZE];
     readonly List<Dictionary<string, object>> m_receivedMessages = new List<Dictionary<string, object>>();
 
+    // Hosting: people who asked to connect before this computer saw them join the room. They're let in once they
+    // show up as a member, and not before, so only people in the room can reach the session at all.
+    readonly HashSet<string> m_waitingPeers = new HashSet<string>();
+    const int MaxWaitingPeers = 32;
+
     public string status
     {
         get
@@ -81,6 +86,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             m_room.Stop();
 
         StartIfNeeded();
+        m_waitingPeers.Clear();
         m_room = new Room(this);
         return m_room;
     }
@@ -158,6 +164,8 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         if (m_platform == null)
             return "the platform couldn't be created. Check the values in " + Path.Combine(EosFolder, "credentials.txt");
 
+        DuetKeepAlive.tick = TickPlatform;
+
         return null;
     }
 
@@ -222,12 +230,26 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         foreach (Link link in new List<Link>(m_links.Values))
             link.Close("Online rooms shut down");
         m_links.Clear();
+        m_waitingPeers.Clear();
 
         if (m_room != null)
         {
             m_room.Stop();
             m_room = null;
         }
+
+        // Give EOS a moment to tell everyone, so they see the session end straight away instead of timing out
+        if (m_platform != null && m_phase == Phase.Ready)
+        {
+            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            while (clock.ElapsedMilliseconds < ShutdownGraceMs)
+            {
+                TickPlatform();
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+
+        DuetKeepAlive.tick = null;
 
         if (m_platform != null)
         {
@@ -259,9 +281,16 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         m_localUser = null;
     }
 
-    void OnApplicationQuit()
+    // Not OnApplicationQuit: Unity sends that as soon as the window's X is clicked, before Moonscraper has asked whether
+    // to quit, so cancelling would still close the room. Application.quitting only comes once it's really quitting.
+    void Awake()
     {
-        Shutdown();
+        Application.quitting += Shutdown;
+    }
+
+    void OnDestroy()
+    {
+        Application.quitting -= Shutdown;
     }
 
     #endregion
@@ -273,7 +302,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         if (m_platform == null)
             return;
 
-        m_platform.Tick();
+        TickPlatform();
 
         if (m_phase != Phase.Ready)
             return;
@@ -282,6 +311,15 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
         foreach (Link link in new List<Link>(m_links.Values))
             link.Flush();
+    }
+
+    void TickPlatform()
+    {
+        lock (DuetKeepAlive.tickLock)
+        {
+            if (m_platform != null)
+                m_platform.Tick();
+        }
     }
 
     void ReceivePackets()
@@ -330,6 +368,14 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         if (m_room == null || m_room.isStopped)
             return null;
 
+        if (!IsRoomMember(peer))
+        {
+            if (m_waitingPeers.Count < MaxWaitingPeers)
+                m_waitingPeers.Add(peer.ToString());
+            return null;
+        }
+
+        m_waitingPeers.Remove(peer.ToString());
         Accept(peer);
         link = new Link(this, peer, null);
         m_links[peer.ToString()] = link;
@@ -350,8 +396,38 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             link.Close(DescribeClose(info.Reason));
     }
 
+    bool IsRoomMember(ProductUserId peer)
+    {
+        if (m_room == null || m_room.lobbyId == null)
+            return false;
+
+        CopyLobbyDetailsHandleOptions options = new CopyLobbyDetailsHandleOptions { LobbyId = m_room.lobbyId, LocalUserId = m_localUser };
+        LobbyDetails details;
+        if (m_platform.GetLobbyInterface().CopyLobbyDetailsHandle(ref options, out details) != Result.Success || details == null)
+            return false;
+
+        bool member = false;
+        LobbyDetailsGetMemberCountOptions countOptions = new LobbyDetailsGetMemberCountOptions();
+        uint count = details.GetMemberCount(ref countOptions);
+        for (uint i = 0; i < count && !member; ++i)
+        {
+            LobbyDetailsGetMemberByIndexOptions memberOptions = new LobbyDetailsGetMemberByIndexOptions { MemberIndex = i };
+            ProductUserId user = details.GetMemberByIndex(ref memberOptions);
+            member = user != null && user.ToString() == peer.ToString();
+        }
+        details.Release();
+        return member;
+    }
+
     void OnLobbyMemberStatus(ref LobbyMemberStatusReceivedCallbackInfo info)
     {
+        if (info.CurrentStatus == LobbyMemberStatus.Joined && info.TargetUserId != null && m_waitingPeers.Contains(info.TargetUserId.ToString())
+            && m_room != null && info.LobbyId == m_room.lobbyId)
+        {
+            FindOrAcceptLink(info.TargetUserId);
+            return;
+        }
+
         bool gone = info.CurrentStatus == LobbyMemberStatus.Left || info.CurrentStatus == LobbyMemberStatus.Disconnected
             || info.CurrentStatus == LobbyMemberStatus.Kicked || info.CurrentStatus == LobbyMemberStatus.Closed;
         if (!gone)
@@ -393,6 +469,18 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         }
     }
 
+    long OutgoingQueueBytes()
+    {
+        if (m_platform == null)
+            return 0;
+
+        GetPacketQueueInfoOptions options = new GetPacketQueueInfoOptions();
+        PacketQueueInfo info;
+        if (m_platform.GetP2PInterface().GetPacketQueueInfo(ref options, out info) != Result.Success)
+            return 0;
+        return (long)info.OutgoingPacketQueueCurrentSizeBytes;
+    }
+
     // Returns false when the outgoing queue is full and the packet should be tried again next frame
     bool TrySendPacket(Link link, byte[] packet, out string error)
     {
@@ -420,13 +508,33 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
     #region Lobbies
 
+    // From a secure random source, so nobody can predict the next room's code
     static string NewRoomCode()
     {
-        System.Random random = new System.Random();
         char[] code = new char[RoomCodeLength];
-        for (int i = 0; i < code.Length; ++i)
-            code[i] = RoomCodeLetters[random.Next(RoomCodeLetters.Length)];
+        byte[] random = new byte[1];
+        using (System.Security.Cryptography.RandomNumberGenerator generator = System.Security.Cryptography.RandomNumberGenerator.Create())
+        {
+            for (int i = 0; i < code.Length;)
+            {
+                generator.GetBytes(random);
+                if (random[0] < 256 - 256 % RoomCodeLetters.Length)     // Every letter equally likely
+                    code[i++] = RoomCodeLetters[random[0] % RoomCodeLetters.Length];
+            }
+        }
         return new string(code);
+    }
+
+    // The lobby's ID is worked out from the code rather than being the code. Lobby IDs can be seen by anyone using
+    // Epic's services, so this keeps the code itself secret: guessing it back from the ID is deliberately slow.
+    // Whoever joins still has to give the host the code itself. See DuetSession's hello.
+    const int LobbyIdHashRounds = 20000;
+    static readonly byte[] s_lobbyIdSalt = System.Text.Encoding.UTF8.GetBytes("Moonscraper Duet room");
+
+    static string LobbyIdFor(string code)
+    {
+        using (System.Security.Cryptography.Rfc2898DeriveBytes hash = new System.Security.Cryptography.Rfc2898DeriveBytes(System.Text.Encoding.UTF8.GetBytes(code), s_lobbyIdSalt, LobbyIdHashRounds))
+            return LobbyIdPrefix + BitConverter.ToString(hash.GetBytes(20)).Replace("-", string.Empty).ToLowerInvariant();
     }
 
     void CreateLobby(Room room, string code)
@@ -434,13 +542,13 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         CreateLobbyOptions options = new CreateLobbyOptions
         {
             LocalUserId = m_localUser,
-            MaxLobbyMembers = MaxRoomMembers,
+            MaxLobbyMembers = DuetRooms.MaxMembers,
             PermissionLevel = LobbyPermissionLevel.Publicadvertised,
             PresenceEnabled = false,
             AllowInvites = false,
             BucketId = BucketId,
             DisableHostMigration = true,
-            LobbyId = LobbyIdPrefix + code,
+            LobbyId = LobbyIdFor(code),
             EnableJoinById = true,
         };
         m_platform.GetLobbyInterface().CreateLobby(ref options, room, (ref CreateLobbyCallbackInfo info) =>
@@ -471,7 +579,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             return;
         }
 
-        LobbySearchSetLobbyIdOptions idOptions = new LobbySearchSetLobbyIdOptions { LobbyId = LobbyIdPrefix + join.code };
+        LobbySearchSetLobbyIdOptions idOptions = new LobbySearchSetLobbyIdOptions { LobbyId = LobbyIdFor(join.code) };
         search.SetLobbyId(ref idOptions);
 
         LobbySearchFindOptions findOptions = new LobbySearchFindOptions { LocalUserId = m_localUser };
@@ -601,7 +709,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         readonly DuetEos m_owner;
         readonly Queue<byte[]> m_outgoing = new Queue<byte[]>();
         readonly Queue<Dictionary<string, object>> m_incoming = new Queue<Dictionary<string, object>>();
-        readonly DuetFraming.Assembler m_assembler = new DuetFraming.Assembler();
+        readonly DuetFraming.Assembler m_assembler;
         bool m_closeWhenSent = false;
 
         public readonly ProductUserId peer;
@@ -609,14 +717,29 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
         public int id { get; set; }
         public string remoteAddress { get { return "an online room"; } }
+        public string peerKey { get { return peer.ToString(); } }
         public bool isClosed { get; private set; }
         public string closeReason { get; private set; }
+
+        // What's waiting here plus everything in EOS's own outgoing queue, which all links share
+        public long queuedBytes
+        {
+            get
+            {
+                long waiting = 0;
+                foreach (byte[] packet in m_outgoing)
+                    waiting += packet.Length;
+                return waiting + m_owner.OutgoingQueueBytes();
+            }
+        }
 
         public Link(DuetEos owner, ProductUserId peer, string lobbyId)
         {
             m_owner = owner;
             this.peer = peer;
             this.lobbyId = lobbyId;
+            // Only the host sends big messages. A link with no room to leave is someone joining this computer's room.
+            m_assembler = new DuetFraming.Assembler(lobbyId == null ? DuetFraming.MaxJoinerMessageBytes : DuetFraming.MaxMessageBytes);
         }
 
         public void Send(Dictionary<string, object> message)
@@ -715,6 +838,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         bool m_createStarted = false;
         int m_attempts = 0;
         string m_lobbyId;
+        public string lobbyId { get { return m_lobbyId; } }
 
         public string roomCode { get; private set; }
         public string error { get; private set; }
