@@ -10,7 +10,8 @@ using MoonscraperChartEditor.Song;
 /// <summary>
 /// Pattern blueprints: select some notes, save them as a named pattern, and later put the pattern back anywhere,
 /// stretched or squeezed to another step (a 16th note pattern played as 8ths, say). Saved on this computer only,
-/// in a file that every Moonscraper version reads. Opened with F9 (rebindable in Controls).
+/// in a file that every Moonscraper version reads. Opened with F9; Ctrl+B pastes the picked pattern at the strikeline,
+/// even with the window closed (both rebindable in Controls).
 /// </summary>
 public class PatternBlueprints : MonoBehaviour
 {
@@ -112,6 +113,14 @@ public class PatternBlueprints : MonoBehaviour
     {
         if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprints))
             Toggle();
+
+        if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprintPaste))
+        {
+            if (m_selected >= 0 && m_selected < m_file.blueprints.Count)
+                m_pasteRequested = true;
+            else
+                m_editor.services.notificationBar.PushNotification("PICK A PATTERN IN PATTERN BLUEPRINTS (F9) FIRST", 3, true);
+        }
 
         if (m_pasteRequested)
         {
@@ -223,7 +232,7 @@ public class PatternBlueprints : MonoBehaviour
         {
             GUILayout.Label("1. Select the notes of a pattern (drag a box with the cursor tool).");
             GUILayout.Label("2. Type a name and press Save selection. It's kept on this computer for every Moonscraper version.");
-            GUILayout.Label("3. Scroll so the strikeline is where the pattern should start, pick the pattern and press Paste at strikeline. Ctrl+Z undoes it.");
+            GUILayout.Label("3. Scroll so the strikeline is where the pattern should start, pick the pattern and press Paste at strikeline, or Ctrl+B (works with this window closed too). Ctrl+Z undoes it.");
             GUILayout.Label("To change its speed: Twice as long spreads it out (16ths become 8ths), Half as long squeezes it. Or type a step (8, 12, 16, 24...) and press Fit.");
         }
 
@@ -325,7 +334,7 @@ public class PatternBlueprints : MonoBehaviour
         if (!string.IsNullOrEmpty(blueprint.gameMode) && blueprint.gameMode != currentMode)
             GUILayout.Label("Made on a " + blueprint.gameMode + " chart, so lanes may not line up here.");
 
-        if (GUILayout.Button("Paste at strikeline", GUILayout.Height(30)))
+        if (GUILayout.Button("Paste at strikeline (Ctrl+B)", GUILayout.Height(30)))
             m_pasteRequested = true;    // Done in Update, away from drawing the window
         if (GUILayout.Button("Copy instead (paste it yourself with Ctrl+V)"))
         {

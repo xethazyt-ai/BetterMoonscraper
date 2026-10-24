@@ -241,7 +241,7 @@ public static class PatternBlueprints
     public static bool IsPointerOver() { return false; }
 }
 
-public enum MSChartEditorInputActions { DuetToggleWindow, DuetChat, DuetHideChat, PatternBlueprints }
+public enum MSChartEditorInputActions { DuetToggleWindow, DuetChat, DuetHideChat, PatternBlueprints, PatternBlueprintPaste }
 public static class MSChartEditorInput
 {
     public static bool GetInputDown(MSChartEditorInputActions action, bool allowedDuringRebind = false) { return false; }

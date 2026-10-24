@@ -2400,6 +2400,30 @@
                 ],
                 "jsMaps": []
             }
+        },
+        {
+            "action": "PatternBlueprintPaste",
+            "input": {
+                "kbMaps": [
+                    {
+                        "modifiers": 2,
+                        "keys": [
+                            98
+                        ]
+                    },
+                    {
+                        "modifiers": 0,
+                        "keys": []
+                    }
+                ],
+                "gpButtonMaps": [
+                    {
+                        "buttons": [],
+                        "axes": []
+                    }
+                ],
+                "jsMaps": []
+            }
         }
     ]
 }

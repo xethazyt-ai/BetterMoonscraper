@@ -153,6 +153,7 @@ public enum MSChartEditorInputActions
     DuetHideChat,
 
     PatternBlueprints,
+    PatternBlueprintPaste,
 }
 
 public static class MSChartEditorInput
