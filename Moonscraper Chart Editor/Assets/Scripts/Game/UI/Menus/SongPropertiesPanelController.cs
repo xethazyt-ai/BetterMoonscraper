@@ -101,17 +101,17 @@ public class SongPropertiesPanelController : TabMenu
         Metadata metaData = song.metaData;
         INIParser ini = song.iniProperties;
 
-        songName.text = RichTextIni.DisplayValue(ini, "name", song.name);
-        artist.text = RichTextIni.DisplayValue(ini, "artist", metaData.artist);
-        charter.text = RichTextIni.DisplayValue(ini, "charter", metaData.charter);
-        album.text = RichTextIni.DisplayValue(ini, "album", metaData.album);
+        SetRich(songName, RichTextIni.DisplayValue(ini, "name", song.name));
+        SetRich(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
+        SetRich(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
+        SetRich(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
         year.text = metaData.year;
         offset.text = song.offset.ToString();
         difficulty.text = metaData.difficulty.ToString();
-        genre.text = RichTextIni.DisplayValue(ini, "genre", metaData.genre);
+        SetRich(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
         mediaType.text = metaData.mediatype;
         if (loadingPhrase)
-            loadingPhrase.text = RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty;
+            SetRich(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
 
         // Init audio names
         setAudioTextLabels();
@@ -142,17 +142,17 @@ public class SongPropertiesPanelController : TabMenu
         INIParser ini = song.iniProperties;
 
         init = true;
-        SetUnlessTyping(songName, RichTextIni.DisplayValue(ini, "name", song.name));
-        SetUnlessTyping(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
-        SetUnlessTyping(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
-        SetUnlessTyping(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
+        SetRichUnlessTyping(songName, RichTextIni.DisplayValue(ini, "name", song.name));
+        SetRichUnlessTyping(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
+        SetRichUnlessTyping(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
+        SetRichUnlessTyping(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
         SetUnlessTyping(year, metaData.year);
         SetUnlessTyping(offset, song.offset.ToString());
         SetUnlessTyping(difficulty, metaData.difficulty.ToString());
-        SetUnlessTyping(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
+        SetRichUnlessTyping(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
         SetUnlessTyping(mediaType, metaData.mediatype);
         if (loadingPhrase)
-            SetUnlessTyping(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
+            SetRichUnlessTyping(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
         init = false;
 
         if (!customIniSettings.isFocused)
@@ -163,6 +163,26 @@ public class SongPropertiesPanelController : TabMenu
     {
         if (!field.isFocused && field.text != text)
             field.text = text;
+    }
+
+    // The song details Clone Hero can show formatted: the field shows the text, the formatting is kept alongside
+    void SetRich(InputField field, string tagged)
+    {
+        if (formatBar)
+            formatBar.SetTagged(field, tagged);
+        else
+            field.text = RichTextIni.Strip(tagged);
+    }
+
+    void SetRichUnlessTyping(InputField field, string tagged)
+    {
+        if (!field.isFocused && Tagged(field) != tagged)
+            SetRich(field, tagged);
+    }
+
+    string Tagged(InputField field)
+    {
+        return formatBar ? formatBar.GetTagged(field) : field.text;
     }
 
     bool BlockedForDuetGuest()
@@ -229,14 +249,14 @@ public class SongPropertiesPanelController : TabMenu
             metaData.mediatype = mediaType.text;
 
             INIParser ini = song.iniProperties;
-            bool iniChanged = RichTextIni.StoreFormatted(ini, "name", songName.text);
-            iniChanged |= RichTextIni.StoreFormatted(ini, "artist", artist.text);
-            iniChanged |= RichTextIni.StoreFormatted(ini, "charter", charter.text);
-            iniChanged |= RichTextIni.StoreFormatted(ini, "album", album.text);
-            iniChanged |= RichTextIni.StoreFormatted(ini, "genre", genre.text);
-            if (loadingPhrase && (RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty) != loadingPhrase.text)
+            bool iniChanged = RichTextIni.StoreFormatted(ini, "name", Tagged(songName));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "artist", Tagged(artist));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "charter", Tagged(charter));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "album", Tagged(album));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "genre", Tagged(genre));
+            if (loadingPhrase && (RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty) != Tagged(loadingPhrase))
             {
-                RichTextIni.WriteIni(ini, LoadingPhraseKey, loadingPhrase.text);
+                RichTextIni.WriteIni(ini, LoadingPhraseKey, Tagged(loadingPhrase));
                 iniChanged = true;
             }
             if (iniChanged)
@@ -298,7 +318,7 @@ public class SongPropertiesPanelController : TabMenu
             field.characterLimit = 0;   // Tags make the text longer than it looks
 
         float bottom;
-        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpOnMusicBrainz, out bottom);
+        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpOnMusicBrainz, setSongProperties, out bottom);
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
     }
 

@@ -1,13 +1,15 @@
 // See LICENSE in project root for license information.
 
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
 /// The formatting buttons under Song Properties > General: bold, italic, underline, strikethrough, size and color for
-/// the song details Clone Hero can show formatted. They wrap the selected text (or all of it) in rich text tags, and
-/// a preview shows roughly how it will look. Built in code from the panel's own controls.
+/// the song details Clone Hero can show formatted. The fields show the text itself, drawn in its colors and styles
+/// when not being typed in; the rich text tags behind it are only seen in the Advanced tab. Each field's tagged text
+/// is kept here, and typing in a field makes the same change to it. Built in code from the panel's own controls.
 /// </summary>
 public class SongPropertiesFormatBar : MonoBehaviour
 {
@@ -24,12 +26,25 @@ public class SongPropertiesFormatBar : MonoBehaviour
     InputField m_colorField;
     Text m_preview;
     string m_previewSource;
+    Action m_onChanged;
+
+    class Formatted
+    {
+        public string tagged = string.Empty;
+        public Text overlay;            // Draws the formatted text over the field while it isn't being typed in
+        public Color textColor;
+        public string shown;
+    }
+    readonly Dictionary<InputField, Formatted> m_formatted = new Dictionary<InputField, Formatted>();
 
     // Builds the bar below the last row of content. Returns how far down it goes.
-    public static SongPropertiesFormatBar Build(RectTransform content, float top, InputField[] fields, InputField fieldTemplate, Text labelTemplate, Button buttonTemplate, UnityEngine.Events.UnityAction onLookUp, out float bottom)
+    public static SongPropertiesFormatBar Build(RectTransform content, float top, InputField[] fields, InputField fieldTemplate, Text labelTemplate, Button buttonTemplate, UnityEngine.Events.UnityAction onLookUp, Action onChanged, out float bottom)
     {
         SongPropertiesFormatBar bar = content.gameObject.AddComponent<SongPropertiesFormatBar>();
         bar.m_fields = fields;
+        bar.m_onChanged = onChanged;
+        foreach (InputField field in fields)
+            bar.AddOverlay(field);
 
         float y = top;
         Label(labelTemplate, content, "Formatting:", Left, y, 160);
@@ -95,14 +110,104 @@ public class SongPropertiesFormatBar : MonoBehaviour
             }
         }
 
-        InputField shown = m_target ? m_target : m_fields[0];
-        if (m_preview && shown && shown.text != m_previewSource)
+        foreach (InputField field in m_fields)
         {
-            m_previewSource = shown.text;
-            m_preview.text = RichTextIni.HasTags(m_previewSource)
-                ? "Preview: " + RichTextIni.ToPreview(m_previewSource, m_preview.fontSize)
-                : "Select text in a field above, then pick a format. Clone Hero shows it from song.ini.";
+            if (!field)
+                continue;
+
+            Sync(field);
+            UpdateOverlay(field);
         }
+
+        InputField shown = m_target ? m_target : m_fields[0];
+        string source = shown ? GetTagged(shown) : string.Empty;
+        if (m_preview && source != m_previewSource)
+        {
+            m_previewSource = source;
+            m_preview.text = "Select text in a field above, then pick a format. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
+        }
+    }
+
+    void AddOverlay(InputField field)
+    {
+        Formatted formatted = new Formatted();
+        formatted.tagged = field.text;
+        m_formatted[field] = formatted;
+
+        Text text = field.textComponent;
+        if (!text)
+            return;
+
+        formatted.textColor = text.color;
+        formatted.overlay = Instantiate(text, text.transform.parent);
+        formatted.overlay.name = "Formatted Text";
+        formatted.overlay.supportRichText = true;
+        formatted.overlay.raycastTarget = false;
+        formatted.overlay.horizontalOverflow = HorizontalWrapMode.Overflow;
+        formatted.overlay.verticalOverflow = VerticalWrapMode.Overflow;
+        formatted.overlay.enabled = false;
+        if (!field.GetComponent<RectMask2D>())
+            field.gameObject.AddComponent<RectMask2D>();    // Long or big text stays inside the box
+    }
+
+    void UpdateOverlay(InputField field)
+    {
+        Formatted formatted;
+        if (!m_formatted.TryGetValue(field, out formatted) || !formatted.overlay)
+            return;
+
+        bool show = !field.isFocused && RichTextIni.HasTags(formatted.tagged);
+        if (show && formatted.shown != formatted.tagged)
+        {
+            formatted.shown = formatted.tagged;
+            int size = formatted.overlay.fontSize;
+            formatted.overlay.text = RichTextIni.ToPreview(formatted.tagged, size, size * 3 / 2);
+        }
+
+        if (formatted.overlay.enabled != show)
+        {
+            formatted.overlay.enabled = show;
+            Color color = formatted.textColor;
+            if (show)
+                color.a = 0;    // The field's own plain text hides behind the formatted one
+            field.textComponent.color = color;
+        }
+    }
+
+    // The field's text with its formatting, as it goes in song.ini
+    public string GetTagged(InputField field)
+    {
+        Formatted formatted;
+        if (!m_formatted.TryGetValue(field, out formatted))
+            return field.text;
+
+        Sync(field);
+        return formatted.tagged;
+    }
+
+    // Shows tagged text in the field: the text itself, formatted
+    public void SetTagged(InputField field, string tagged)
+    {
+        Formatted formatted;
+        if (!m_formatted.TryGetValue(field, out formatted))
+        {
+            field.text = tagged;
+            return;
+        }
+
+        formatted.tagged = RichTextIni.Normalise(tagged ?? string.Empty);
+        string plain = RichTextIni.Strip(formatted.tagged);
+        if (field.text != plain)
+            field.text = plain;
+        UpdateOverlay(field);
+    }
+
+    // Catches up with typing, pasting or anything else that changed the field's plain text
+    void Sync(InputField field)
+    {
+        Formatted formatted;
+        if (m_formatted.TryGetValue(field, out formatted) && RichTextIni.Strip(formatted.tagged) != field.text)
+            formatted.tagged = RichTextIni.ApplyPlainEdit(formatted.tagged, field.text);
     }
 
     // Shows a message where the preview goes, until the text changes
@@ -117,13 +222,21 @@ public class SongPropertiesFormatBar : MonoBehaviour
     void Wrap(string open, string close)
     {
         InputField field = target;
-        field.text = RichTextIni.Wrap(field.text, ref m_selectionStart, ref m_selectionEnd, open, close);
+        SetFormatted(field, RichTextIni.WrapVisible(GetTagged(field), m_selectionStart, m_selectionEnd, open, close));
     }
 
     void ClearFormatting()
     {
         InputField field = target;
-        field.text = RichTextIni.Clear(field.text, ref m_selectionStart, ref m_selectionEnd);
+        SetFormatted(field, RichTextIni.ClearVisible(GetTagged(field), m_selectionStart, m_selectionEnd));
+    }
+
+    // The words don't change, so the field doesn't tell the song: say so here
+    void SetFormatted(InputField field, string tagged)
+    {
+        SetTagged(field, tagged);
+        if (m_onChanged != null)
+            m_onChanged();
     }
 
     void ApplySize()

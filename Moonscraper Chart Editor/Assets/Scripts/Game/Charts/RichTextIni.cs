@@ -1,7 +1,9 @@
 // See LICENSE in project root for license information.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 /// <summary>
@@ -10,7 +12,10 @@ using System.Text.RegularExpressions;
 /// </summary>
 public static class RichTextIni
 {
-    static readonly Regex s_tag = new Regex(@"</?(b|i|u|s|color|size|alpha|mark|sup|sub|lowercase|uppercase|smallcaps|allcaps)(=[^>]*)?>", RegexOptions.IgnoreCase);
+    const string TagPattern = @"</?(b|i|u|s|color|size|alpha|mark|sup|sub|lowercase|uppercase|smallcaps|allcaps)(=[^>]*)?>";
+    static readonly Regex s_tag = new Regex(TagPattern, RegexOptions.IgnoreCase);
+    static readonly Regex s_tagHere = new Regex(@"\G" + TagPattern, RegexOptions.IgnoreCase);
+    static readonly Regex s_emptyPair = new Regex(@"<(b|i|u|s|color|size)(=[^>]*)?></\1>", RegexOptions.IgnoreCase);
 
     // uGUI Text, which draws the preview, can't underline or strike through, and only knows sizes in pixels
     static readonly Regex s_previewUnsupported = new Regex(@"</?(u|s|alpha|mark|sup|sub|lowercase|uppercase|smallcaps|allcaps)(=[^>]*)?>", RegexOptions.IgnoreCase);
@@ -26,33 +31,146 @@ public static class RichTextIni
         return string.IsNullOrEmpty(text) ? (text ?? string.Empty) : s_tag.Replace(text, string.Empty);
     }
 
-    // Wraps text[start, end) in open and close. Nothing selected wraps all of it.
-    public static string Wrap(string text, ref int start, ref int end, string open, string close)
-    {
-        text = text ?? string.Empty;
-        ClampSelection(text, ref start, ref end);
+    // The General fields show the text without its tags, so their selections and edits are in visible characters.
+    // These map them onto the tagged text that goes in song.ini.
 
-        string result = text.Substring(0, start) + open + text.Substring(start, end - start) + close + text.Substring(end);
-        end += open.Length + close.Length;
-        return result;
+    // Where each visible character of tagged text is
+    static List<int> VisiblePositions(string tagged)
+    {
+        List<int> positions = new List<int>();
+        int i = 0;
+        while (i < tagged.Length)
+        {
+            Match tag = s_tagHere.Match(tagged, i);
+            if (tag.Success)
+            {
+                i += tag.Length;
+                continue;
+            }
+            positions.Add(i++);
+        }
+        return positions;
     }
 
-    // Removes the formatting from text[start, end). Nothing selected clears all of it.
-    public static string Clear(string text, ref int start, ref int end)
+    // Wraps the visible characters [start, end) in open and close. Nothing selected wraps all of it.
+    public static string WrapVisible(string tagged, int start, int end, string open, string close)
     {
-        text = text ?? string.Empty;
-        ClampSelection(text, ref start, ref end);
+        tagged = tagged ?? string.Empty;
+        List<int> visible = VisiblePositions(tagged);
+        ClampSelection(visible.Count, ref start, ref end);
+        if (visible.Count == 0)
+            return tagged;
 
-        string middle = Strip(text.Substring(start, end - start));
-        string result = text.Substring(0, start) + middle + text.Substring(end);
-        end = start + middle.Length;
-        return result;
+        int closeAt = visible[end - 1] + 1;
+        int openAt = visible[start];
+        return Normalise(tagged.Substring(0, openAt) + open + tagged.Substring(openAt, closeAt - openAt) + close + tagged.Substring(closeAt));
     }
 
-    static void ClampSelection(string text, ref int start, ref int end)
+    // Removes the formatting from the visible characters [start, end). Nothing selected clears all of it.
+    public static string ClearVisible(string tagged, int start, int end)
     {
-        start = Math.Max(0, Math.Min(start, text.Length));
-        end = Math.Max(0, Math.Min(end, text.Length));
+        tagged = tagged ?? string.Empty;
+        List<int> visible = VisiblePositions(tagged);
+        ClampSelection(visible.Count, ref start, ref end);
+        if (start == 0 && end == visible.Count)
+            return Strip(tagged);
+
+        // Close whatever is open where the selection starts, and open it again where the selection ends
+        int from = start > 0 ? visible[start - 1] + 1 : 0;
+        int to = end < visible.Count ? visible[end] : tagged.Length;
+        List<string> open = OpenTagsAt(tagged, from);
+        StringBuilder result = new StringBuilder(tagged.Substring(0, from));
+        for (int i = open.Count - 1; i >= 0; --i)
+            result.Append("</").Append(TagName(open[i])).Append('>');
+        result.Append(Strip(tagged.Substring(from, to - from)));
+        foreach (string tag in open)
+            result.Append(tag);
+        result.Append(tagged.Substring(to));
+        return Normalise(result.ToString());
+    }
+
+    static string TagName(string tag)
+    {
+        Match match = s_tag.Match(tag);
+        return match.Success ? match.Groups[1].Value.ToLowerInvariant() : string.Empty;
+    }
+
+    static List<string> OpenTagsAt(string tagged, int position)
+    {
+        List<string> open = new List<string>();
+        foreach (Match tag in s_tag.Matches(tagged.Substring(0, position)))
+        {
+            string name = tag.Groups[1].Value.ToLowerInvariant();
+            if (!tag.Value.StartsWith("</"))
+            {
+                open.Add(tag.Value);
+                continue;
+            }
+
+            for (int i = open.Count - 1; i >= 0; --i)
+            {
+                if (TagName(open[i]) == name)
+                {
+                    open.RemoveAt(i);
+                    break;
+                }
+            }
+        }
+        return open;
+    }
+
+    // Puts the tags in proper nesting order (closing and reopening where spans cross, dropping a close with no open),
+    // so the General fields can draw it. Clone Hero reads it the same either way.
+    public static string Normalise(string tagged)
+    {
+        if (string.IsNullOrEmpty(tagged))
+            return tagged ?? string.Empty;
+
+        StringBuilder result = new StringBuilder(tagged.Length + 16);
+        List<string> open = new List<string>();
+        int i = 0;
+        while (i < tagged.Length)
+        {
+            Match tag = s_tagHere.Match(tagged, i);
+            if (!tag.Success)
+            {
+                result.Append(tagged[i++]);
+                continue;
+            }
+            i += tag.Length;
+
+            string name = tag.Groups[1].Value.ToLowerInvariant();
+            if (!tag.Value.StartsWith("</"))
+            {
+                open.Add(tag.Value);
+                result.Append(tag.Value);
+                continue;
+            }
+
+            int match = open.Count - 1;
+            while (match >= 0 && TagName(open[match]) != name)
+                --match;
+            if (match < 0)
+                continue;   // Nothing to close
+
+            for (int k = open.Count - 1; k > match; --k)
+                result.Append("</").Append(TagName(open[k])).Append('>');
+            result.Append(tag.Value);
+            for (int k = match + 1; k < open.Count; ++k)
+                result.Append(open[k]);
+            open.RemoveAt(match);
+        }
+
+        for (int k = open.Count - 1; k >= 0; --k)
+            result.Append("</").Append(TagName(open[k])).Append('>');
+
+        return s_emptyPair.Replace(result.ToString(), string.Empty);
+    }
+
+    static void ClampSelection(int length, ref int start, ref int end)
+    {
+        start = Math.Max(0, Math.Min(start, length));
+        end = Math.Max(0, Math.Min(end, length));
         if (end < start)
         {
             int swap = start;
@@ -62,12 +180,53 @@ public static class RichTextIni
         if (start == end)
         {
             start = 0;
-            end = text.Length;
+            end = length;
         }
     }
 
+    // The visible text was edited (typed in, deleted from, pasted over) to become plain. Makes the same edit to the
+    // tagged text, keeping the formatting around it: typing at the end of red text carries on in red.
+    public static string ApplyPlainEdit(string tagged, string plain)
+    {
+        tagged = tagged ?? string.Empty;
+        plain = plain ?? string.Empty;
+        string oldPlain = Strip(tagged);
+        if (oldPlain == plain)
+            return tagged;
+        if (plain.Length == 0)
+            return string.Empty;
+
+        int prefix = 0;
+        while (prefix < oldPlain.Length && prefix < plain.Length && oldPlain[prefix] == plain[prefix])
+            ++prefix;
+        int suffix = 0;
+        while (suffix < oldPlain.Length - prefix && suffix < plain.Length - prefix
+            && oldPlain[oldPlain.Length - 1 - suffix] == plain[plain.Length - 1 - suffix])
+            ++suffix;
+
+        List<int> visible = VisiblePositions(tagged);
+        StringBuilder result = new StringBuilder(tagged);
+        for (int k = oldPlain.Length - suffix - 1; k >= prefix; --k)
+            result.Remove(visible[k], 1);
+
+        int insertAt;
+        if (prefix > 0)
+            insertAt = visible[prefix - 1] + 1;
+        else if (visible.Count > 0)
+            insertAt = visible[0];
+        else
+        {
+            // Only tags are left (all the text was deleted): type inside them
+            int firstClose = tagged.IndexOf("</", StringComparison.Ordinal);
+            insertAt = firstClose >= 0 ? firstClose : tagged.Length;
+        }
+
+        result.Insert(insertAt, plain.Substring(prefix, plain.Length - prefix - suffix));
+        return Normalise(result.ToString());
+    }
+
     // Close to how Clone Hero draws it, using what uGUI Text can do
-    public static string ToPreview(string text, int baseSize)
+    public static string ToPreview(string text, int baseSize, int maxSize = 64)
     {
         if (string.IsNullOrEmpty(text))
             return string.Empty;
@@ -93,7 +252,7 @@ public static class RichTextIni
             else
                 size = amount;
 
-            return "<size=" + Math.Max(4, Math.Min((int)Math.Round(size), 64)) + ">";
+            return "<size=" + Math.Max(4, Math.Min((int)Math.Round(size), maxSize)) + ">";
         });
     }
 
