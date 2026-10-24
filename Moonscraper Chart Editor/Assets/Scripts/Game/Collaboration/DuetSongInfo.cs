@@ -11,6 +11,9 @@ using MoonscraperChartEditor.Song;
 /// </summary>
 public static class DuetSongInfo
 {
+    const int MaxFieldLength = 1024;
+    const int MaxIniLength = 64 * 1024;
+
     public static Dictionary<string, string> Read(Song song)
     {
         Metadata metaData = song.metaData;
@@ -35,6 +38,13 @@ public static class DuetSongInfo
         Metadata metaData = song.metaData;
         string value;
 
+        // These come from other people's computers: ignore anything far longer than a real song.ini
+        foreach (string key in new List<string>(info.Keys))
+        {
+            if (info[key] == null || info[key].Length > (key == "ini" ? MaxIniLength : MaxFieldLength))
+                info.Remove(key);
+        }
+
         if (info.TryGetValue("name", out value)) song.name = value;
         if (info.TryGetValue("artist", out value)) metaData.artist = value;
         if (info.TryGetValue("charter", out value)) metaData.charter = value;
@@ -48,7 +58,8 @@ public static class DuetSongInfo
             metaData.difficulty = difficulty;
 
         float offset;
-        if (info.TryGetValue("offset", out value) && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out offset))
+        if (info.TryGetValue("offset", out value) && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out offset)
+            && !float.IsNaN(offset) && !float.IsInfinity(offset))
             song.offset = offset;
 
         if (info.TryGetValue("ini", out value))

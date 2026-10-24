@@ -61,6 +61,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     readonly byte[] m_receiveBuffer = new byte[P2PInterface.MAX_PACKET_SIZE];
     readonly List<Dictionary<string, object>> m_receivedMessages = new List<Dictionary<string, object>>();
 
+    // Hosting: people who asked to connect before this computer saw them join the room. They're let in once they
+    // show up as a member, and not before, so only people in the room can reach the session at all.
+    readonly HashSet<string> m_waitingPeers = new HashSet<string>();
+    const int MaxWaitingPeers = 32;
+
     public string status
     {
         get
@@ -81,6 +86,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             m_room.Stop();
 
         StartIfNeeded();
+        m_waitingPeers.Clear();
         m_room = new Room(this);
         return m_room;
     }
@@ -224,6 +230,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         foreach (Link link in new List<Link>(m_links.Values))
             link.Close("Online rooms shut down");
         m_links.Clear();
+        m_waitingPeers.Clear();
 
         if (m_room != null)
         {
@@ -361,6 +368,14 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         if (m_room == null || m_room.isStopped)
             return null;
 
+        if (!IsRoomMember(peer))
+        {
+            if (m_waitingPeers.Count < MaxWaitingPeers)
+                m_waitingPeers.Add(peer.ToString());
+            return null;
+        }
+
+        m_waitingPeers.Remove(peer.ToString());
         Accept(peer);
         link = new Link(this, peer, null);
         m_links[peer.ToString()] = link;
@@ -381,8 +396,38 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             link.Close(DescribeClose(info.Reason));
     }
 
+    bool IsRoomMember(ProductUserId peer)
+    {
+        if (m_room == null || m_room.lobbyId == null)
+            return false;
+
+        CopyLobbyDetailsHandleOptions options = new CopyLobbyDetailsHandleOptions { LobbyId = m_room.lobbyId, LocalUserId = m_localUser };
+        LobbyDetails details;
+        if (m_platform.GetLobbyInterface().CopyLobbyDetailsHandle(ref options, out details) != Result.Success || details == null)
+            return false;
+
+        bool member = false;
+        LobbyDetailsGetMemberCountOptions countOptions = new LobbyDetailsGetMemberCountOptions();
+        uint count = details.GetMemberCount(ref countOptions);
+        for (uint i = 0; i < count && !member; ++i)
+        {
+            LobbyDetailsGetMemberByIndexOptions memberOptions = new LobbyDetailsGetMemberByIndexOptions { MemberIndex = i };
+            ProductUserId user = details.GetMemberByIndex(ref memberOptions);
+            member = user != null && user.ToString() == peer.ToString();
+        }
+        details.Release();
+        return member;
+    }
+
     void OnLobbyMemberStatus(ref LobbyMemberStatusReceivedCallbackInfo info)
     {
+        if (info.CurrentStatus == LobbyMemberStatus.Joined && info.TargetUserId != null && m_waitingPeers.Contains(info.TargetUserId.ToString())
+            && m_room != null && info.LobbyId == m_room.lobbyId)
+        {
+            FindOrAcceptLink(info.TargetUserId);
+            return;
+        }
+
         bool gone = info.CurrentStatus == LobbyMemberStatus.Left || info.CurrentStatus == LobbyMemberStatus.Disconnected
             || info.CurrentStatus == LobbyMemberStatus.Kicked || info.CurrentStatus == LobbyMemberStatus.Closed;
         if (!gone)
@@ -463,13 +508,33 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
     #region Lobbies
 
+    // From a secure random source, so nobody can predict the next room's code
     static string NewRoomCode()
     {
-        System.Random random = new System.Random();
         char[] code = new char[RoomCodeLength];
-        for (int i = 0; i < code.Length; ++i)
-            code[i] = RoomCodeLetters[random.Next(RoomCodeLetters.Length)];
+        byte[] random = new byte[1];
+        using (System.Security.Cryptography.RandomNumberGenerator generator = System.Security.Cryptography.RandomNumberGenerator.Create())
+        {
+            for (int i = 0; i < code.Length;)
+            {
+                generator.GetBytes(random);
+                if (random[0] < 256 - 256 % RoomCodeLetters.Length)     // Every letter equally likely
+                    code[i++] = RoomCodeLetters[random[0] % RoomCodeLetters.Length];
+            }
+        }
         return new string(code);
+    }
+
+    // The lobby's ID is worked out from the code rather than being the code. Lobby IDs can be seen by anyone using
+    // Epic's services, so this keeps the code itself secret: guessing it back from the ID is deliberately slow.
+    // Whoever joins still has to give the host the code itself. See DuetSession's hello.
+    const int LobbyIdHashRounds = 20000;
+    static readonly byte[] s_lobbyIdSalt = System.Text.Encoding.UTF8.GetBytes("Moonscraper Duet room");
+
+    static string LobbyIdFor(string code)
+    {
+        using (System.Security.Cryptography.Rfc2898DeriveBytes hash = new System.Security.Cryptography.Rfc2898DeriveBytes(System.Text.Encoding.UTF8.GetBytes(code), s_lobbyIdSalt, LobbyIdHashRounds))
+            return LobbyIdPrefix + BitConverter.ToString(hash.GetBytes(20)).Replace("-", string.Empty).ToLowerInvariant();
     }
 
     void CreateLobby(Room room, string code)
@@ -483,7 +548,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             AllowInvites = false,
             BucketId = BucketId,
             DisableHostMigration = true,
-            LobbyId = LobbyIdPrefix + code,
+            LobbyId = LobbyIdFor(code),
             EnableJoinById = true,
         };
         m_platform.GetLobbyInterface().CreateLobby(ref options, room, (ref CreateLobbyCallbackInfo info) =>
@@ -514,7 +579,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             return;
         }
 
-        LobbySearchSetLobbyIdOptions idOptions = new LobbySearchSetLobbyIdOptions { LobbyId = LobbyIdPrefix + join.code };
+        LobbySearchSetLobbyIdOptions idOptions = new LobbySearchSetLobbyIdOptions { LobbyId = LobbyIdFor(join.code) };
         search.SetLobbyId(ref idOptions);
 
         LobbySearchFindOptions findOptions = new LobbySearchFindOptions { LocalUserId = m_localUser };
@@ -644,7 +709,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         readonly DuetEos m_owner;
         readonly Queue<byte[]> m_outgoing = new Queue<byte[]>();
         readonly Queue<Dictionary<string, object>> m_incoming = new Queue<Dictionary<string, object>>();
-        readonly DuetFraming.Assembler m_assembler = new DuetFraming.Assembler();
+        readonly DuetFraming.Assembler m_assembler;
         bool m_closeWhenSent = false;
 
         public readonly ProductUserId peer;
@@ -672,6 +737,8 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
             m_owner = owner;
             this.peer = peer;
             this.lobbyId = lobbyId;
+            // Only the host sends big messages. A link with no room to leave is someone joining this computer's room.
+            m_assembler = new DuetFraming.Assembler(lobbyId == null ? DuetFraming.MaxJoinerMessageBytes : DuetFraming.MaxMessageBytes);
         }
 
         public void Send(Dictionary<string, object> message)
@@ -770,6 +837,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         bool m_createStarted = false;
         int m_attempts = 0;
         string m_lobbyId;
+        public string lobbyId { get { return m_lobbyId; } }
 
         public string roomCode { get; private set; }
         public string error { get; private set; }

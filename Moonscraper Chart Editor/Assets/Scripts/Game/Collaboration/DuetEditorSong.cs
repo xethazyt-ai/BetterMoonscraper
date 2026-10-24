@@ -179,13 +179,12 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         File.WriteAllText(path, snapshot.chartText);
         Song song = ChartReader.ReadChart(path);
 
-        if (isResync)
-        {
-            // Same song, so keep the audio already loaded
-            foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
-                song.SetAudioLocation(audio, m_editor.currentSong.GetAudioLocation(audio));
-        }
-        else
+        // Audio only ever comes from the files the host sent, never from a path written in the chart, which could
+        // point anywhere on this computer
+        foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
+            song.SetAudioLocation(audio, isResync ? m_editor.currentSong.GetAudioLocation(audio) : string.Empty);
+
+        if (!isResync)
         {
             // The audio comes separately from the host, straight after the chart. See UseSongFiles.
             m_audioFileNames = new Dictionary<Song.AudioInstrument, string>(snapshot.audioFileNames);

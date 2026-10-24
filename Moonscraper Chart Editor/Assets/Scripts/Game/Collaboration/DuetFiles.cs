@@ -73,14 +73,22 @@ public static class DuetFiles
             foreach (string path in files)
             {
                 string name = Path.GetFileName(path);
-                bool wanted = s_songFileExtensions.Contains(Path.GetExtension(path)) || string.Equals(name, "song.ini", StringComparison.OrdinalIgnoreCase);
-                if (wanted && names.Add(name))
+                if (IsSongFileName(name) && names.Add(name))
                     found.Add(Path.GetFullPath(path));
             }
         }
 
         return found;
     }
+
+    // Audio, images, video and song.ini: the only kinds of file sent or accepted, so a host can't drop a program
+    // or anything else onto a joiner's computer
+    public static bool IsSongFileName(string name)
+    {
+        return s_songFileExtensions.Contains(Path.GetExtension(name)) || string.Equals(name, "song.ini", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public const long MaxFileBytes = 4L * 1024 * 1024 * 1024;
 
     public static List<DuetFileEntry> Describe(List<string> paths, Dictionary<string, string> nameToPath)
     {
@@ -127,9 +135,10 @@ public static class DuetFiles
     {
         string name = Path.GetFileName(DuetJson.GetString(json, "name", string.Empty).Replace('\\', '/'));    // Never a path into another folder
         string sha1 = DuetJson.GetString(json, "sha1", string.Empty).ToLowerInvariant();
-        if (name.Length == 0 || name == "." || name == ".." || sha1.Length != 40 || !IsHex(sha1))
+        double size = DuetJson.GetNumber(json, "size", -1);
+        if (name.Length == 0 || name.IndexOf(':') >= 0 || !IsSongFileName(name) || sha1.Length != 40 || !IsHex(sha1) || !(size >= 0 && size <= MaxFileBytes))
             return null;
-        return new DuetFileEntry { name = name, size = (long)DuetJson.GetNumber(json, "size"), sha1 = sha1 };
+        return new DuetFileEntry { name = name, size = (long)size, sha1 = sha1 };
     }
 
     static bool IsHex(string text)

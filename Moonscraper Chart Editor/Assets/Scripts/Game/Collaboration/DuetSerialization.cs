@@ -80,17 +80,31 @@ public static class DuetSerialization
 
     public static SongObject SongObjectFromJson(Dictionary<string, object> obj)
     {
+        // Edits come from other people's computers. Turn away values the editor can't draw or time, which would
+        // otherwise throw errors every frame or break the song's timing for everyone.
         uint tick = GetUInt(obj, "tick");
         string text = DuetJson.GetString(obj, "text", string.Empty);
+        if (text.Length > MaxTextLength)
+            throw new FormatException("Text too long");
 
         switch (DuetJson.GetString(obj, "kind"))
         {
             case "note":
-                return new Note(tick, (int)DuetJson.GetNumber(obj, "fret"), GetUInt(obj, "length"), (Note.Flags)(int)DuetJson.GetNumber(obj, "flags"));
+                {
+                    double fret = DuetJson.GetNumber(obj, "fret");
+                    if (!(fret >= 0 && fret <= DuetPresence.MaxRawNote))
+                        throw new FormatException("Bad note " + fret);
+                    return new Note(tick, (int)fret, GetUInt(obj, "length"), (Note.Flags)(int)DuetJson.GetNumber(obj, "flags"));
+                }
             case "starpower":
                 return new Starpower(tick, GetUInt(obj, "length"), (Starpower.Flags)(int)DuetJson.GetNumber(obj, "flags"));
             case "drumroll":
-                return new DrumRoll(tick, GetUInt(obj, "length"), (DrumRoll.Type)(int)DuetJson.GetNumber(obj, "rollType"));
+                {
+                    DrumRoll.Type rollType = (DrumRoll.Type)(int)DuetJson.GetNumber(obj, "rollType");
+                    if (!Enum.IsDefined(typeof(DrumRoll.Type), rollType))
+                        throw new FormatException("Bad drum roll type");
+                    return new DrumRoll(tick, GetUInt(obj, "length"), rollType);
+                }
             case "chartevent":
                 return new ChartEvent(tick, text);
             case "section":
@@ -101,11 +115,25 @@ public static class DuetSerialization
                 {
                     float? anchor = null;
                     if (obj.ContainsKey("anchor"))
-                        anchor = (float)DuetJson.GetNumber(obj, "anchor");
-                    return new BPM(tick, GetUInt(obj, "value"), anchor);
+                    {
+                        double time = DuetJson.GetNumber(obj, "anchor");
+                        if (!(time >= 0 && time < float.MaxValue))
+                            throw new FormatException("Bad BPM anchor");
+                        anchor = (float)time;
+                    }
+
+                    double value = DuetJson.GetNumber(obj, "value");
+                    if (!(value >= 1 && value <= MaxBpmValue))
+                        throw new FormatException("Bad BPM " + value);
+                    return new BPM(tick, (uint)value, anchor);
                 }
             case "timesignature":
-                return new TimeSignature(tick, GetUInt(obj, "numerator"), GetUInt(obj, "denominator"));
+                {
+                    double numerator = DuetJson.GetNumber(obj, "numerator"), denominator = DuetJson.GetNumber(obj, "denominator");
+                    if (!(numerator >= 1 && numerator <= MaxTimeSignaturePart && denominator >= 1 && denominator <= MaxTimeSignaturePart))
+                        throw new FormatException("Bad time signature");
+                    return new TimeSignature(tick, (uint)numerator, (uint)denominator);
+                }
         }
 
         throw new FormatException("Unknown song object kind " + DuetJson.GetString(obj, "kind"));
@@ -158,8 +186,8 @@ public static class DuetSerialization
             change.location = new ChartLocation
             {
                 isSongLevel = false,
-                instrument = (Song.Instrument)Enum.Parse(typeof(Song.Instrument), instrument),
-                difficulty = (Song.Difficulty)Enum.Parse(typeof(Song.Difficulty), DuetJson.GetString(obj, "difficulty")),
+                instrument = ParseName<Song.Instrument>(instrument),
+                difficulty = ParseName<Song.Difficulty>(DuetJson.GetString(obj, "difficulty")),
             };
         }
 
@@ -199,8 +227,24 @@ public static class DuetSerialization
         return DuetJson.Write(ToJson(a)) == DuetJson.Write(ToJson(b));
     }
 
+    const int MaxTextLength = 1024;
+    const double MaxBpmValue = 10000000;   // 10,000 BPM, stored times 1000
+    const double MaxTimeSignaturePart = 256;
+
     static uint GetUInt(Dictionary<string, object> obj, string key)
     {
-        return (uint)DuetJson.GetNumber(obj, key);
+        double value = DuetJson.GetNumber(obj, key);
+        if (!(value >= 0))
+            return 0;
+        return value >= uint.MaxValue ? uint.MaxValue : (uint)value;
+    }
+
+    // Only a name the enum has: Enum.Parse would also take any number, which isn't a real instrument or difficulty
+    static T ParseName<T>(string name) where T : struct
+    {
+        T value;
+        if (name == null || !Enum.TryParse(name, out value) || !Enum.IsDefined(typeof(T), value) || char.IsDigit(name[0]) || name[0] == '-')
+            throw new FormatException("Unknown " + typeof(T).Name + " " + name);
+        return value;
     }
 }

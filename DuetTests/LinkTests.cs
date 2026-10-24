@@ -89,8 +89,13 @@ public static class LinkTests
 
         PacketRoom room = new PacketRoom("K7Q2MX");
         DuetSession host = DuetSession.Host(hostSong, "Robert", room, "Opening an online room");
-        DuetSession joiner = DuetSession.Join(joinerSong, "Alex", room.Join(), "Looking for room K7Q2MX");
+        DuetSession joiner = DuetSession.Join(joinerSong, "Alex", room.Join(), "Looking for room K7Q2MX", "K7Q2MX");
         List<DuetSession> all = new List<DuetSession> { host, joiner };
+
+        // Someone who reached the room without its code, as anyone could through Epic's lobby search, is turned away
+        DuetSession stranger = DuetSession.Join(new SessionTests.TestSong("packets-stranger"), "Stranger", room.Join(), "Looking for room", "AAAAAA");
+        SessionTests.Pump(new List<DuetSession> { host, stranger }, () => !stranger.isActive);
+        Expect("the room code is checked by the host", !stranger.isActive && stranger.endReason.Contains("Wrong room code") && host.users.Count == 1);
 
         SessionTests.Pump(all, () => joiner.state == DuetSession.State.Connected);
         Expect("joiner gets a large chart split into packets", SessionTests.Same(hostSong, joinerSong) && room.packetsSent > 100);

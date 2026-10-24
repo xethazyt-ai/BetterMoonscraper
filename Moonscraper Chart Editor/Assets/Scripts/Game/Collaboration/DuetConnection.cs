@@ -20,6 +20,7 @@ public class DuetConnection : IDuetLink
     readonly BlockingCollection<byte[]> m_outgoing = new BlockingCollection<byte[]>();
     volatile bool m_closed = false;
     long m_queuedBytes = 0;
+    readonly int m_maxMessageBytes;
 
     public int id { get; set; }
     public string remoteAddress { get; private set; }
@@ -27,8 +28,9 @@ public class DuetConnection : IDuetLink
     public string closeReason { get; private set; }
     public long queuedBytes { get { return Interlocked.Read(ref m_queuedBytes); } }
 
-    public DuetConnection(TcpClient client)
+    public DuetConnection(TcpClient client, int maxMessageBytes = DuetFraming.MaxMessageBytes)
     {
+        m_maxMessageBytes = maxMessageBytes;
         m_client = client;
         m_client.NoDelay = true;
         m_stream = client.GetStream();
@@ -104,7 +106,7 @@ public class DuetConnection : IDuetLink
                     break;
 
                 int length = (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
-                if (length < 0 || length > DuetFraming.MaxMessageBytes)
+                if (length < 0 || length > m_maxMessageBytes)
                     throw new InvalidDataException("Message too large: " + length + " bytes");
 
                 byte[] body = new byte[length];
@@ -202,7 +204,7 @@ public class DuetListener : IDuetListener
             try
             {
                 TcpClient client = m_listener.AcceptTcpClient();
-                m_accepted.Enqueue(new DuetConnection(client));
+                m_accepted.Enqueue(new DuetConnection(client, DuetFraming.MaxJoinerMessageBytes));
             }
             catch (Exception)
             {

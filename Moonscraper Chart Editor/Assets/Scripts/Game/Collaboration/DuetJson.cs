@@ -12,6 +12,10 @@ using System.Text;
 /// </summary>
 public static class DuetJson
 {
+    // Deeper than any real message. Without a limit, a message of nothing but [[[[... would overflow the stack,
+    // which crashes Moonscraper outright.
+    public const int MaxDepth = 32;
+
     public static string Write(object value)
     {
         StringBuilder sb = new StringBuilder();
@@ -22,7 +26,7 @@ public static class DuetJson
     public static object Read(string json)
     {
         int pos = 0;
-        object value = ReadValue(json, ref pos);
+        object value = ReadValue(json, ref pos, 0);
         SkipWhitespace(json, ref pos);
         if (pos != json.Length)
             throw new FormatException("Unexpected data after JSON value at " + pos);
@@ -117,8 +121,11 @@ public static class DuetJson
             ++pos;
     }
 
-    static object ReadValue(string s, ref int pos)
+    static object ReadValue(string s, ref int pos, int depth)
     {
+        if (depth > MaxDepth)
+            throw new FormatException("JSON nested too deeply");
+
         SkipWhitespace(s, ref pos);
         if (pos >= s.Length)
             throw new FormatException("Unexpected end of JSON");
@@ -126,8 +133,8 @@ public static class DuetJson
         char c = s[pos];
         switch (c)
         {
-            case '{': return ReadObject(s, ref pos);
-            case '[': return ReadArray(s, ref pos);
+            case '{': return ReadObject(s, ref pos, depth);
+            case '[': return ReadArray(s, ref pos, depth);
             case '"': return ReadString(s, ref pos);
             case 't': Expect(s, ref pos, "true"); return true;
             case 'f': Expect(s, ref pos, "false"); return false;
@@ -143,7 +150,7 @@ public static class DuetJson
         pos += literal.Length;
     }
 
-    static Dictionary<string, object> ReadObject(string s, ref int pos)
+    static Dictionary<string, object> ReadObject(string s, ref int pos, int depth)
     {
         Dictionary<string, object> result = new Dictionary<string, object>();
         ++pos;  // {
@@ -160,7 +167,7 @@ public static class DuetJson
             string key = ReadString(s, ref pos);
             SkipWhitespace(s, ref pos);
             Expect(s, ref pos, ":");
-            result[key] = ReadValue(s, ref pos);
+            result[key] = ReadValue(s, ref pos, depth + 1);
             SkipWhitespace(s, ref pos);
 
             if (pos < s.Length && s[pos] == ',')
@@ -174,7 +181,7 @@ public static class DuetJson
         }
     }
 
-    static List<object> ReadArray(string s, ref int pos)
+    static List<object> ReadArray(string s, ref int pos, int depth)
     {
         List<object> result = new List<object>();
         ++pos;  // [
@@ -187,7 +194,7 @@ public static class DuetJson
 
         while (true)
         {
-            result.Add(ReadValue(s, ref pos));
+            result.Add(ReadValue(s, ref pos, depth + 1));
             SkipWhitespace(s, ref pos);
 
             if (pos < s.Length && s[pos] == ',')

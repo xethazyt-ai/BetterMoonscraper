@@ -148,7 +148,8 @@ public static class DuetRooms
 /// </summary>
 public static class DuetFraming
 {
-    public const int MaxMessageBytes = 64 * 1024 * 1024;
+    public const int MaxMessageBytes = 64 * 1024 * 1024;     // From the host, whose snapshots carry the whole chart
+    public const int MaxJoinerMessageBytes = 8 * 1024 * 1024;  // From joiners, which only send edits, cursors and chat
 
     public static byte[] Encode(Dictionary<string, object> message)
     {
@@ -174,6 +175,12 @@ public static class DuetFraming
     {
         byte[] m_buffer = new byte[4096];
         int m_count = 0;
+        readonly int m_maxBytes;
+
+        public Assembler(int maxMessageBytes = MaxMessageBytes)
+        {
+            m_maxBytes = maxMessageBytes;
+        }
 
         public void Append(byte[] data, int offset, int count, List<Dictionary<string, object>> messagesOut)
         {
@@ -190,7 +197,7 @@ public static class DuetFraming
             while (m_count - start >= 4)
             {
                 int length = (m_buffer[start] << 24) | (m_buffer[start + 1] << 16) | (m_buffer[start + 2] << 8) | m_buffer[start + 3];
-                if (length < 0 || length > MaxMessageBytes)
+                if (length < 0 || length > m_maxBytes)
                     throw new InvalidDataException("Message too large: " + length + " bytes");
 
                 if (m_count - start - 4 < length)

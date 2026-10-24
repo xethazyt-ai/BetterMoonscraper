@@ -121,8 +121,10 @@ public class DuetPresence
         DuetPresence presence = new DuetPresence();
         presence.color = (int)DuetJson.GetNumber(json, "color");
         presence.viewTick = ToTick(DuetJson.GetNumber(json, "view"));
-        presence.instrument = DuetJson.GetString(json, "instrument", string.Empty);
-        presence.difficulty = DuetJson.GetString(json, "difficulty", string.Empty);
+        presence.instrument = Short(DuetJson.GetString(json, "instrument", string.Empty));
+        presence.difficulty = Short(DuetJson.GetString(json, "difficulty", string.Empty));
+        if (!IsValidColor(presence.color))
+            presence.color = 0;
 
         object typing;
         presence.isTyping = json.TryGetValue("typing", out typing) && typing is bool && (bool)typing;
@@ -140,13 +142,25 @@ public class DuetPresence
         {
             foreach (object item in ghosts)
             {
+                if (presence.ghosts.Count >= MaxGhosts)
+                    break;     // Each one is drawn, so someone sending thousands could bring everyone's editor to a crawl
+
                 List<object> ghost = item as List<object>;
-                if (ghost != null && ghost.Count >= 3 && ghost[0] is double && ghost[1] is double && ghost[2] is double)
+                if (ghost != null && ghost.Count >= 3 && ghost[0] is double && ghost[1] is double && ghost[2] is double
+                    && (double)ghost[1] >= 0 && (double)ghost[1] <= MaxRawNote)
                     presence.ghosts.Add(new Ghost { tick = ToTick((double)ghost[0]), rawNote = ToSmallInt((double)ghost[1]), flags = ToSmallInt((double)ghost[2]) });
             }
         }
 
         return presence;
+    }
+
+    public const int MaxGhosts = 64;
+    public const int MaxRawNote = 6;    // The highest note number any instrument uses (Guitar Hero Live's open note)
+
+    static string Short(string text)
+    {
+        return text.Length > 32 ? text.Substring(0, 32) : text;
     }
 
     static int ToSmallInt(double value)

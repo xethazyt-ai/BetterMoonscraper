@@ -398,12 +398,9 @@ public class DuetPanel : MonoBehaviour
                 m_session.isLocked = locked;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Room size (up to " + DuetRooms.MaxMembers + ")");
-            if (GUILayout.Button("-", GUILayout.Width(28)))
-                m_session.maxUsers -= 1;
-            GUILayout.Label(m_session.maxUsers.ToString(), GUILayout.Width(28));
-            if (GUILayout.Button("+", GUILayout.Width(28)))
-                m_session.maxUsers += 1;
+            GUILayout.Label("Room size: " + m_session.maxUsers, GUILayout.Width(110));
+            float size = GUILayout.HorizontalSlider(m_session.maxUsers, 2, DuetRooms.MaxMembers);
+            m_session.maxUsers = Mathf.RoundToInt(size);
             GUILayout.EndHorizontal();
         }
 
@@ -594,7 +591,7 @@ public class DuetPanel : MonoBehaviour
         m_unloadedAfterSession = false;
         if (m_sessionIsRoom)
         {
-            m_session = DuetSession.Join(m_song, m_username, DuetRooms.provider.JoinRoom(code), "Looking for room " + code);
+            m_session = DuetSession.Join(m_song, m_username, DuetRooms.provider.JoinRoom(code), "Looking for room " + code, code);
         }
         else
         {

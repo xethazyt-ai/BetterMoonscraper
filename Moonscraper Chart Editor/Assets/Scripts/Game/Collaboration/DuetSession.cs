@@ -68,7 +68,7 @@ public class DuetChatLine
 /// </summary>
 public class DuetSession
 {
-    public const int ProtocolVersion = 2;  // 2: song files sent on join
+    public const int ProtocolVersion = 3;  // 2: song files sent on join. 3: joiners prove they have the room code
     public const int DefaultPort = 47820;
     const int HostUserId = 0;
     const int MaxLogLines = 8;
@@ -129,6 +129,14 @@ public class DuetSession
     readonly Dictionary<IDuetLink, Dictionary<string, object>> m_heldMessages = new Dictionary<IDuetLink, Dictionary<string, object>>();
     readonly Dictionary<IDuetLink, Dictionary<string, string>> m_offeredFiles = new Dictionary<IDuetLink, Dictionary<string, string>>();
     readonly Dictionary<IDuetLink, DuetFileSender> m_fileSenders = new Dictionary<IDuetLink, DuetFileSender>();
+
+    // Hosting: when each connection that hasn't said hello yet arrived. Anyone can open a connection, so ones that
+    // never join are dropped, and only a few may wait at once.
+    string m_joinCode;
+
+    readonly Dictionary<IDuetLink, double> m_waitingSince = new Dictionary<IDuetLink, double>();
+    const double HelloTimeoutSeconds = 30;
+    const int MaxWaitingConnections = 8;
     int m_nextUserId = HostUserId + 1;
 
     // Joining
@@ -156,7 +164,7 @@ public class DuetSession
     DuetSession(IDuetSongHost song, string username, Role role)
     {
         m_song = song;
-        m_username = string.IsNullOrEmpty(username) ? "Charter" : username;
+        m_username = CleanName(username);
         this.role = role;
         users = new List<DuetUser>();
         log = new List<string>();
@@ -190,10 +198,12 @@ public class DuetSession
         return session;
     }
 
-    public static DuetSession Join(IDuetSongHost song, string username, IDuetConnector connector, string logLine)
+    // roomCode: the online room's code, which the host checks
+    public static DuetSession Join(IDuetSongHost song, string username, IDuetConnector connector, string logLine, string roomCode = null)
     {
         DuetSession session = new DuetSession(song, username, Role.Client);
         session.m_connector = connector;
+        session.m_joinCode = roomCode;
         session.state = State.Connecting;
         session.Log(logLine);
         return session;
@@ -249,6 +259,17 @@ public class DuetSession
         }
         string result = clean.ToString().Trim();
         return result.Length > MaxChatLength ? result.Substring(0, MaxChatLength) : result;
+    }
+
+    public const int MaxNameLength = 24;
+
+    // Names come from other people's computers, so keep them to one short line
+    public static string CleanName(string name)
+    {
+        string clean = CleanChat(name);
+        if (clean.Length > MaxNameLength)
+            clean = clean.Substring(0, MaxNameLength).Trim();
+        return clean.Length > 0 ? clean : "Charter";
     }
 
     void AddChat(int userId, string name, string text)
@@ -428,7 +449,31 @@ public class DuetSession
         IDuetLink accepted;
         while (m_listener.TryAccept(out accepted))
         {
+            if (m_waitingSince.Count >= MaxWaitingConnections)
+            {
+                accepted.Close("Too many people connecting at once");
+                continue;
+            }
+
             m_clients.Add(accepted);
+            m_waitingSince[accepted] = clockSeconds;
+        }
+
+        List<IDuetLink> finished = null;
+        foreach (KeyValuePair<IDuetLink, double> waiting in m_waitingSince)
+        {
+            if (m_joinedClients.Contains(waiting.Key) || waiting.Key.isClosed)
+                (finished = finished ?? new List<IDuetLink>()).Add(waiting.Key);
+            else if (clockSeconds - waiting.Value > HelloTimeoutSeconds)
+            {
+                waiting.Key.Close("Didn't join in time");
+                (finished = finished ?? new List<IDuetLink>()).Add(waiting.Key);
+            }
+        }
+        if (finished != null)
+        {
+            foreach (IDuetLink link in finished)
+                m_waitingSince.Remove(link);
         }
 
         for (int i = m_clients.Count - 1; i >= 0; --i)
@@ -523,6 +568,16 @@ public class DuetSession
                 return;
             }
 
+            // Anyone using Epic's services can find a room and connect to it, so only those with the code get in
+            string code = m_listener.roomCode;
+            if (code != null && DuetRooms.NormalizeCode(DuetJson.GetString(message, "room", string.Empty)) != code)
+            {
+                client.Send(Message("rejected", "reason", "Wrong room code."));
+                client.CloseAfterSending("Wrong room code");
+                Log("Someone tried to join without the right room code");
+                return;
+            }
+
             if (isLocked)
             {
                 client.Send(Message("rejected", "reason", "The host has locked this session, so nobody new can join right now."));
@@ -540,7 +595,7 @@ public class DuetSession
             }
 
             client.id = m_nextUserId++;
-            DuetUser user = new DuetUser { id = client.id, name = UniqueName(DuetJson.GetString(message, "name", "Charter")) };
+            DuetUser user = new DuetUser { id = client.id, name = UniqueName(CleanName(DuetJson.GetString(message, "name", "Charter"))) };
             users.Add(user);
             m_joinedClients.Add(client);
 
@@ -741,7 +796,10 @@ public class DuetSession
             m_host = link;
             m_connector = null;
             state = State.Joining;
-            m_host.Send(Message("hello", "protocol", (double)ProtocolVersion, "name", m_username));
+            Dictionary<string, object> hello = Message("hello", "protocol", (double)ProtocolVersion, "name", m_username);
+            if (m_joinCode != null)
+                hello["room"] = m_joinCode;
+            m_host.Send(hello);
             Log("Connected, waiting for the host's chart");
         }
 
@@ -771,7 +829,7 @@ public class DuetSession
             {
                 string text = CleanChat(DuetJson.GetString(message, "text", string.Empty));
                 if (text.Length > 0)
-                    AddChat((int)DuetJson.GetNumber(message, "user", -1), DuetJson.GetString(message, "name", "Someone"), text);
+                    AddChat((int)DuetJson.GetNumber(message, "user", -1), CleanName(DuetJson.GetString(message, "name", "Someone")), text);
                 continue;
             }
 
@@ -968,7 +1026,7 @@ public class DuetSession
         {
             Dictionary<string, object> user = item as Dictionary<string, object>;
             if (user != null)
-                users.Add(new DuetUser { id = (int)DuetJson.GetNumber(user, "id"), name = DuetJson.GetString(user, "name", "Charter") });
+                users.Add(new DuetUser { id = (int)DuetJson.GetNumber(user, "id"), name = CleanName(DuetJson.GetString(user, "name", "Charter")) });
         }
 
         List<int> gone = new List<int>();
@@ -1005,6 +1063,7 @@ public class DuetSession
             client.Close("The host ended the session");
         m_clients.Clear();
         m_joinedClients.Clear();
+        m_waitingSince.Clear();
 
         foreach (DuetFileSender sender in m_fileSenders.Values)
             sender.Close();
