@@ -83,8 +83,10 @@ namespace UnityEngine
     public class Event { public static Event current = new Event(); public EventType type; public Vector2 mousePosition; }
     public class GUILayoutOption { }
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
-    public class GUIStyle { }
-    public class GUISkin { public GUIStyle button = new GUIStyle(); }
+    public class GUIContent { public GUIContent(string text) { } }
+    public class RectOffset { public int vertical; }
+    public class GUIStyle { public RectOffset margin = new RectOffset(); public float CalcHeight(GUIContent content, float width) { return 20; } }
+    public class GUISkin { public GUIStyle button = new GUIStyle(); public GUIStyle label = new GUIStyle(); }
     public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static Color backgroundColor; public static Color contentColor; public static void DragWindow() { } public static Rect ModalWindow(int id, Rect rect, WindowFunction func, string text) { return rect; } }
     public static class GUILayout
     {

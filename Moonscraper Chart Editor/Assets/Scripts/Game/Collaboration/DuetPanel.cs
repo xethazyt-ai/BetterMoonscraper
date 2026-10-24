@@ -404,8 +404,8 @@ public class DuetPanel : MonoBehaviour
     }
 
     const int QuitPromptId = 0x4477;
-    const float QuitPromptWidth = 400;
-    const float QuitPromptHeight = 130;
+    const float QuitPromptWidth = 440;
+    float m_quitPromptHeight = 130;
 
     void DrawQuitPrompt()
     {
@@ -413,26 +413,46 @@ public class DuetPanel : MonoBehaviour
 
         float scale = GuiScale;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
-        Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - QuitPromptHeight) / 2, QuitPromptWidth, QuitPromptHeight);
         DuetInputBlocker.Block(QuitPromptId, new Rect(0, 0, Screen.width / scale, Screen.height / scale), scale);    // Nothing else can be clicked until it's answered
         GUISkin oldSkin = GUI.skin;
         GUI.skin = DuetSkin.skin;
+        m_quitPromptHeight = QuitPromptHeight();
+        Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - m_quitPromptHeight) / 2, QuitPromptWidth, m_quitPromptHeight);
         GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit Moonscraper?");
         GUI.skin = oldSkin;
     }
 
+    string[] QuitPromptLines()
+    {
+        List<string> lines = new List<string>();
+        if (activeSession != null)
+            lines.Add(isGuest ? "You'll leave the Collab session." : "Everyone in your Collab session will be disconnected.");
+        if (!isGuest && ChartEditor.isDirty)
+            lines.Add("You have unsaved changes. Do you want to save them first?");
+        return lines.ToArray();
+    }
+
+    // Tall enough for its text, however it wraps, and the buttons below it
+    float QuitPromptHeight()
+    {
+        GUIStyle label = GUI.skin.label;
+        GUIStyle button = GUI.skin.button;
+        float height = 24 + 10;     // Title bar and the bottom edge
+        foreach (string line in QuitPromptLines())
+            height += label.CalcHeight(new GUIContent(line), QuitPromptWidth - 20) + label.margin.vertical;
+        height += 12 + button.CalcHeight(new GUIContent("Quit"), 120) + button.margin.vertical;
+        return Mathf.Max(130, height);
+    }
+
     void DrawQuitPromptWindow(int id)
     {
-        bool inSession = activeSession != null;
         bool askToSave = !isGuest && ChartEditor.isDirty;
 
         // A plain modal window doesn't lay out its contents, so keep them clear of the title and edges
-        GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, QuitPromptHeight - 34));
+        GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, m_quitPromptHeight - 34));
 
-        if (inSession)
-            GUILayout.Label(isGuest ? "You'll leave the Collab session." : "Everyone in your Collab session will be disconnected.");
-        if (askToSave)
-            GUILayout.Label("You have unsaved changes. Do you want to save them first?");
+        foreach (string line in QuitPromptLines())
+            GUILayout.Label(line);
 
         GUILayout.FlexibleSpace();
         GUILayout.BeginHorizontal();
