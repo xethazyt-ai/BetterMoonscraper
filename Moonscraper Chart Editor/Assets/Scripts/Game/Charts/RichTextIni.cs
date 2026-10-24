@@ -3,7 +3,6 @@
 using System;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using UnityEngine;
 
 /// <summary>
 /// Clone Hero shows song.ini text such as the song name or loading phrase with rich text tags (bold, italic, color
@@ -52,8 +51,8 @@ public static class RichTextIni
 
     static void ClampSelection(string text, ref int start, ref int end)
     {
-        start = Mathf.Clamp(start, 0, text.Length);
-        end = Mathf.Clamp(end, 0, text.Length);
+        start = Math.Max(0, Math.Min(start, text.Length));
+        end = Math.Max(0, Math.Min(end, text.Length));
         if (end < start)
         {
             int swap = start;
@@ -94,7 +93,7 @@ public static class RichTextIni
             else
                 size = amount;
 
-            return "<size=" + Mathf.Clamp(Mathf.RoundToInt(size), 4, 64) + ">";
+            return "<size=" + Math.Max(4, Math.Min((int)Math.Round(size), 64)) + ">";
         });
     }
 

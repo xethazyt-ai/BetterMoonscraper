@@ -2376,6 +2376,30 @@
                 ],
                 "jsMaps": []
             }
+        },
+        {
+            "action": "PatternBlueprints",
+            "input": {
+                "kbMaps": [
+                    {
+                        "modifiers": 0,
+                        "keys": [
+                            290
+                        ]
+                    },
+                    {
+                        "modifiers": 0,
+                        "keys": []
+                    }
+                ],
+                "gpButtonMaps": [
+                    {
+                        "buttons": [],
+                        "axes": []
+                    }
+                ],
+                "jsMaps": []
+            }
         }
     ]
 }
