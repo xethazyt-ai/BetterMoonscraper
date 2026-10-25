@@ -33,9 +33,10 @@ public static class CloneHeroNoteSkin
     const int StrikerHead = 0, StrikerHeadRim = 3, StrikerLightHit = 0, StrikerLightHeld = 3;
     const float StrikerTintBoost = 1.3f;
     // Clone Hero's striker art leans: drawn as if seen from the left, its top sits right of its bottom by about this
-    // many pixels per row, around this row (from the bottom). Each lane leans it by its own amount instead.
+    // many pixels per row, around this row (from the bottom). Clone Hero v1 shows all five upright, so it's undone.
     const float StrikerLeanPerRow = 0.36f;
     const int StrikerLeanRow = 25;
+    const int StrikerHeadDrop = 2;          // Pixels the head sits lower, so its silver ring is centred in the colored one
     const int StrikerRaise = 7;             // Pixels from the head's middle (row 40 of 64 from the top) up to the picture's middle
 
     // Clone Hero's default colors, for keys the profile doesn't have
@@ -171,12 +172,11 @@ public static class CloneHeroNoteSkin
             Color32 light = GetColor(profile, "striker_head_light_" + s_fretNames[fret], noteColors[fret]);
 
             Color32[] ring = Tint(bottoms[StrikerRing], cover, StrikerTintBoost);
-            Color32[] head = Layer(Tint(heads[StrikerHead], baseColor, 1), Tint(heads[StrikerHeadRim], headCover, StrikerTintBoost));
+            Color32[] head = Drop(Layer(Tint(heads[StrikerHead], baseColor, 1), Tint(heads[StrikerHeadRim], headCover, StrikerTintBoost)), StrikerHeadDrop);
             Color32[] pressed = Layer(Tint(bottoms[StrikerBasePressed], baseColor, 1), ring);
 
-            // Green keeps the art's lean and orange gets the opposite, yellow stands upright and red and blue lean
-            // half way, as the highway's perspective would show them. Nothing is mirrored, so the shine stays put.
-            float lean = 1 - fret * 0.5f;
+            // All five stand upright and look the same, like Clone Hero v1's (Robert's screenshot)
+            const float lean = 0;
             written += Write(output, fret + "_fret_base", NoteWidth, NoteHeight, Place(Layer(Tint(bottoms[StrikerBase], baseColor, 1), ring), lean));
             written += Write(output, fret + "_fret_release", NoteWidth, NoteHeight, Place(head, lean));
             written += Write(output, fret + "_fret_press", NoteWidth, NoteHeight, Place(AddLight(pressed, lights[StrikerLightHeld], light), lean));
@@ -214,6 +214,15 @@ public static class CloneHeroNoteSkin
                 result[y * NoteWidth + x] = c;
             }
         }
+        return result;
+    }
+
+    // Moved down by `rows`, as rows go bottom to top
+    static Color32[] Drop(Color32[] pixels, int rows)
+    {
+        Color32[] result = new Color32[pixels.Length];
+        for (int y = 0; y + rows < NoteHeight; ++y)
+            Array.Copy(pixels, (y + rows) * NoteWidth, result, y * NoteWidth, NoteWidth);
         return result;
     }
 
