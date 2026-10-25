@@ -8,14 +8,16 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 
 /// <summary>
-/// Unity opens the window at the screen's full resolution, which with the title bar and taskbar doesn't fit: it hangs
-/// off the bottom and side. Once it's open, a window that doesn't fit the screen's free area is maximised instead.
-/// A smaller window someone sized themselves is left as it is.
+/// Unity opens the window at the screen's full resolution, or where it was last left, and it can hang off the side
+/// or under the taskbar. Once it's open, a window too big for the screen's free area is maximised, and one that fits
+/// but sticks out is moved back to the middle. A window that's already fully on screen is left as it is.
 /// </summary>
 public class WindowFitOnLaunch : MonoBehaviour
 {
     const int SW_MAXIMIZE = 3;
     const uint MONITOR_DEFAULTTONEAREST = 2;
+    const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+    const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 
     [StructLayout(LayoutKind.Sequential)]
     struct RECT { public int left, top, right, bottom; }
@@ -40,6 +42,8 @@ public class WindowFitOnLaunch : MonoBehaviour
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hWnd, int attribute, out RECT value, int size);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -51,10 +55,19 @@ public class WindowFitOnLaunch : MonoBehaviour
 
     IEnumerator Start()
     {
-        // Give Unity a moment to finish sizing the window itself
+        // Give Unity a moment to finish sizing the window itself, and check again once loading has settled
         for (int i = 0; i < 5; ++i)
             yield return null;
+        TryFitWindow();
 
+        yield return new WaitForSecondsRealtime(1.5f);
+        TryFitWindow();
+
+        Destroy(gameObject);
+    }
+
+    static void TryFitWindow()
+    {
         try
         {
             if (!Screen.fullScreen)
@@ -64,14 +77,17 @@ public class WindowFitOnLaunch : MonoBehaviour
         {
             Debug.LogWarning("Couldn't fit the window to the screen. " + e.Message);
         }
-
-        Destroy(gameObject);
     }
 
     static void FitWindow()
     {
         IntPtr window = FindOwnWindow();
-        if (window == IntPtr.Zero || IsZoomed(window))
+        if (window == IntPtr.Zero)
+        {
+            Debug.Log("Window fit: couldn't find Moonscraper's window");
+            return;
+        }
+        if (IsZoomed(window))
             return;
 
         RECT rect;
@@ -80,13 +96,32 @@ public class WindowFitOnLaunch : MonoBehaviour
         if (!GetWindowRect(window, out rect) || !GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), ref monitor))
             return;
 
-        // A few pixels over is just the invisible resize border Windows puts around windows
-        const int Slack = 16;
+        // The part you can see: the window's rect also holds an invisible resize border on three sides
+        RECT visible;
+        if (DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS, out visible, Marshal.SizeOf(typeof(RECT))) != 0)
+            visible = rect;
+
+        const int Slack = 2;
         RECT work = monitor.rcWork;
-        bool fits = rect.right - rect.left <= work.right - work.left + Slack && rect.bottom - rect.top <= work.bottom - work.top + Slack
-            && rect.top >= work.top - Slack && rect.bottom <= work.bottom + Slack;
-        if (!fits)
+        int width = visible.right - visible.left, height = visible.bottom - visible.top;
+        int workWidth = work.right - work.left, workHeight = work.bottom - work.top;
+        Debug.Log(string.Format("Window fit: window {0},{1} {2}x{3}, screen's free area {4},{5} {6}x{7}",
+            visible.left, visible.top, width, height, work.left, work.top, workWidth, workHeight));
+        if (width > workWidth + Slack || height > workHeight + Slack)
+        {
             ShowWindow(window, SW_MAXIMIZE);
+            return;
+        }
+
+        bool onScreen = visible.left >= work.left - Slack && visible.top >= work.top - Slack
+            && visible.right <= work.right + Slack && visible.bottom <= work.bottom + Slack;
+        if (!onScreen)
+        {
+            // Centre it in the free area, keeping its size
+            int moveX = work.left + (workWidth - width) / 2 - visible.left;
+            int moveY = work.top + (workHeight - height) / 2 - visible.top;
+            SetWindowPos(window, IntPtr.Zero, rect.left + moveX, rect.top + moveY, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
     }
 
     // This process's Unity window
