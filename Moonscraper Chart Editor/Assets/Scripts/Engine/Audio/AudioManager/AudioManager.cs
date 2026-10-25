@@ -208,6 +208,108 @@ namespace MoonscraperEngine.Audio
             return success;
         }
 
+        /// <summary>
+        /// Makes an .ogg of the audio played at another speed, for exporting a slowed down or sped up chart. Pitched
+        /// changes the playback rate like a record (faster is higher), otherwise the pitch stays the same. Renders a
+        /// temporary .wav next to the output, then encodes that like ConvertToOgg.
+        /// </summary>
+        public static bool ConvertToOggAtSpeed(string sourcePath, string destPath, float speed, bool pitched)
+        {
+            string wavPath = Path.ChangeExtension(destPath, null) + ".speed.tmp.wav";
+            try
+            {
+                if (!RenderWavAtSpeed(sourcePath, wavPath, speed, pitched))
+                    return false;
+
+                return ConvertToOgg(wavPath, destPath);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(wavPath))
+                        File.Delete(wavPath);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogWarning("Couldn't delete the temporary file " + wavPath + ". " + e.Message);
+                }
+            }
+        }
+
+        static bool RenderWavAtSpeed(string sourcePath, string wavPath, float speed, bool pitched)
+        {
+            int handle = StreamCreateFile(sourcePath, 0, 0, BASSFlag.BASS_STREAM_DECODE | BASSFlag.BASS_STREAM_PRESCAN);
+            if (handle == 0)
+            {
+                UnityEngine.Debug.LogErrorFormat("Unable to open {0} to change its speed. Error {1}", sourcePath, Bass.BASS_ErrorGetCode());
+                return false;
+            }
+
+            handle = Un4seen.Bass.AddOn.Fx.BassFx.BASS_FX_TempoCreate(handle, BASSFlag.BASS_STREAM_DECODE | BASSFlag.BASS_FX_FREESOURCE);
+            if (handle == 0)
+            {
+                UnityEngine.Debug.LogErrorFormat("Unable to change the speed of {0}. Error {1}", sourcePath, Bass.BASS_ErrorGetCode());
+                return false;
+            }
+
+            try
+            {
+                BASS_CHANNELINFO info = Bass.BASS_ChannelGetInfo(handle);
+                if (pitched)
+                    Bass.BASS_ChannelSetAttribute(handle, BASSAttribute.BASS_ATTRIB_TEMPO_FREQ, info.freq * speed);
+                else
+                    Bass.BASS_ChannelSetAttribute(handle, BASSAttribute.BASS_ATTRIB_TEMPO, speed * 100 - 100);
+
+                bool isFloat = (info.flags & BASSFlag.BASS_SAMPLE_FLOAT) != 0;
+                short bitsPerSample = (short)(isFloat ? 32 : 16);
+                short blockAlign = (short)(info.chans * bitsPerSample / 8);
+
+                using (FileStream file = new FileStream(wavPath, FileMode.Create, FileAccess.Write))
+                using (BinaryWriter writer = new BinaryWriter(file))
+                {
+                    // RIFF header, with the sizes filled in once the data is written
+                    writer.Write(new[] { 'R', 'I', 'F', 'F' });
+                    writer.Write(0);
+                    writer.Write(new[] { 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ' });
+                    writer.Write(16);
+                    writer.Write((short)(isFloat ? 3 : 1));
+                    writer.Write((short)info.chans);
+                    writer.Write(info.freq);
+                    writer.Write(info.freq * blockAlign);
+                    writer.Write(blockAlign);
+                    writer.Write(bitsPerSample);
+                    writer.Write(new[] { 'd', 'a', 't', 'a' });
+                    writer.Write(0);
+
+                    byte[] buffer = new byte[1 << 16];
+                    long dataBytes = 0;
+                    int read;
+                    while ((read = Bass.BASS_ChannelGetData(handle, buffer, buffer.Length)) > 0)
+                    {
+                        writer.Write(buffer, 0, read);
+                        dataBytes += read;
+                    }
+
+                    writer.Seek(4, SeekOrigin.Begin);
+                    writer.Write((int)(36 + dataBytes));
+                    writer.Seek(40, SeekOrigin.Begin);
+                    writer.Write((int)dataBytes);
+                }
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogErrorFormat("Unable to change the speed of {0}. {1}", sourcePath, e);
+                return false;
+            }
+            finally
+            {
+                Bass.BASS_StreamFree(handle);
+            }
+        }
+
         #endregion
 
         #region Stream Loading

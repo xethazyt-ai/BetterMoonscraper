@@ -487,11 +487,17 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     /// <summary>
     /// How far apart notes a second apart are drawn. At 1x and faster, notes are spaced by song time alone, like
     /// Clone Hero: speeding the song up makes the notes come faster, not closer together. Slower than 1x spreads them
-    /// out like Moonscraper always did, which makes dense patterns easier to chart.
+    /// out like Moonscraper always did, which makes dense patterns easier to chart, unless "Non-Spaced Notes for
+    /// Slowdown" is ticked.
     /// </summary>
     public static float worldUnitsPerSecond
     {
-        get { return Globals.gameSettings.hyperspeed / Mathf.Clamp(Globals.gameSettings.gameSpeed, 0.01f, 1); }
+        get
+        {
+            if (SpeedOptions.nonSpacedSlowdown)
+                return Globals.gameSettings.hyperspeed;
+            return Globals.gameSettings.hyperspeed / Mathf.Clamp(Globals.gameSettings.gameSpeed, 0.01f, 1);
+        }
     }
 
     public static float WorldYPositionToTime(float worldYPosition)
@@ -1252,7 +1258,8 @@ public class ChartEditor : UnitySingleton<ChartEditor>
             stream.volume = vol * Globals.gameSettings.vol_master;
             stream.pan = Globals.gameSettings.audio_pan;
 
-            if (speed < 1 && !Globals.gameSettings.slowdownPitchCorrectionEnabled)
+            // Pitched Speedups: both slowed down and sped up audio change pitch, like a record
+            if (speed != 1 && SpeedOptions.pitchedSpeedups)
             {
                 float originalFreq = stream.frequency;
 

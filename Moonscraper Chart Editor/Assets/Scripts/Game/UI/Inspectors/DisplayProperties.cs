@@ -103,6 +103,7 @@ public class DisplayProperties : UpdateableService
         }
         UpdateHyperspeedText();
         UpdateHighwayLengthText();
+        AddSpeedToggles();
 
         UpdateGameSpeedText();
 
@@ -271,6 +272,49 @@ public class DisplayProperties : UpdateableService
         UpdateHighwayLengthText();
 
         editor.events.hyperspeedChangeEvent.Fire();
+    }
+
+    // "Pitched Speedups" and "Non-Spaced Notes for Slowdown", under the highway length slider, copied from the Clap row
+    void AddSpeedToggles()
+    {
+        RectTransform content = clapToggle.transform.parent as RectTransform;
+        RectTransform lastRow = highwayLengthSlider.transform as RectTransform;
+        if (!content || !lastRow)
+            return;
+
+        float y = lastRow.anchoredPosition.y - 27;
+        MakeSpeedToggle("Pitched Speedups:", y, SpeedOptions.pitchedSpeedups, (on) => SpeedOptions.pitchedSpeedups = on);
+        MakeSpeedToggle("Non-Spaced Notes for Slowdown:", y - 30, SpeedOptions.nonSpacedSlowdown, (on) =>
+        {
+            SpeedOptions.nonSpacedSlowdown = on;
+            editor.events.hyperspeedChangeEvent.Fire();
+        });
+
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 85);
+    }
+
+    void MakeSpeedToggle(string label, float y, bool isOn, UnityEngine.Events.UnityAction<bool> onChanged)
+    {
+        Toggle toggle = Instantiate(clapToggle, clapToggle.transform.parent);
+        toggle.name = label.TrimEnd(':') + " Toggle";
+        toggle.onValueChanged = new Toggle.ToggleEvent();
+        toggle.isOn = isOn;
+        toggle.onValueChanged.AddListener(onChanged);
+
+        RectTransform rect = (RectTransform)toggle.transform;
+        rect.anchoredPosition = new Vector2(((RectTransform)clapToggle.transform).anchoredPosition.x, y);
+
+        // The label starts where "Clap:" does and wraps onto a second line before reaching the checkbox
+        Text text = toggle.GetComponentInChildren<Text>(true);
+        if (text)
+        {
+            text.text = label;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            RectTransform textRect = text.rectTransform;
+            float parentWidth = rect.rect.width;
+            textRect.offsetMax = new Vector2(textRect.offsetMin.x + 72 - parentWidth, textRect.offsetMax.y);
+        }
     }
 
     // Past Moonscraper's old maximum the fretboard and rails would stop short of the highway's end, and the camera
