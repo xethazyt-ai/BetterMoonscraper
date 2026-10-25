@@ -32,6 +32,8 @@ public static class CloneHeroNoteSkin
     const int StrikerBase = 0, StrikerBasePressed = 3, StrikerRing = 6, StrikerRingFront = 9;
     const int StrikerHead = 0, StrikerHeadRim = 3, StrikerLightHit = 0, StrikerLightHeld = 3;
     const float StrikerTintBoost = 1.3f;
+    const int FirstMirroredStriker = 3;     // Blue
+    const int StrikerRaise = 7;             // Pixels from the head's middle (row 40 of 64 from the top) up to the picture's middle
 
     // Clone Hero's default colors, for keys the profile doesn't have
     static readonly string[] s_fretKeys = { "note_green", "note_red", "note_yellow", "note_blue", "note_orange" };
@@ -169,16 +171,31 @@ public static class CloneHeroNoteSkin
             Color32[] head = Layer(Tint(heads[StrikerHead], baseColor, 1), Tint(heads[StrikerHeadRim], headCover, StrikerTintBoost));
             Color32[] pressed = Layer(Tint(bottoms[StrikerBasePressed], baseColor, 1), ring);
 
-            written += Write(output, fret + "_fret_base", NoteWidth, NoteHeight, Layer(Tint(bottoms[StrikerBase], baseColor, 1), ring));
-            written += Write(output, fret + "_fret_release", NoteWidth, NoteHeight, head);
-            written += Write(output, fret + "_fret_press", NoteWidth, NoteHeight, AddLight(pressed, lights[StrikerLightHeld], light));
-            written += Write(output, fret + "_fret_anim", NoteWidth, NoteHeight, AddLight(head, lights[StrikerLightHit], light));
-            written += Write(output, fret + "_fret_cover", NoteWidth, NoteHeight, Tint(bottoms[StrikerRingFront], cover, StrikerTintBoost));
+            // Clone Hero mirrors the blue and orange strikers, so their lit side faces the middle of the highway
+            bool mirror = fret >= FirstMirroredStriker;
+            written += Write(output, fret + "_fret_base", NoteWidth, NoteHeight, Place(Layer(Tint(bottoms[StrikerBase], baseColor, 1), ring), mirror));
+            written += Write(output, fret + "_fret_release", NoteWidth, NoteHeight, Place(head, mirror));
+            written += Write(output, fret + "_fret_press", NoteWidth, NoteHeight, Place(AddLight(pressed, lights[StrikerLightHeld], light), mirror));
+            written += Write(output, fret + "_fret_anim", NoteWidth, NoteHeight, Place(AddLight(head, lights[StrikerLightHit], light), mirror));
+            written += Write(output, fret + "_fret_cover", NoteWidth, NoteHeight, Place(Tint(bottoms[StrikerRingFront], cover, StrikerTintBoost), mirror));
         }
 
         // Clone Hero's strikers have no stem, so hide Moonscraper's
         written += Write(output, "fret_stem", 4, 4, new Color32[16]);
         return written;
+    }
+
+    // Raised so the head's middle is the picture's middle, which Moonscraper puts on the strikeline (Clone Hero
+    // pins its strikers there too), and flipped left to right when `mirror` is set
+    static Color32[] Place(Color32[] pixels, bool mirror)
+    {
+        Color32[] result = new Color32[pixels.Length];
+        for (int y = StrikerRaise; y < NoteHeight; ++y)     // Rows go bottom to top
+        {
+            for (int x = 0; x < NoteWidth; ++x)
+                result[y * NoteWidth + x] = pixels[(y - StrikerRaise) * NoteWidth + (mirror ? NoteWidth - 1 - x : x)];
+        }
+        return result;
     }
 
     // A glow on black, added on top of `bottom` the way Clone Hero draws its striker lights
