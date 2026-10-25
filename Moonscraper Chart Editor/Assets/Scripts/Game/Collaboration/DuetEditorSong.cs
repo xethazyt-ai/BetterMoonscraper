@@ -85,6 +85,17 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         m_editor.songObjectPoolManager.SetAllPoolsDirty();
         m_editor.selectedObjectsManager.TryFindAndSelectSongObjects(selection);
 
+        // Noted in the Collab Logs, so an edit that seems not to arrive can be traced
+        int added = 0, deleted = 0, modified = 0;
+        foreach (SongEditChange change in changes)
+        {
+            if (change.type == SongEditChange.Type.Add) ++added;
+            else if (change.type == SongEditChange.Type.Delete) ++deleted;
+            else ++modified;
+        }
+        UnityEngine.Debug.Log(string.Format("Duet: {0} an edit ({1} added, {2} deleted, {3} changed) while {4}",
+            success ? "applied" : "couldn't apply", added, deleted, modified, m_editor.currentState));
+
         if (success)
         {
             ChartEditor.isDirty = true;
