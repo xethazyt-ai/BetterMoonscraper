@@ -88,6 +88,12 @@ public class DisplayProperties : UpdateableService
     Vector2 m_fretboardTiling;
     float m_defaultFarClip = -1;
 
+    // Clone Hero's scores for the open chart, under the stats
+    Text cloneHeroScoresText;
+    float m_nextScoresCheck;
+    const float ScoresCheckSeconds = 2;
+    const float ScoresTop = 136;
+
     protected override void Start()
     {
         editor = ChartEditor.Instance;
@@ -118,6 +124,7 @@ public class DisplayProperties : UpdateableService
         editor.events.chartReloadedEvent.Register(OnChartReload);
         editor.events.editorStateChangedEvent.Register(OnApplicationModeChanged);
 
+        AddCloneHeroScoresText();
         OnChartReload();
 
         base.Start();
@@ -198,6 +205,9 @@ public class DisplayProperties : UpdateableService
             prevGlobalEventCount = currentGlobalEventCount;
         }
 
+        if (statsMenuOption.gameObject.activeInHierarchy && Time.unscaledTime >= m_nextScoresCheck)
+            UpdateCloneHeroScores();
+
         // Shortcuts
         if (MSChartEditorInput.GetInputDown(MSChartEditorInputActions.ToggleClap))
             clapToggle.isOn = !clapToggle.isOn;
@@ -206,6 +216,86 @@ public class DisplayProperties : UpdateableService
     void OnChartReload()
     {
         UpdateSongNameText();
+        m_nextScoresCheck = 0;
+    }
+
+    // A wrapping text under "Step NPS" in the stats tab, copied from the Global Events line
+    void AddCloneHeroScoresText()
+    {
+        RectTransform content = globalEventsCount.transform.parent as RectTransform;
+        if (!content)
+            return;
+
+        cloneHeroScoresText = Instantiate(globalEventsCount, content);
+        cloneHeroScoresText.name = "Clone Hero Scores Text";
+        cloneHeroScoresText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        cloneHeroScoresText.verticalOverflow = VerticalWrapMode.Overflow;
+        cloneHeroScoresText.supportRichText = true;
+        cloneHeroScoresText.alignment = TextAnchor.UpperLeft;
+
+        RectTransform source = globalEventsCount.rectTransform;
+        RectTransform rect = cloneHeroScoresText.rectTransform;
+        float left = source.anchoredPosition.x - source.sizeDelta.x * source.pivot.x;
+        rect.anchorMin = new Vector2(0, 1);
+        rect.anchorMax = new Vector2(1, 1);
+        rect.pivot = new Vector2(0, 1);
+        rect.offsetMin = new Vector2(left, -ScoresTop - 20);
+        rect.offsetMax = new Vector2(-4, -ScoresTop);
+    }
+
+    void UpdateCloneHeroScores()
+    {
+        m_nextScoresCheck = Time.unscaledTime + ScoresCheckSeconds;
+        if (!cloneHeroScoresText)
+            return;
+
+        string text = CloneHeroScoresText(CloneHeroScores.Lookup(editor.currentChartFile));
+        if (text == cloneHeroScoresText.text)
+            return;
+
+        cloneHeroScoresText.text = text;
+
+        // Fit the text's height, and the scroll view's content around it
+        RectTransform rect = cloneHeroScoresText.rectTransform;
+        float height = Mathf.Ceil(cloneHeroScoresText.preferredHeight) + 2;
+        rect.offsetMin = new Vector2(rect.offsetMin.x, rect.offsetMax.y - height);
+
+        RectTransform content = rect.parent as RectTransform;
+        content.sizeDelta = new Vector2(content.sizeDelta.x, ScoresTop + height + 4);
+    }
+
+    static string CloneHeroScoresText(CloneHeroScores.Result result)
+    {
+        switch (result.status)
+        {
+            case CloneHeroScores.Status.NoChart: return "Clone Hero: save the chart to see its scores";
+            case CloneHeroScores.Status.NoScoresFile: return "Clone Hero: no scores file found";
+            case CloneHeroScores.Status.Unreadable: return "Clone Hero: can't read its scores file";
+            case CloneHeroScores.Status.NotPlayed: return "Clone Hero: no scores for this chart file yet";
+        }
+
+        CloneHeroScores.Song song = result.song;
+        var builder = new System.Text.StringBuilder();
+        builder.Append("<b>Clone Hero</b>\n");
+        builder.Append(song.playCount == 1 ? "Played once" : string.Format("Played {0} times", song.playCount));
+
+        List<CloneHeroScores.Score> scores = new List<CloneHeroScores.Score>(song.scores);
+        scores.Sort((a, b) => a.instrument != b.instrument ? a.instrument.CompareTo(b.instrument) : b.difficulty.CompareTo(a.difficulty));
+        foreach (CloneHeroScores.Score score in scores)
+        {
+            builder.AppendFormat("\n\n<b>{0} {1}</b>\n", CloneHeroScores.DifficultyName(score.difficulty), CloneHeroScores.InstrumentName(score.instrument));
+            builder.Append(score.fc ? "FC" : Mathf.FloorToInt(score.percent) + "%");
+            builder.AppendFormat(score.stars == 1 ? ", {0} star" : ", {0} stars", score.stars);
+            builder.Append("\n").Append(score.score.ToString("N0"));
+            if (score.speed != 100 && score.speed > 0)
+                builder.AppendFormat(" at {0}% speed", score.speed);
+
+            string modifiers = CloneHeroScores.ModifierNames(score.modifiers);
+            if (modifiers != null)
+                builder.Append("\n").Append(modifiers);
+        }
+
+        return builder.ToString();
     }
 
     public void UpdateSongNameText()
