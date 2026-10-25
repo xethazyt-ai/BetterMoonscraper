@@ -105,8 +105,8 @@ public class DisplayProperties : UpdateableService
         }
         UpdateHyperspeedText();
         UpdateHighwayLengthText();
-        AddSpeedToggles();
-        AddGemSizeSlider();
+        float gemSizeRow = AddGemSizeSlider();
+        AddSpeedToggles(gemSizeRow);
 
         UpdateGameSpeedText();
 
@@ -277,15 +277,16 @@ public class DisplayProperties : UpdateableService
         editor.events.hyperspeedChangeEvent.Fire();
     }
 
-    // "Pitched Speedups" and "Non-Spaced Notes for Slowdown", under the highway length slider, copied from the Clap row
-    void AddSpeedToggles()
+    // "Pitched Speedups" and "Non-Spaced Notes for Slowdown", under the Gem Size slider (gemSizeRow below the
+    // highway length slider), copied from the Clap row
+    void AddSpeedToggles(float gemSizeRow)
     {
         RectTransform content = clapToggle.transform.parent as RectTransform;
         RectTransform lastRow = highwayLengthSlider.transform as RectTransform;
         if (!content || !lastRow)
             return;
 
-        float y = lastRow.anchoredPosition.y - 27;
+        float y = lastRow.anchoredPosition.y - gemSizeRow - 27;
         MakeSpeedToggle("Pitched Speedups:", y, SpeedOptions.pitchedSpeedups, (on) => SpeedOptions.pitchedSpeedups = on);
         MakeSpeedToggle("Non-Spaced Notes for Slowdown:", y - 30, SpeedOptions.nonSpacedSlowdown, (on) =>
         {
@@ -296,16 +297,16 @@ public class DisplayProperties : UpdateableService
         content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 85);
     }
 
-    // "Gem Size", under the speed checkboxes, copied from the Highway Length label and slider
-    void AddGemSizeSlider()
+    // "Gem Size", right under Highway Length, copied from its label and slider. Returns how far down it went.
+    float AddGemSizeSlider()
     {
         RectTransform content = clapToggle.transform.parent as RectTransform;
         if (!content || !highwayLengthLabel || !gameSpeed)
-            return;
+            return 0;
 
-        // One label-and-slider row further down than Highway Length's, past the two checkboxes
+        // One label-and-slider row further down than Highway Length's
         float rowStep = content.InverseTransformPoint(gameSpeed.transform.position).y - content.InverseTransformPoint(highwayLengthLabel.transform.position).y;
-        float drop = rowStep + 60;
+        float drop = rowStep;
 
         gemSizeLabel = Instantiate(highwayLengthLabel, highwayLengthLabel.transform.parent);
         gemSizeLabel.name = "Gem Size Text";
@@ -327,7 +328,8 @@ public class DisplayProperties : UpdateableService
         MoveDown(slider.transform, content, drop);
 
         UpdateGemSizeText();
-        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep + 5);
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep);
+        return rowStep;
     }
 
     static void MoveDown(Transform item, RectTransform content, float distance)
