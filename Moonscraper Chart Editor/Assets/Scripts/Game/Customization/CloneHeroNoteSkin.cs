@@ -22,16 +22,23 @@ public static class CloneHeroNoteSkin
     const string StarOutlineFile = "spr_star_notes_strip4.png";     // 16 frames
     const string StarBodyFile = "spr_star_notes_strip1.png";        // 16 frames, the color layer
     const string OpenFile = "spr_open_notes_strip5.png";            // 0 top, 1 color layer, 3 HOPO glow
+    const string StrikerBottomFile = "spr_newtargets_bottom_strip12.png";  // 0 base, 3 pressed base, 6 ring, 9 front of the ring
+    const string StrikerHeadFile = "spr_newtargets_head_strip6.png";       // 0 head, 3 head's color rim
+    const string StrikerLightFile = "Head_Lights.png";                     // 0 hit flash, 3 held glow; drawn additively
 
     const int NoteTopStrum = 0, NoteTopHopo = 1, NoteColor = 2, NoteTopTap = 4;
     const int CapStrum = 0, CapHopo = 1, CapTap = 4;
     const int OpenTop = 0, OpenColor = 1, OpenHopoGlow = 3;
+    const int StrikerBase = 0, StrikerBasePressed = 3, StrikerRing = 6, StrikerRingFront = 9;
+    const int StrikerHead = 0, StrikerHeadRim = 3, StrikerLightHit = 0, StrikerLightHeld = 3;
+    const float StrikerTintBoost = 1.3f;
 
     // Clone Hero's default colors, for keys the profile doesn't have
     static readonly string[] s_fretKeys = { "note_green", "note_red", "note_yellow", "note_blue", "note_orange" };
     static readonly Color32[] s_defaultFretColors = { Hex(0x00FF00), Hex(0xFF0000), Hex(0xFFFF00), Hex(0x0089FF), Hex(0xFFB300) };
     static readonly Color32 s_defaultOpen = Hex(0xBA00FF);
     static readonly Color32 s_defaultStarPower = Hex(0x00FFFF);
+    static readonly string[] s_fretNames = { "green", "red", "yellow", "blue", "orange" };
 
     const string PrefLastResult = "Customize.NoteSkinResult";
 
@@ -123,9 +130,12 @@ public static class CloneHeroNoteSkin
                 written += Write(output, "5_sp_hopo", OpenWidth, NoteHeight, Layer(openStar, opens[OpenHopoGlow]));
             }
 
-            Debug.Log("Built " + written + " note pictures from the Clone Hero note skin in " + skinFolder);
+            int strikers = BuildStrikers(skinFolder, output, profile, frets);
+            written += strikers;
+
+            Debug.Log("Built " + written + " note and striker pictures from the Clone Hero note skin in " + skinFolder);
             lastResult = written > 0
-                ? "Clone Hero notes: built " + written + " note pictures when Moonscraper opened" + (profile != null ? ", colored with your color profile." : ", in Clone Hero's default colors.")
+                ? "Clone Hero notes: built " + (written - strikers) + " note pictures" + (strikers > 0 ? " and the strikers" : " (no striker textures in the folder, so the strikeline stays Moonscraper's)") + (profile != null ? ", colored with your color profile." : ", in Clone Hero's default colors.")
                 : "Clone Hero notes: found the folder but couldn't build any notes from it.";
             return written > 0 ? output : null;
         }
@@ -135,6 +145,66 @@ public static class CloneHeroNoteSkin
             lastResult = "Clone Hero notes failed to build: " + e.Message;
             return null;
         }
+    }
+
+    // The strikeline: Moonscraper draws a base, the head (up, held down, or flashing when hit) and a cover in front,
+    // which match Clone Hero's striker pieces. Returns how many pictures it wrote, 0 without Clone Hero's strikers.
+    static int BuildStrikers(string skinFolder, string output, CloneHeroColorProfile profile, Color32[] noteColors)
+    {
+        List<Color32[]> bottoms = LoadFrames(FindFile(skinFolder, StrikerBottomFile), NoteWidth);
+        List<Color32[]> heads = LoadFrames(FindFile(skinFolder, StrikerHeadFile), NoteWidth);
+        List<Color32[]> lights = LoadFrames(FindFile(skinFolder, StrikerLightFile), NoteWidth);
+        if (bottoms.Count <= StrikerRingFront || heads.Count <= StrikerHeadRim || lights.Count <= StrikerLightHeld)
+            return 0;
+
+        int written = 0;
+        for (int fret = 0; fret < s_fretNames.Length; ++fret)
+        {
+            Color32 baseColor = GetColor(profile, "striker_base_" + s_fretNames[fret], Hex(0xFFFFFF));
+            Color32 cover = GetColor(profile, "striker_cover_" + s_fretNames[fret], noteColors[fret]);
+            Color32 headCover = GetColor(profile, "striker_head_cover_" + s_fretNames[fret], noteColors[fret]);
+            Color32 light = GetColor(profile, "striker_head_light_" + s_fretNames[fret], noteColors[fret]);
+
+            Color32[] ring = Tint(bottoms[StrikerRing], cover, StrikerTintBoost);
+            Color32[] head = Layer(Tint(heads[StrikerHead], baseColor, 1), Tint(heads[StrikerHeadRim], headCover, StrikerTintBoost));
+            Color32[] pressed = Layer(Tint(bottoms[StrikerBasePressed], baseColor, 1), ring);
+
+            written += Write(output, fret + "_fret_base", NoteWidth, NoteHeight, Layer(Tint(bottoms[StrikerBase], baseColor, 1), ring));
+            written += Write(output, fret + "_fret_release", NoteWidth, NoteHeight, head);
+            written += Write(output, fret + "_fret_press", NoteWidth, NoteHeight, AddLight(pressed, lights[StrikerLightHeld], light));
+            written += Write(output, fret + "_fret_anim", NoteWidth, NoteHeight, AddLight(head, lights[StrikerLightHit], light));
+            written += Write(output, fret + "_fret_cover", NoteWidth, NoteHeight, Tint(bottoms[StrikerRingFront], cover, StrikerTintBoost));
+        }
+
+        // Clone Hero's strikers have no stem, so hide Moonscraper's
+        written += Write(output, "fret_stem", 4, 4, new Color32[16]);
+        return written;
+    }
+
+    // A glow on black, added on top of `bottom` the way Clone Hero draws its striker lights
+    static Color32[] AddLight(Color32[] bottom, Color32[] glow, Color32 color)
+    {
+        Color32[] result = new Color32[bottom.Length];
+        for (int i = 0; i < bottom.Length; ++i)
+        {
+            Color32 under = bottom[i], over = glow[i];
+            float underAlpha = under.a / 255f;
+            float overAlpha = over.a / 255f;
+            float glowAlpha = Mathf.Max(over.r, Mathf.Max(over.g, over.b)) / 255f * overAlpha;
+            float alpha = Mathf.Min(1, underAlpha + glowAlpha * (1 - underAlpha));
+            if (alpha <= 0)
+            {
+                result[i] = new Color32(0, 0, 0, 0);
+                continue;
+            }
+
+            result[i] = new Color32(
+                (byte)Mathf.Min(255, (under.r * underAlpha + over.r * color.r / 255f * overAlpha) / alpha),
+                (byte)Mathf.Min(255, (under.g * underAlpha + over.g * color.g / 255f * overAlpha) / alpha),
+                (byte)Mathf.Min(255, (under.b * underAlpha + over.b * color.b / 255f * overAlpha) / alpha),
+                (byte)(alpha * 255));
+        }
+        return result;
     }
 
     static CloneHeroColorProfile LoadProfile()

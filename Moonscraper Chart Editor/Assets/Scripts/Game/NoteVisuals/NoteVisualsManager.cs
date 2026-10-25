@@ -25,7 +25,21 @@ public class NoteVisualsManager : MonoBehaviour {
 
     void LateUpdate()
     {        
+        if (m_gemSizeVersion != GemSize.version)
+            SetVisualScale(m_visualScale);
+
         Animate();
+    }
+
+    // The note's own scale (open and Star Power notes are wider), times the gem size from the left panel
+    Vector3 m_visualScale = Vector3.one;
+    int m_gemSizeVersion = -1;
+
+    protected void SetVisualScale(Vector3 scale)
+    {
+        m_visualScale = scale;
+        m_gemSizeVersion = GemSize.version;
+        transform.localScale = scale * GemSize.scale;
     }
 
     public static Note.NoteType GetVisualNoteType(Note note)

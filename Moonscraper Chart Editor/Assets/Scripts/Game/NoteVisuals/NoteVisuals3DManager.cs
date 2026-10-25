@@ -144,7 +144,7 @@ public class NoteVisuals3DManager : NoteVisualsManager
                 materials = GetMaterials(colorMat, visualNoteType);
             }
 
-            transform.localScale = scale;
+            SetVisualScale(scale);
             noteRenderer.sharedMaterials = materials;
         }
 

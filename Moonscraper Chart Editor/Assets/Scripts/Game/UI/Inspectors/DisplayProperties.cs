@@ -70,6 +70,8 @@ public class DisplayProperties : UpdateableService
     // The "Hyperspeed-" and "Highway Length-" labels, found by their text, so they can show the value next to them
     Text hyperspeedLabel;
     Text highwayLengthLabel;
+    Text gemSizeLabel;
+    const int GemSizeStep = 5;  // percent
 
     // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
     // Moonscraper's old maximum, so the new top of the highway slider reads 200%.
@@ -104,6 +106,7 @@ public class DisplayProperties : UpdateableService
         UpdateHyperspeedText();
         UpdateHighwayLengthText();
         AddSpeedToggles();
+        AddGemSizeSlider();
 
         UpdateGameSpeedText();
 
@@ -291,6 +294,56 @@ public class DisplayProperties : UpdateableService
         });
 
         content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 85);
+    }
+
+    // "Gem Size", under the speed checkboxes, copied from the Highway Length label and slider
+    void AddGemSizeSlider()
+    {
+        RectTransform content = clapToggle.transform.parent as RectTransform;
+        if (!content || !highwayLengthLabel || !gameSpeed)
+            return;
+
+        // One label-and-slider row further down than Highway Length's, past the two checkboxes
+        float rowStep = content.InverseTransformPoint(gameSpeed.transform.position).y - content.InverseTransformPoint(highwayLengthLabel.transform.position).y;
+        float drop = rowStep + 60;
+
+        gemSizeLabel = Instantiate(highwayLengthLabel, highwayLengthLabel.transform.parent);
+        gemSizeLabel.name = "Gem Size Text";
+        MoveDown(gemSizeLabel.transform, content, drop);
+
+        Slider slider = Instantiate(highwayLengthSlider, highwayLengthSlider.transform.parent);
+        slider.name = "Gem Size Slider";
+        slider.onValueChanged = new Slider.SliderEvent();
+        slider.wholeNumbers = true;
+        slider.minValue = GemSize.MinPercent / GemSizeStep;
+        slider.maxValue = GemSize.MaxPercent / GemSizeStep;
+        slider.value = GemSize.percent / GemSizeStep;
+        slider.interactable = true;
+        slider.onValueChanged.AddListener((value) =>
+        {
+            GemSize.percent = Mathf.RoundToInt(value) * GemSizeStep;
+            UpdateGemSizeText();
+        });
+        MoveDown(slider.transform, content, drop);
+
+        UpdateGemSizeText();
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep + 5);
+    }
+
+    static void MoveDown(Transform item, RectTransform content, float distance)
+    {
+        Vector3 local = content.InverseTransformPoint(item.position);
+        local.y -= distance;
+        item.position = content.TransformPoint(local);
+    }
+
+    void UpdateGemSizeText()
+    {
+        if (!gemSizeLabel)
+            return;
+
+        gemSizeLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        gemSizeLabel.text = string.Format("Gem Size- {0}%", GemSize.percent);
     }
 
     void MakeSpeedToggle(string label, float y, bool isOn, UnityEngine.Events.UnityAction<bool> onChanged)
