@@ -24,7 +24,7 @@ public static class CloneHeroScores
         public bool fc;
         public int stars;
         public int score;
-        public int speed = 100;         // Percent; only the old file stores it
+        public int speed = 100;         // Percent
         public int modifiers = 1;       // Old file only, 1 = none
     }
 
@@ -185,8 +185,8 @@ public static class CloneHeroScores
 
     /// <summary>
     /// Both layouts start with a version and a song count. Before v1 (version 20180220) each song's hash is a
-    /// length-prefixed hex string and a score is 13 bytes; v1 stores the 16 hash bytes and 16-byte scores with the
-    /// notes hit and the note count. The layout that reads the whole file to its exact end wins, or null for neither.
+    /// length-prefixed hex string and a score is 13 bytes; v1 (version 20211009 in Robert's file) stores the 16 hash
+    /// bytes, puts Easy first and widens the modifiers to 4 bytes, so a score is 16 bytes. The layout that reads the whole file to its exact end wins, or null for neither.
     /// </summary>
     public static Dictionary<string, Song> Parse(byte[] data)
     {
@@ -264,12 +264,11 @@ public static class CloneHeroScores
         Score score = new Score();
         score.instrument = (Instrument)reader.ReadInt16();
         score.difficulty = Mathf.Clamp(reader.ReadByte(), 0, 3);
-        int hit = reader.ReadUInt16();
-        int total = reader.ReadUInt16();
-        score.percent = total > 0 ? hit * 100f / total : 0;
-        score.fc = total > 0 && hit == total;
+        score.percent = reader.ReadByte();
+        score.fc = reader.ReadByte() != 0;
+        score.speed = reader.ReadUInt16();
         score.stars = reader.ReadByte();
-        reader.ReadInt32();     // Always 1 so far, probably the modifiers
+        reader.ReadInt32();     // Modifiers, but v1 has new ones and their bits aren't known, so they aren't shown
         score.score = reader.ReadInt32();
         return score;
     }
@@ -286,7 +285,7 @@ public static class CloneHeroScores
             case Instrument.GuitarCoop: return "Co-op Guitar";
             case Instrument.GHLGuitar: return "GHL Guitar";
             case Instrument.GHLBass: return "GHL Bass";
-            default: return instrument.ToString();
+            default: return Enum.IsDefined(typeof(Instrument), instrument) ? instrument.ToString() : "Instrument " + (int)instrument;
         }
     }
 
