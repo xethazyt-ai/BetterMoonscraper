@@ -125,8 +125,9 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddChoiceRow("Note skin", CustomizationPrefs.Kind.NoteSkin, BrowseNoteSkin);
 
         float statusLeft = m_labelTemplate.rectTransform.anchoredPosition.x - m_labelTemplate.rectTransform.sizeDelta.x / 2;
-        m_statusText = AddText(statusLeft, ControlLeft + ControlWidth + Gap + ButtonWidth - statusLeft, 54, TextAnchor.UpperLeft, 14);
-        m_rows += 2;
+        // Ends where the dropdowns do, so a long line wraps instead of running off the window
+        m_statusText = AddText(statusLeft, ControlLeft + ControlWidth - statusLeft, 72, TextAnchor.UpperLeft, 14);
+        m_rows += 3;
 
         m_group.sizeDelta = new Vector2(graphicsGroup.sizeDelta.x, m_rows * RowHeight + 10);
         groupObject.SetActive(false);

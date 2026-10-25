@@ -485,17 +485,16 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     }
 
     /// <summary>
-    /// How far apart notes a second apart are drawn. Notes always scroll past at the same on-screen speed whatever the
-    /// song speed, like Moonscraper always did: faster than 1x packs them closer together, slower spreads them out,
-    /// which makes dense patterns easier to chart. "Non-Spaced Notes for Slowdown" keeps the 1x spacing at every speed
-    /// instead, so a slowed or sped up chart just scrolls slower or faster, for previewing.
+    /// How far apart notes a second apart are drawn. At 1x and faster the notes keep their 1x spacing (a sped up song
+    /// just scrolls faster). Slower than 1x spreads them out like Moonscraper always did, which makes dense patterns
+    /// easier to chart, unless "Non-Spaced Notes for Slowdown" keeps the 1x spacing there too, for previewing.
     /// </summary>
     public static float worldUnitsPerSecond
     {
         get
         {
             float speed = Mathf.Max(Globals.gameSettings.gameSpeed, 0.01f);
-            if (SpeedOptions.nonSpacedSlowdown)
+            if (speed >= 1 || SpeedOptions.nonSpacedSlowdown)
                 return Globals.gameSettings.hyperspeed;
             return Globals.gameSettings.hyperspeed / speed;
         }

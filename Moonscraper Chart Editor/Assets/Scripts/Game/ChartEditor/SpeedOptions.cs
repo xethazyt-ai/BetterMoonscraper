@@ -13,8 +13,8 @@ public static class SpeedOptions
     static bool? s_nonSpacedSlowdown;
 
     /// <summary>
-    /// Keeps the notes at their 1x spacing at any song speed (they just scroll slower or faster), instead of spreading
-    /// them out or packing them together. Good for previewing a chart at another speed.
+    /// Slower than 1x keeps the notes at their 1x spacing (they just scroll slower), instead of spreading them out.
+    /// Good for previewing a chart slowed down. Faster than 1x always keeps the 1x spacing.
     /// </summary>
     public static bool nonSpacedSlowdown
     {
