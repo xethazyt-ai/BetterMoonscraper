@@ -417,6 +417,39 @@ namespace MoonscraperChartEditor.Song
         }
 
         /// <summary>
+        /// Plays the whole song faster or slower, for exporting a sped up or slowed down copy: every BPM is multiplied
+        /// by the speed and times in seconds are divided by it. The BPMs are replaced rather than changed, because a
+        /// copy made with new Song(song) shares them with the original.
+        /// </summary>
+        public void ScaleSpeed(float speed)
+        {
+            if (speed <= 0)
+                throw new ArgumentOutOfRangeException("speed");
+
+            for (int i = 0; i < _syncTrack.Count; ++i)
+            {
+                BPM bpm = _syncTrack[i] as BPM;
+                if (bpm == null)
+                    continue;
+
+                BPM scaled = new BPM(bpm);
+                scaled.value = (uint)Math.Max(1, Math.Round(bpm.value * (double)speed));
+                if (bpm.anchor.HasValue)
+                    scaled.anchor = bpm.anchor.Value / speed;
+                scaled.song = this;
+                _syncTrack[i] = scaled;
+            }
+
+            offset /= speed;
+            if (manualLength.HasValue)
+                manualLength = manualLength.Value / speed;
+            metaData.previewStart /= speed;
+            metaData.previewEnd /= speed;
+
+            UpdateCache();
+        }
+
+        /// <summary>
         /// Updates all read-only values and bpm assigned time values. 
         /// </summary>
         public void UpdateCache()

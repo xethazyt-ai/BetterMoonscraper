@@ -17,6 +17,7 @@ public static class LinkTests
     {
         CheckAssembler();
         CheckSessionOverPackets();
+        CheckHostCrash();
         CheckRoomCodes();
         CheckKeepAlive();
         return s_failures;
@@ -115,6 +116,54 @@ public static class LinkTests
         Expect("a wrong room code ends with the reason", !failed.isActive && failed.endReason.Contains("No room with the code"));
     }
 
+    // The host crashes: joiners keep the chart and wait, and when the host is back, the chart comes back from them
+    static void CheckHostCrash()
+    {
+        SessionTests.TestSong hostSong = new SessionTests.TestSong("crash-host");
+        SessionTests.TestSong aliceSong = new SessionTests.TestSong("crash-alice");
+        SessionTests.TestSong bobSong = new SessionTests.TestSong("crash-bob");
+        hostSong.Edit(SessionTests.Add(new Note(192, 1)));
+
+        PacketRoom room = new PacketRoom("CR4SH2");
+        Func<IDuetConnector> reconnect = () => room.isStopped ? (IDuetConnector)new FailingConnector("No room with the code CR4SH2.") : room.Join();
+        DuetSession host = DuetSession.Host(hostSong, "Robert", room, "Opening an online room");
+        DuetSession alice = DuetSession.Join(aliceSong, "Alex", room.Join(), "Looking for room CR4SH2", "CR4SH2");
+        DuetSession bob = DuetSession.Join(bobSong, "Bo", room.Join(), "Looking for room CR4SH2", "CR4SH2");
+        alice.reconnect = reconnect;
+        bob.reconnect = reconnect;
+        SessionTests.Pump(new List<DuetSession> { host, alice, bob }, () => alice.state == DuetSession.State.Connected && bob.state == DuetSession.State.Connected);
+
+        alice.OnLocalEdit(aliceSong.Edit(SessionTests.Add(new Section("Verse", 384))));
+        SessionTests.Pump(new List<DuetSession> { host, alice, bob }, () => SessionTests.Same(hostSong, bobSong) && alice.unacknowledgedEditCount == 0);
+
+        // Gone without a word, the way a crash looks to everyone else
+        room.Crash();
+        SessionTests.Pump(new List<DuetSession> { alice, bob }, () => alice.state == DuetSession.State.HostLost && bob.state == DuetSession.State.HostLost);
+        Expect("joiners wait for a host that crashed, instead of leaving", alice.state == DuetSession.State.HostLost && bob.state == DuetSession.State.HostLost
+            && alice.isActive && aliceSong.song.sections.Count == 1);
+
+        // The host starts again with only what was saved, and the same room
+        SessionTests.TestSong restarted = new SessionTests.TestSong("crash-host-restarted");
+        room = new PacketRoom("CR4SH2");
+        DuetSession host2 = DuetSession.Host(restarted, "Robert", room, "Opening an online room");
+        host2.ExpectRecovery();
+        List<DuetSession> all = new List<DuetSession> { host2, alice, bob };
+        SessionTests.Pump(all, () => alice.state == DuetSession.State.Connected && bob.state == DuetSession.State.Connected
+            && SessionTests.Same(restarted, aliceSong) && SessionTests.Same(restarted, bobSong));
+        Expect("the host gets the latest chart back from a joiner", restarted.recoveredCharts == 1 && SessionTests.Same(restarted, aliceSong)
+            && restarted.song.sections.Count == 1 && !host2.isAwaitingRecoveryChart);
+        Expect("and everyone is back in the session", alice.state == DuetSession.State.Connected && bob.state == DuetSession.State.Connected && host2.users.Count == 3);
+
+        bob.OnLocalEdit(bobSong.Edit(SessionTests.Add(new Section("Chorus", 768))));
+        SessionTests.Pump(all, () => SessionTests.Same(restarted, aliceSong) && restarted.song.sections.Count == 2);
+        Expect("editing carries on after the host is back", SessionTests.Same(restarted, aliceSong) && restarted.song.sections.Count == 2);
+
+        // Ending on purpose isn't a crash: nobody waits
+        host2.Leave();
+        SessionTests.Pump(all, () => !alice.isActive && !bob.isActive);
+        Expect("a host ending the session on purpose ends it for everyone", !alice.isActive && !bob.isActive && alice.endReason.Contains("ended"));
+    }
+
     static void CheckRoomCodes()
     {
         bool refused = false;
@@ -186,6 +235,7 @@ public static class LinkTests
     class PacketRoom : IDuetListener
     {
         readonly Queue<IDuetLink> m_waiting = new Queue<IDuetLink>();
+        readonly List<PacketLink> m_hostEnds = new List<PacketLink>();
         readonly string m_code;
         public int packetsSent = 0;
         public bool isStopped { get; private set; }
@@ -199,6 +249,7 @@ public static class LinkTests
         {
             PacketLink hostEnd = new PacketLink(this);
             PacketLink joinerEnd = new PacketLink(this);
+            m_hostEnds.Add(hostEnd);
             hostEnd.other = joinerEnd;
             joinerEnd.other = hostEnd;
             m_waiting.Enqueue(hostEnd);
@@ -212,6 +263,14 @@ public static class LinkTests
         }
 
         public void Stop() { isStopped = true; }
+
+        // The host's end of every connection drops at once, without saying goodbye
+        public void Crash()
+        {
+            isStopped = true;
+            foreach (PacketLink link in m_hostEnds)
+                link.Close("Connection timed out");
+        }
     }
 
     class ReadyConnector : IDuetConnector

@@ -77,7 +77,7 @@ public class NoteVisuals2DManager : NoteVisualsManager {
             }
         }
 
-        transform.localScale = scale;
+        SetVisualScale(scale);
 
         UpdateTextDisplay(note);
     }

@@ -44,6 +44,12 @@ public class SongPropertiesPanelController : TabMenu
 
     bool init = false;
 
+    // Clone Hero can show these formatted (bold, colors and so on). The formatting is kept in song.ini only.
+    InputField loadingPhrase;
+    SongPropertiesFormatBar formatBar;
+    const string LoadingPhraseKey = "loading_phrase";
+    bool lookingUp = false;
+
     TimeSpan customTime = new TimeSpan();
 
     static readonly string[] validAudioExtensions = { "ogg", "wav", "mp3", "opus" };
@@ -87,19 +93,25 @@ public class SongPropertiesPanelController : TabMenu
 
         base.OnEnable();
 
+        BuildFormatting();
+        lookingUp = false;      // A look up still going when the menu closed was stopped
+
         init = true;
         Song song = editor.currentSong;
         Metadata metaData = song.metaData;
+        INIParser ini = song.iniProperties;
 
-        songName.text = song.name;
-        artist.text = metaData.artist;
-        charter.text = metaData.charter;
-        album.text = metaData.album;
+        SetRich(songName, RichTextIni.DisplayValue(ini, "name", song.name));
+        SetRich(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
+        SetRich(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
+        SetRich(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
         year.text = metaData.year;
         offset.text = song.offset.ToString();
         difficulty.text = metaData.difficulty.ToString();
-        genre.text = metaData.genre;
+        SetRich(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
         mediaType.text = metaData.mediatype;
+        if (loadingPhrase)
+            SetRich(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
 
         // Init audio names
         setAudioTextLabels();
@@ -127,17 +139,20 @@ public class SongPropertiesPanelController : TabMenu
     {
         Song song = editor.currentSong;
         Metadata metaData = song.metaData;
+        INIParser ini = song.iniProperties;
 
         init = true;
-        SetUnlessTyping(songName, song.name);
-        SetUnlessTyping(artist, metaData.artist);
-        SetUnlessTyping(charter, metaData.charter);
-        SetUnlessTyping(album, metaData.album);
+        SetRichUnlessTyping(songName, RichTextIni.DisplayValue(ini, "name", song.name));
+        SetRichUnlessTyping(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
+        SetRichUnlessTyping(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
+        SetRichUnlessTyping(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
         SetUnlessTyping(year, metaData.year);
         SetUnlessTyping(offset, song.offset.ToString());
         SetUnlessTyping(difficulty, metaData.difficulty.ToString());
-        SetUnlessTyping(genre, metaData.genre);
+        SetRichUnlessTyping(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
         SetUnlessTyping(mediaType, metaData.mediatype);
+        if (loadingPhrase)
+            SetRichUnlessTyping(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
         init = false;
 
         if (!customIniSettings.isFocused)
@@ -150,12 +165,32 @@ public class SongPropertiesPanelController : TabMenu
             field.text = text;
     }
 
+    // The song details Clone Hero can show formatted: the field shows the text, the formatting is kept alongside
+    void SetRich(InputField field, string tagged)
+    {
+        if (formatBar)
+            formatBar.SetTagged(field, tagged);
+        else
+            field.text = RichTextIni.Strip(tagged);
+    }
+
+    void SetRichUnlessTyping(InputField field, string tagged)
+    {
+        if (!field.isFocused && Tagged(field) != tagged)
+            SetRich(field, tagged);
+    }
+
+    string Tagged(InputField field)
+    {
+        return formatBar ? formatBar.GetTagged(field) : field.text;
+    }
+
     bool BlockedForDuetGuest()
     {
         if (!DuetPanel.isGuest)
             return false;
 
-        editor.services.notificationBar.PushNotification("ONLY THE HOST CAN CHANGE THE AUDIO IN A DUET SESSION", 3, true);
+        editor.services.notificationBar.PushNotification("ONLY THE HOST CAN CHANGE THE AUDIO IN A COLLAB SESSION", 3, true);
         return true;
     }
 
@@ -178,16 +213,18 @@ public class SongPropertiesPanelController : TabMenu
             Song song = editor.currentSong;
             Metadata metaData = song.metaData;
 
-            if (!song.name.Equals(songName.text))
+            // The chart gets the plain text. Formatting goes to song.ini, which is where Clone Hero reads it from.
+            string plainName = RichTextIni.Strip(songName.text);
+            if (!song.name.Equals(plainName))
             {
-                song.name = songName.text;
+                song.name = plainName;
                 editor.uiServices.editorPanels.displayProperties.UpdateSongNameText();
                 editor.RepaintWindowText();
             }
 
-            metaData.artist = artist.text;
-            metaData.charter = charter.text;
-            metaData.album = album.text;
+            metaData.artist = RichTextIni.Strip(artist.text);
+            metaData.charter = RichTextIni.Strip(charter.text);
+            metaData.album = RichTextIni.Strip(album.text);
             metaData.year = year.text;
 
             try
@@ -208,8 +245,22 @@ public class SongPropertiesPanelController : TabMenu
                 metaData.difficulty = 0;
             }
 
-            metaData.genre = genre.text;
+            metaData.genre = RichTextIni.Strip(genre.text);
             metaData.mediatype = mediaType.text;
+
+            INIParser ini = song.iniProperties;
+            bool iniChanged = RichTextIni.StoreFormatted(ini, "name", Tagged(songName));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "artist", Tagged(artist));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "charter", Tagged(charter));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "album", Tagged(album));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "genre", Tagged(genre));
+            if (loadingPhrase && (RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty) != Tagged(loadingPhrase))
+            {
+                RichTextIni.WriteIni(ini, LoadingPhraseKey, Tagged(loadingPhrase));
+                iniChanged = true;
+            }
+            if (iniChanged)
+                UpdateIniTextFromSongProperties();      // The Advanced tab's text is read back into the song when the menu closes
 
             if (editor.currentSong.manualLength.HasValue)   // if we were already using the manual length
             {
@@ -218,6 +269,103 @@ public class SongPropertiesPanelController : TabMenu
 
             ChartEditor.isDirty = true;
         }
+    }
+
+    // Adds a Loading phrase field and the formatting buttons under the General settings, the first time the menu opens
+    void BuildFormatting()
+    {
+        if (formatBar)
+            return;
+
+        RectTransform content = (RectTransform)genre.transform.parent;
+        Text labelTemplate = null;
+        foreach (Text text in content.GetComponentsInChildren<Text>(true))
+        {
+            if (text.transform.parent == content && text.text.StartsWith("Genre"))
+                labelTemplate = text;
+        }
+        Button buttonTemplate = null;
+        foreach (Button button in GetComponentsInChildren<Button>(true))
+        {
+            if (button.name == "From General Settings Button")
+                buttonTemplate = button;
+        }
+        if (!labelTemplate || !buttonTemplate)
+        {
+            Debug.LogWarning("Couldn't find the controls to build the song.ini formatting bar from");
+            return;
+        }
+
+        RectTransform lastLabel = (RectTransform)mediaType.transform;
+        float rowY = lastLabel.anchoredPosition.y - 35;
+
+        Text phraseLabel = Instantiate(labelTemplate, content);
+        phraseLabel.name = "Loading Phrase";
+        phraseLabel.text = "Loading phrase:";
+        RectTransform phraseLabelRect = phraseLabel.rectTransform;
+        phraseLabelRect.anchoredPosition = new Vector2(labelTemplate.rectTransform.anchoredPosition.x, rowY);
+
+        loadingPhrase = Instantiate(genre, content);
+        loadingPhrase.name = "Loading Phrase InputField";
+        loadingPhrase.onValueChanged = new InputField.OnChangeEvent();
+        loadingPhrase.onEndEdit = new InputField.SubmitEvent();
+        loadingPhrase.onValueChanged.AddListener(value => setSongProperties());
+        loadingPhrase.onValidateInput = ValidateStringMetadataInput;
+        ((RectTransform)loadingPhrase.transform).anchoredPosition = new Vector2(((RectTransform)genre.transform).anchoredPosition.x, rowY);
+
+        InputField[] richFields = { songName, artist, charter, album, genre, loadingPhrase };
+        foreach (InputField field in richFields)
+            field.characterLimit = 0;   // Tags make the text longer than it looks
+
+        float bottom;
+        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpSongInfo, setSongProperties, out bottom);
+        content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
+    }
+
+    // Looks the typed name and artist up on iTunes and fills in the name and artist as iTunes spells them, the album,
+    // year and genre. Also credits whoever is charting, in their Collab colors.
+    void LookUpSongInfo()
+    {
+        if (lookingUp || !formatBar)
+            return;
+
+        string credit = DuetPanel.CharterCredit();
+        if (!string.IsNullOrEmpty(credit))
+        {
+            SetRich(charter, credit);
+            setSongProperties();    // The words may be the same with new colors, which typing alone wouldn't send
+        }
+
+        lookingUp = true;
+        formatBar.SetStatus("Looking up \"" + RichTextIni.Strip(songName.text) + "\" on iTunes...");
+        StartCoroutine(ITunesLookup.Find(songName.text, artist.text, (result, error) =>
+        {
+            lookingUp = false;
+            if (result == null)
+            {
+                formatBar.SetStatus(error + (credit != null ? " The charter is filled in." : string.Empty));
+                return;
+            }
+
+            FillRich(songName, result.title);
+            FillRich(artist, result.artist);
+            FillRich(album, result.album);
+            FillRich(genre, result.genre);
+            if (!string.IsNullOrEmpty(result.year))
+                year.text = result.year;
+            setSongProperties();
+
+            formatBar.SetStatus("Filled in from iTunes: \"" + result.title + "\" by " + result.artist + ", album " + (result.album ?? "unknown")
+                + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + "."
+                + (credit != null ? " Charter: " + RichTextIni.Strip(credit) + "." : string.Empty));
+        }));
+    }
+
+    // Replaces what's there, formatting and all, with iTunes's spelling. Left alone if iTunes doesn't know it.
+    void FillRich(InputField field, string value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            SetRich(field, value);
     }
 
     public void UpdateIni()
@@ -260,6 +408,8 @@ public class SongPropertiesPanelController : TabMenu
 
     public void OnIniInputValueChanged()
     {
+        // Keep the song's ini up to date while typing, so Collab Mode can send it to everyone straight away
+        UpdateIni();
         ChartEditor.isDirty = true;
     }
 

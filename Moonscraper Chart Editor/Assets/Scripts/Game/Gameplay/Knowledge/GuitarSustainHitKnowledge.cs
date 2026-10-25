@@ -39,8 +39,12 @@ public class GuitarSustainHitKnowledge {
 
         foreach (SustainKnowledge sustain in currentSustains.ToArray())     // Take a copy so we can remove as we go
         {
-            if (!sustain.note.controller || sustain.note.controller.sustainBroken)
+            // A note deleted mid-song (someone else's edit in Collab Mode, or undo) has no song left to time it by
+            if (sustain.note == null || sustain.note.song == null || !sustain.note.controller || sustain.note.controller.sustainBroken)
+            {
                 currentSustains.Remove(sustain);
+                continue;
+            }
 
             Note note = sustain.note;
             Song song = note.song;

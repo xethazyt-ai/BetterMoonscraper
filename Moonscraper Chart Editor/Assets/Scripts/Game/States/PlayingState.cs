@@ -107,12 +107,12 @@ public class PlayingState : SystemManagerState
             if (Globals.viewMode == Globals.ViewMode.Chart)
             {
                 if (selectedBeforePlay[0].GetType().IsSubclassOf(typeof(ChartObject)))
-                    editor.selectedObjectsManager.currentSelectedObjects = selectedBeforePlay;
+                    RestoreSelection(editor);
             }
             else
             {
                 if (!selectedBeforePlay[0].GetType().IsSubclassOf(typeof(ChartObject)))
-                    editor.selectedObjectsManager.currentSelectedObjects = selectedBeforePlay;
+                    RestoreSelection(editor);
             }
         }
 
@@ -120,5 +120,18 @@ public class PlayingState : SystemManagerState
 
         if (resetBackToTimeOnStop.HasValue)
             editor.movement.SetTime(resetBackToTimeOnStop.Value);
+    }
+
+    // In Collab Mode someone else can delete notes while this plays. Selecting those again would bring back notes that
+    // are no longer in the song, so only what's still there is selected.
+    void RestoreSelection(ChartEditor editor)
+    {
+        List<SongObject> stillThere = new List<SongObject>();
+        foreach (SongObject songObject in selectedBeforePlay)
+        {
+            if (songObject.song != null)
+                stillThere.Add(songObject);
+        }
+        editor.selectedObjectsManager.currentSelectedObjects = stillThere;
     }
 }

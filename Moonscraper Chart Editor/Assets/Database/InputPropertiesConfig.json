@@ -1114,7 +1114,7 @@
         {
             "mSChartEditorInputAction": "DuetToggleWindow",
             "properties": {
-                "displayName": "Duet Mode Window",
+                "displayName": "Collab Mode Window",
                 "rebindable": true,
                 "hiddenInLists": false,
                 "anyDirectionAxis": false,
@@ -1125,7 +1125,7 @@
         {
             "mSChartEditorInputAction": "DuetChat",
             "properties": {
-                "displayName": "Duet Mode Chat",
+                "displayName": "Collab Mode Chat",
                 "rebindable": true,
                 "hiddenInLists": false,
                 "anyDirectionAxis": false,
@@ -1136,7 +1136,29 @@
         {
             "mSChartEditorInputAction": "DuetHideChat",
             "properties": {
-                "displayName": "Duet Mode Hide Chat",
+                "displayName": "Collab Mode Hide Chat",
+                "rebindable": true,
+                "hiddenInLists": false,
+                "anyDirectionAxis": false,
+                "category": 0,
+                "allowSameFrameMultiInput": false
+            }
+        },
+        {
+            "mSChartEditorInputAction": "PatternBlueprints",
+            "properties": {
+                "displayName": "Pattern Blueprints",
+                "rebindable": true,
+                "hiddenInLists": false,
+                "anyDirectionAxis": false,
+                "category": 0,
+                "allowSameFrameMultiInput": false
+            }
+        },
+        {
+            "mSChartEditorInputAction": "PatternBlueprintPaste",
+            "properties": {
+                "displayName": "Paste Pattern Blueprint At Strikeline",
                 "rebindable": true,
                 "hiddenInLists": false,
                 "anyDirectionAxis": false,

@@ -6,7 +6,7 @@ using UnityEngine;
 
 /// <summary>
 /// A chat window during a Duet session, which can be dragged anywhere and scrolled back through. Press the chat key
-/// (Enter unless rebound in Controls) to write, Enter to send, Escape to stop writing. Also shows who's typing.
+/// (Enter unless rebound in Controls) to write, Enter to send and keep writing, and click elsewhere or press Escape to stop. Also shows who's typing.
 /// </summary>
 public class DuetChat : MonoBehaviour
 {
@@ -22,9 +22,7 @@ public class DuetChat : MonoBehaviour
 
     ChartEditor m_editor;
     readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Chat", new Rect(0, 0, Width, Height), new Vector2(220, 150), true, false);
-    bool m_windowPlaced = false;
     bool m_hidden = false;     // Put away with the hide chat key (F11 unless rebound in Controls)
-    Vector2 m_savedPosition;
     Vector2 m_scroll;
     int m_seenChatCount = -1;
     string m_text = string.Empty;
@@ -125,13 +123,9 @@ public class DuetChat : MonoBehaviour
         float scale = DuetPanel.GuiScale;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
 
-        if (!m_windowPlaced)
-        {
-            m_window.rect.x = PlayerPrefs.GetFloat(PrefX, 20);
-            m_window.rect.y = PlayerPrefs.GetFloat(PrefY, Screen.height / scale - m_window.rect.height - 60);
-            m_savedPosition = m_window.rect.position;
-            m_windowPlaced = true;
-        }
+        // Older builds kept the chat's position under its own keys, so start from those
+        if (!m_window.isPlaced)
+            m_window.PlaceOnce(new Vector2(PlayerPrefs.GetFloat(PrefX, 20), PlayerPrefs.GetFloat(PrefY, Screen.height / scale - m_window.rect.height - 60)));
 
         // Clicking outside the window while writing stops writing
         if (m_writing && UnityEngine.Event.current.type == EventType.MouseDown && !m_window.rect.Contains(UnityEngine.Event.current.mousePosition))
@@ -141,15 +135,7 @@ public class DuetChat : MonoBehaviour
         if (DuetMenuCover.Covers(m_window.rect, scale))
             return;
 
-        m_window.Draw("Chat", DrawWindow, scale);
-
-        // Keep it on screen, and remember where it was put
-        if (m_window.rect.position != m_savedPosition && !Input.GetMouseButton(0))
-        {
-            m_savedPosition = m_window.rect.position;
-            PlayerPrefs.SetFloat(PrefX, m_savedPosition.x);
-            PlayerPrefs.SetFloat(PrefY, m_savedPosition.y);
-        }
+        m_window.Draw("Chat", DrawWindow, scale);  // Remembers where it was put
     }
 
     void DrawWindow(int id)
@@ -176,11 +162,11 @@ public class DuetChat : MonoBehaviour
 
         if (m_writing && e.type == EventType.KeyDown && GUI.GetNameOfFocusedControl() == InputName && Time.frameCount != m_startedFrame)
         {
+            // Stays in the box for the next message. Clicking off it or Escape goes back to the chart.
             if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter)
             {
                 session.SendChat(m_text);
                 m_text = string.Empty;
-                StopWriting();
                 e.Use();
             }
             else if (e.keyCode == KeyCode.Escape)
@@ -210,7 +196,7 @@ public class DuetChat : MonoBehaviour
             m_writing = false;  // Focus went somewhere else, such as the Duet window
         }
 
-        GUILayout.Label(m_writing ? "Enter to send, Escape to stop" : "Press Enter (or your chat key) to chat", m_typingStyle);
+        GUILayout.Label(m_writing ? "Enter to send. Click off the chat or press Escape to stop" : "Press Enter (or your chat key) to chat", m_typingStyle);
     }
 
     string TypingText(DuetSession session)
@@ -259,13 +245,12 @@ public class DuetChat : MonoBehaviour
 
     void MakeStyles()
     {
-        m_lineStyle = new GUIStyle(GUI.skin.label);
+        m_lineStyle = new GUIStyle(DuetSkin.skin.label);
         m_lineStyle.richText = true;
         m_lineStyle.wordWrap = true;
 
-        m_typingStyle = new GUIStyle(GUI.skin.label);
-        m_typingStyle.fontStyle = FontStyle.Italic;
-        m_typingStyle.fontSize = Mathf.Max(10, GUI.skin.label.fontSize - 1);
+        m_typingStyle = new GUIStyle(DuetSkin.skin.label);
+        m_typingStyle.fontSize = Mathf.Max(10, DuetSkin.skin.label.fontSize - 2);
         m_typingStyle.normal.textColor = new Color(1, 1, 1, 0.6f);
     }
 }

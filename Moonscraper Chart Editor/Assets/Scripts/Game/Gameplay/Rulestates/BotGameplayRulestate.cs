@@ -32,6 +32,10 @@ public class BotGameplayRulestate : BaseGameplayRulestate
                     nextNoteToHit = null;
                 }
             }
+            else
+            {
+                break;      // Its note isn't on screen (or was just deleted), so it can't be hit yet. Waiting here would freeze Moonscraper.
+            }
         }
 
         // Note that having this logic here essentially gives the bot an infinite backend window in case of a framerate hiccup.

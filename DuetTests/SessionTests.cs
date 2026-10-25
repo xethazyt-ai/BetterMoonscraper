@@ -23,6 +23,16 @@ public static class SessionTests
         public TestSong(string name) { this.name = name; }
 
         public bool isBusy { get { return false; } }
+        public int songNumber { get; set; }
+        public int recoveredCharts = 0;
+
+        public void LoadRecoveredChart(string chartText)
+        {
+            string path = Path.Combine(Path.GetTempPath(), "duet-" + name + "-recovered" + MsceIOHelper.FileExtention);
+            File.WriteAllText(path, chartText);
+            song = ChartReader.ReadChart(path);
+            ++recoveredCharts;
+        }
 
         public bool TryApplyRemoteEdit(IList<SongEditChange> changes, out string failure)
         {

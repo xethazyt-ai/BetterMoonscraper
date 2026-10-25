@@ -67,11 +67,52 @@ public class DisplayProperties : UpdateableService
 
     NpsTextValues lastUpdatedNpsTextValues = new NpsTextValues();
 
+    // The "Hyperspeed-" and "Highway Length-" labels, found by their text, so they can show the value next to them
+    Text hyperspeedLabel;
+    Text highwayLengthLabel;
+    Text gemSizeLabel;
+    const int GemSizeStep = 5;  // percent
+
+    // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
+    // Moonscraper's old maximum, so the new top of the highway slider reads 200%.
+    const float MaxHyperspeed = 40;
+    const float FullHighwayLength = 6;
+    const float MaxHighwayLength = 12;
+
+    // The highway visuals (fretboard and rails) and the camera's far plane, as the scene set them, so a longer
+    // highway can stretch them to reach the new end
+    Transform m_highwayVisuals;
+    Renderer m_fretboard;
+    Vector3 m_highwayVisualsPosition;
+    Vector3 m_highwayVisualsScale;
+    Vector2 m_fretboardTiling;
+    float m_defaultFarClip = -1;
+
+    // Clone Hero's scores for the open chart, under the stats
+    Text cloneHeroScoresText;
+    float m_nextScoresCheck;
+    const float ScoresCheckSeconds = 2;
+    const float ScoresTop = 136;
+
     protected override void Start()
     {
         editor = ChartEditor.Instance;
+        hyperspeedSlider.maxValue = MaxHyperspeed;
+        highwayLengthSlider.maxValue = MaxHighwayLength;
         hyperspeedSlider.value = Globals.gameSettings.hyperspeed;
         highwayLengthSlider.value = Globals.gameSettings.highwayLength;
+
+        foreach (Text text in GetComponentsInChildren<Text>(true))
+        {
+            if (text.text.StartsWith("Hyperspeed"))
+                hyperspeedLabel = text;
+            else if (text.text.StartsWith("Highway Length"))
+                highwayLengthLabel = text;
+        }
+        UpdateHyperspeedText();
+        UpdateHighwayLengthText();
+        float gemSizeRow = AddGemSizeSlider();
+        AddSpeedToggles(gemSizeRow);
 
         UpdateGameSpeedText();
 
@@ -83,6 +124,7 @@ public class DisplayProperties : UpdateableService
         editor.events.chartReloadedEvent.Register(OnChartReload);
         editor.events.editorStateChangedEvent.Register(OnApplicationModeChanged);
 
+        AddCloneHeroScoresText();
         OnChartReload();
 
         base.Start();
@@ -163,6 +205,9 @@ public class DisplayProperties : UpdateableService
             prevGlobalEventCount = currentGlobalEventCount;
         }
 
+        if (statsMenuOption.gameObject.activeInHierarchy && Time.unscaledTime >= m_nextScoresCheck)
+            UpdateCloneHeroScores();
+
         // Shortcuts
         if (MSChartEditorInput.GetInputDown(MSChartEditorInputActions.ToggleClap))
             clapToggle.isOn = !clapToggle.isOn;
@@ -171,6 +216,86 @@ public class DisplayProperties : UpdateableService
     void OnChartReload()
     {
         UpdateSongNameText();
+        m_nextScoresCheck = 0;
+    }
+
+    // A wrapping text under "Step NPS" in the stats tab, copied from the Global Events line
+    void AddCloneHeroScoresText()
+    {
+        RectTransform content = globalEventsCount.transform.parent as RectTransform;
+        if (!content)
+            return;
+
+        cloneHeroScoresText = Instantiate(globalEventsCount, content);
+        cloneHeroScoresText.name = "Clone Hero Scores Text";
+        cloneHeroScoresText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        cloneHeroScoresText.verticalOverflow = VerticalWrapMode.Overflow;
+        cloneHeroScoresText.supportRichText = true;
+        cloneHeroScoresText.alignment = TextAnchor.UpperLeft;
+
+        RectTransform source = globalEventsCount.rectTransform;
+        RectTransform rect = cloneHeroScoresText.rectTransform;
+        float left = source.anchoredPosition.x - source.sizeDelta.x * source.pivot.x;
+        rect.anchorMin = new Vector2(0, 1);
+        rect.anchorMax = new Vector2(1, 1);
+        rect.pivot = new Vector2(0, 1);
+        rect.offsetMin = new Vector2(left, -ScoresTop - 20);
+        rect.offsetMax = new Vector2(-4, -ScoresTop);
+    }
+
+    void UpdateCloneHeroScores()
+    {
+        m_nextScoresCheck = Time.unscaledTime + ScoresCheckSeconds;
+        if (!cloneHeroScoresText)
+            return;
+
+        string text = CloneHeroScoresText(CloneHeroScores.Lookup(editor.currentChartFile));
+        if (text == cloneHeroScoresText.text)
+            return;
+
+        cloneHeroScoresText.text = text;
+
+        // Fit the text's height, and the scroll view's content around it
+        RectTransform rect = cloneHeroScoresText.rectTransform;
+        float height = Mathf.Ceil(cloneHeroScoresText.preferredHeight) + 2;
+        rect.offsetMin = new Vector2(rect.offsetMin.x, rect.offsetMax.y - height);
+
+        RectTransform content = rect.parent as RectTransform;
+        content.sizeDelta = new Vector2(content.sizeDelta.x, ScoresTop + height + 4);
+    }
+
+    static string CloneHeroScoresText(CloneHeroScores.Result result)
+    {
+        switch (result.status)
+        {
+            case CloneHeroScores.Status.NoChart: return "Clone Hero: save the chart to see its scores";
+            case CloneHeroScores.Status.NoScoresFile: return "Clone Hero: no scores file found";
+            case CloneHeroScores.Status.Unreadable: return "Clone Hero: can't read its scores file";
+            case CloneHeroScores.Status.NotPlayed: return "Clone Hero: no scores for this chart file yet";
+        }
+
+        CloneHeroScores.Song song = result.song;
+        var builder = new System.Text.StringBuilder();
+        builder.Append("<b>Clone Hero</b>\n");
+        builder.Append(song.playCount == 1 ? "Played once" : string.Format("Played {0} times", song.playCount));
+
+        List<CloneHeroScores.Score> scores = new List<CloneHeroScores.Score>(song.scores);
+        scores.Sort((a, b) => a.instrument != b.instrument ? a.instrument.CompareTo(b.instrument) : b.difficulty.CompareTo(a.difficulty));
+        foreach (CloneHeroScores.Score score in scores)
+        {
+            builder.AppendFormat("\n\n<b>{0} {1}</b>\n", CloneHeroScores.DifficultyName(score.difficulty), CloneHeroScores.InstrumentName(score.instrument));
+            builder.Append(score.fc ? "FC" : Mathf.FloorToInt(score.percent) + "%");
+            builder.AppendFormat(score.stars == 1 ? ", {0} star" : ", {0} stars", score.stars);
+            builder.Append("\n").Append(score.score.ToString("N0"));
+            if (score.speed != 100 && score.speed > 0)
+                builder.AppendFormat(" at {0}% speed", score.speed);
+
+            string modifiers = CloneHeroScores.ModifierNames(score.modifiers);
+            if (modifiers != null)
+                builder.Append("\n").Append(modifiers);
+        }
+
+        return builder.ToString();
     }
 
     public void UpdateSongNameText()
@@ -189,7 +314,28 @@ public class DisplayProperties : UpdateableService
     public void SetHyperspeed(float value)
     {
         Globals.gameSettings.hyperspeed.value = value;
+        UpdateHyperspeedText();
         editor.events.hyperspeedChangeEvent.Fire();
+    }
+
+    void UpdateHyperspeedText()
+    {
+        if (!hyperspeedLabel)
+            return;
+
+        hyperspeedLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        hyperspeedLabel.text = string.Format("Hyperspeed- {0:0.#}", (float)Globals.gameSettings.hyperspeed);
+    }
+
+    void UpdateHighwayLengthText()
+    {
+        if (!highwayLengthLabel)
+            return;
+
+        float range = FullHighwayLength - highwayLengthSlider.minValue;
+        float percent = range > 0 ? (Globals.gameSettings.highwayLength - highwayLengthSlider.minValue) / range * 100 : 100;
+        highwayLengthLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        highwayLengthLabel.text = string.Format("Highway Length- {0:0}%", percent);
     }
 
     public void SetGameSpeed(float value)
@@ -213,10 +359,160 @@ public class DisplayProperties : UpdateableService
         Vector3 pos = Vector3.zero;
         pos.y = value * 5 + minHighwayLength;
         maxHighwayLength.transform.localPosition = pos;
+        FitHighwayVisuals();
 
         bgFade.AdjustHeight();
+        UpdateHighwayLengthText();
 
         editor.events.hyperspeedChangeEvent.Fire();
+    }
+
+    // "Pitched Speedups" and "Non-Spaced Notes for Slowdown", under the Gem Size slider (gemSizeRow below the
+    // highway length slider), copied from the Clap row
+    void AddSpeedToggles(float gemSizeRow)
+    {
+        RectTransform content = clapToggle.transform.parent as RectTransform;
+        RectTransform lastRow = highwayLengthSlider.transform as RectTransform;
+        if (!content || !lastRow)
+            return;
+
+        float y = lastRow.anchoredPosition.y - gemSizeRow - 27;
+        MakeSpeedToggle("Pitched Speedups:", y, SpeedOptions.pitchedSpeedups, (on) => SpeedOptions.pitchedSpeedups = on);
+        MakeSpeedToggle("Non-Spaced Notes for Slowdown:", y - 30, SpeedOptions.nonSpacedSlowdown, (on) =>
+        {
+            SpeedOptions.nonSpacedSlowdown = on;
+            editor.events.hyperspeedChangeEvent.Fire();
+        });
+
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 85);
+    }
+
+    // "Gem Size", right under Highway Length, copied from its label and slider. Returns how far down it went.
+    float AddGemSizeSlider()
+    {
+        RectTransform content = clapToggle.transform.parent as RectTransform;
+        if (!content || !highwayLengthLabel || !gameSpeed)
+            return 0;
+
+        // One label-and-slider row further down than Highway Length's
+        float rowStep = content.InverseTransformPoint(gameSpeed.transform.position).y - content.InverseTransformPoint(highwayLengthLabel.transform.position).y;
+        float drop = rowStep;
+
+        gemSizeLabel = Instantiate(highwayLengthLabel, highwayLengthLabel.transform.parent);
+        gemSizeLabel.name = "Gem Size Text";
+        MoveDown(gemSizeLabel.transform, content, drop);
+
+        Slider slider = Instantiate(highwayLengthSlider, highwayLengthSlider.transform.parent);
+        slider.name = "Gem Size Slider";
+        slider.onValueChanged = new Slider.SliderEvent();
+        slider.wholeNumbers = true;
+        slider.minValue = GemSize.MinPercent / GemSizeStep;
+        slider.maxValue = GemSize.MaxPercent / GemSizeStep;
+        slider.value = GemSize.percent / GemSizeStep;
+        slider.interactable = true;
+        slider.onValueChanged.AddListener((value) =>
+        {
+            GemSize.percent = Mathf.RoundToInt(value) * GemSizeStep;
+            UpdateGemSizeText();
+        });
+        MoveDown(slider.transform, content, drop);
+
+        UpdateGemSizeText();
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep);
+        return rowStep;
+    }
+
+    static void MoveDown(Transform item, RectTransform content, float distance)
+    {
+        Vector3 local = content.InverseTransformPoint(item.position);
+        local.y -= distance;
+        item.position = content.TransformPoint(local);
+    }
+
+    void UpdateGemSizeText()
+    {
+        if (!gemSizeLabel)
+            return;
+
+        gemSizeLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        gemSizeLabel.text = string.Format("Gem Size- {0}%", GemSize.percent);
+    }
+
+    void MakeSpeedToggle(string label, float y, bool isOn, UnityEngine.Events.UnityAction<bool> onChanged)
+    {
+        Toggle toggle = Instantiate(clapToggle, clapToggle.transform.parent);
+        toggle.name = label.TrimEnd(':') + " Toggle";
+        toggle.onValueChanged = new Toggle.ToggleEvent();
+        toggle.isOn = isOn;
+        toggle.onValueChanged.AddListener(onChanged);
+
+        RectTransform rect = (RectTransform)toggle.transform;
+        rect.anchoredPosition = new Vector2(((RectTransform)clapToggle.transform).anchoredPosition.x, y);
+
+        // The label starts where "Clap:" does and wraps onto a second line before reaching the checkbox
+        Text text = toggle.GetComponentInChildren<Text>(true);
+        if (text)
+        {
+            text.text = label;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            RectTransform textRect = text.rectTransform;
+            float parentWidth = rect.rect.width;
+            textRect.offsetMax = new Vector2(textRect.offsetMin.x + 72 - parentWidth, textRect.offsetMax.y);
+        }
+    }
+
+    // Past Moonscraper's old maximum the fretboard and rails would stop short of the highway's end, and the camera
+    // would clip it, so stretch them from the bottom up and push the far plane back
+    void FitHighwayVisuals()
+    {
+        if (!m_highwayVisuals)
+        {
+            FretboardWrapMovement fretboard = FindObjectOfType<FretboardWrapMovement>();
+            if (!fretboard || !fretboard.transform.parent)
+                return;
+
+            m_fretboard = fretboard.GetComponent<Renderer>();
+            m_highwayVisuals = fretboard.transform.parent;
+            m_highwayVisualsPosition = m_highwayVisuals.localPosition;
+            m_highwayVisualsScale = m_highwayVisuals.localScale;
+            if (m_fretboard && m_fretboard.sharedMaterial)
+                m_fretboardTiling = m_fretboard.sharedMaterial.mainTextureScale;
+        }
+
+        // How far past the highway's end the visuals went at Moonscraper's old maximum
+        float extra = Mathf.Max(0, Globals.gameSettings.highwayLength - FullHighwayLength) * 5;
+        float stretch = (m_highwayVisualsScale.y * 16 + extra) / (m_highwayVisualsScale.y * 16);     // The fretboard is 16 units tall before its parent's scale
+
+        Vector3 scale = m_highwayVisualsScale;
+        scale.y *= stretch;
+        m_highwayVisuals.localScale = scale;
+
+        // Keep the bottom where it was: children are centred near 0.35 and 8 units tall each way
+        Vector3 position = m_highwayVisualsPosition;
+        position.y += (8 - 0.35f) * (scale.y - m_highwayVisualsScale.y);
+        m_highwayVisuals.localPosition = position;
+
+        // Repeat the texture more instead of stretching it, which also keeps its scrolling in step
+        if (m_fretboard && m_fretboard.sharedMaterial)
+            m_fretboard.sharedMaterial.mainTextureScale = new Vector2(m_fretboardTiling.x, m_fretboardTiling.y * stretch);
+
+        Camera camera = Camera.main;
+        if (camera)
+        {
+            if (m_defaultFarClip < 0)
+                m_defaultFarClip = camera.farClipPlane;
+
+            float endDepth = Vector3.Dot(maxHighwayLength.position - camera.transform.position, camera.transform.forward);
+            camera.farClipPlane = Mathf.Max(m_defaultFarClip, endDepth + 10);
+        }
+    }
+
+    void OnApplicationQuit()
+    {
+        // The fretboard material is a shared asset, so put its tiling back (it would otherwise stick in the Unity editor)
+        if (m_fretboard && m_fretboard.sharedMaterial && m_highwayVisuals)
+            m_fretboard.sharedMaterial.mainTextureScale = m_fretboardTiling;
     }
 
     public void ToggleClap(bool value)

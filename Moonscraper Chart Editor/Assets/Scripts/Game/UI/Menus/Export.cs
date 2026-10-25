@@ -29,6 +29,11 @@ public class Export : DisplayMenu {
     ExportOptions exportOptions;
     float delayTime = 0;
 
+    // Exporting at the speed set on the left panel's Speed slider: rows added under the other options
+    Text m_speedInfo;
+    Toggle m_speedSuffixToggle;
+    static readonly string[] s_iniTimeKeysMs = { "song_length", "preview_start_time", "preview_end_time", "delay", "video_start_time" };
+
     const string FILE_EXT_CHART = ".chart";
     const string FILE_EXT_MIDI = ".mid";
     readonly string[] COPY_IF_EXTENTION = { ".opus" };
@@ -54,6 +59,8 @@ public class Export : DisplayMenu {
     void Start()
     {
         setAsChartFile();
+        BuildSpeedRows();
+        RefreshSpeedRows();
     }
 
     protected override void Update()
@@ -92,6 +99,135 @@ public class Export : DisplayMenu {
 
         chPackageToggle.isOn = false;
         generateIniToggle.isOn = !editor.currentSong.iniProperties.IsEmpty;
+
+        RefreshSpeedRows();
+    }
+
+    static float exportSpeed
+    {
+        get
+        {
+            float speed = Globals.gameSettings.gameSpeed;
+            return Mathf.Abs(speed - 1) < 0.001f || speed <= 0 ? 1 : speed;
+        }
+    }
+
+    static string SpeedSuffix(float speed)
+    {
+        return " (" + SpeedOptions.SpeedText(speed) + " Speed)";
+    }
+
+    // Two rows copied from the Clone Hero Package toggle: what speed the export is at, and the name suffix checkbox
+    void BuildSpeedRows()
+    {
+        if (!chPackageToggle)
+            return;
+
+        RectTransform template = (RectTransform)chPackageToggle.transform;
+        float x = template.anchoredPosition.x;
+
+        Toggle infoRow = Instantiate(chPackageToggle, template.parent);
+        infoRow.name = "Export Speed Info";
+        infoRow.onValueChanged = new Toggle.ToggleEvent();
+        infoRow.interactable = false;
+        if (infoRow.targetGraphic)
+            infoRow.targetGraphic.gameObject.SetActive(false);     // Just the text
+        if (infoRow.graphic)
+            infoRow.graphic.gameObject.SetActive(false);
+        ((RectTransform)infoRow.transform).anchoredPosition = new Vector2(x, -297);
+        m_speedInfo = infoRow.GetComponentInChildren<Text>(true);
+
+        m_speedSuffixToggle = Instantiate(chPackageToggle, template.parent);
+        m_speedSuffixToggle.name = "Export Speed Suffix Toggle";
+        m_speedSuffixToggle.onValueChanged = new Toggle.ToggleEvent();
+        m_speedSuffixToggle.isOn = SpeedOptions.exportSpeedSuffix;
+        m_speedSuffixToggle.onValueChanged.AddListener((on) => { SpeedOptions.exportSpeedSuffix = on; RefreshSpeedRows(); });
+        ((RectTransform)m_speedSuffixToggle.transform).anchoredPosition = new Vector2(x, -322);
+    }
+
+    void RefreshSpeedRows()
+    {
+        if (!m_speedInfo || !m_speedSuffixToggle)
+            return;
+
+        float speed = exportSpeed;
+        if (speed == 1)
+        {
+            m_speedInfo.text = "Export speed: 1x (set with the Speed slider)";
+            m_speedSuffixToggle.gameObject.SetActive(false);
+            return;
+        }
+
+        m_speedInfo.text = "Export speed: " + SpeedOptions.SpeedText(speed) + ", " + (SpeedOptions.pitchedSpeedups ? "pitched" : "same pitch");
+        m_speedSuffixToggle.gameObject.SetActive(true);
+        Text label = m_speedSuffixToggle.GetComponentInChildren<Text>(true);
+        if (label)
+            label.text = "Add" + SpeedSuffix(speed) + ":";
+    }
+
+    /// <summary>
+    /// A copy of the song played at the export speed: BPMs, offset, preview and song.ini times all scaled, and the
+    /// name suffixed if that's ticked. The song itself if exporting at 1x.
+    /// </summary>
+    static Song SongAtExportSpeed(Song song, float speed)
+    {
+        if (speed == 1)
+            return song;
+
+        Song scaled = new Song(song);
+        scaled.ScaleSpeed(speed);
+
+        INIParser ini = scaled.iniProperties;
+        foreach (string key in s_iniTimeKeysMs)
+        {
+            string value = RichTextIni.ReadIni(ini, key);
+            long ms;
+            if (value != null && long.TryParse(value, out ms))
+                RichTextIni.WriteIni(ini, key, Math.Round(ms / speed).ToString());
+        }
+
+        if (SpeedOptions.exportSpeedSuffix)
+        {
+            string suffix = SpeedSuffix(speed);
+            scaled.name += suffix;
+            string iniName = RichTextIni.ReadIni(ini, "name");
+            if (!string.IsNullOrEmpty(iniName))
+                RichTextIni.WriteIni(ini, "name", iniName + suffix);
+        }
+
+        return scaled;
+    }
+
+    // Writes the song's audio at the export speed next to the exported chart, with Clone Hero's names, and points the
+    // exported song at it. Returns an error to show, or null.
+    static string ExportAudioAtSpeed(Song source, Song exported, string folder, float speed)
+    {
+        string errors = null;
+        foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
+        {
+            string audioLocation = source.GetAudioLocation(audio);
+            if (string.IsNullOrEmpty(audioLocation) || !File.Exists(audioLocation))
+                continue;
+
+            string name = GetCHOggFilename(audio);
+            if (string.IsNullOrEmpty(name))
+                continue;
+
+            string output = Path.Combine(folder, name);
+            if (string.Equals(Path.GetFullPath(output), Path.GetFullPath(audioLocation), StringComparison.OrdinalIgnoreCase))
+            {
+                errors += "Didn't write " + name + " at " + SpeedOptions.SpeedText(speed) + " because it would replace the original audio. Export into a different folder.\n";
+                continue;
+            }
+
+            Debug.LogFormat("Writing {0} at {1} speed to {2}", audioLocation, speed, output);
+            if (AudioManager.ConvertToOggAtSpeed(audioLocation, output, speed, SpeedOptions.pitchedSpeedups))
+                exported.SetAudioLocation(audio, output);
+            else
+                errors += "Couldn't change the speed of " + Path.GetFileName(audioLocation) + ".\n";
+        }
+
+        return errors;
     }
 
     public void OnChPackageToggle(bool enabled)
@@ -130,6 +266,8 @@ public class Export : DisplayMenu {
             defaultFileName = new string(editor.currentSong.name.ToCharArray());
         else
             defaultFileName = "Untitled";
+        if (exportSpeed != 1 && SpeedOptions.exportSpeedSuffix)
+            defaultFileName += SpeedSuffix(exportSpeed);
         if (!exportOptions.forced)
             defaultFileName += "(UNFORCED)";
 
@@ -159,10 +297,13 @@ public class Export : DisplayMenu {
         {
             Song song = editor.currentSong;
             float songLength = editor.currentSongLength;
+            string folderName = song.name;
+            if (exportSpeed != 1 && SpeedOptions.exportSpeedSuffix)
+                folderName += SpeedSuffix(exportSpeed);
 
             saveDirectory = saveDirectory.Replace('\\', Path.DirectorySeparatorChar);
             saveDirectory = saveDirectory.Replace('/', Path.DirectorySeparatorChar);
-            saveDirectory = Path.Combine(saveDirectory, FileExplorer.StripIllegalChars(song.name).Trim());
+            saveDirectory = Path.Combine(saveDirectory, FileExplorer.StripIllegalChars(folderName).Trim());
 
             // Check if files exist at the current directory and ask user before overwriting.
             if (Directory.Exists(saveDirectory)) {
@@ -182,15 +323,28 @@ public class Export : DisplayMenu {
     {
         LoadingTasksManager tasksManager = editor.services.loadingTasksManager;
 
-        Song song = editor.currentSong;// new Song(editor.currentSong);
-        float songLength = editor.currentSongLength;
+        float speed = exportSpeed;
+        Song originalSong = editor.currentSong;
+        Song song = SongAtExportSpeed(originalSong, speed);
+        float songLength = editor.currentSongLength / speed;
 
         exportOptions.tickOffset = TickFunctions.TimeToDis(0, delayTime, exportOptions.targetResolution, 120);
 
         float timer = Time.realtimeSinceStartup;
         string errorMessageList = string.Empty;
 
-        List<LoadingTask> tasks = new List<LoadingTask>()
+        List<LoadingTask> tasks = new List<LoadingTask>();
+        if (speed != 1)
+        {
+            tasks.Add(new LoadingTask("Changing the audio to " + SpeedOptions.SpeedText(speed) + " speed", () =>
+            {
+                string audioErrors = ExportAudioAtSpeed(originalSong, song, Path.GetDirectoryName(filepath), speed);
+                if (audioErrors != null)
+                    errorMessageList += audioErrors;
+            }));
+        }
+
+        tasks.AddRange(new List<LoadingTask>()
         {
             new LoadingTask("Exporting " + exportOptions.format, () =>
             {
@@ -228,7 +382,7 @@ public class Export : DisplayMenu {
                     }
                 }
             })
-        };
+        });
 
         if (generateIniToggle.isOn)
         {
@@ -459,7 +613,10 @@ public class Export : DisplayMenu {
 
     IEnumerator ExportCHPackage(string destFolderPath, Song song, float songLengthSeconds, ExportOptions exportOptions)
     {
-        Song newSong = new Song(song);
+        float speed = exportSpeed;
+        bool pitched = SpeedOptions.pitchedSpeedups;
+        Song newSong = speed != 1 ? SongAtExportSpeed(song, speed) : new Song(song);
+        songLengthSeconds /= speed;
         LoadingTasksManager tasksManager = editor.services.loadingTasksManager;
 
         float timer = Time.realtimeSinceStartup;
@@ -495,6 +652,16 @@ public class Export : DisplayMenu {
 
             songEncodeActions.Add(() =>
             {
+                if (speed != 1)
+                {
+                    // A copy of the original would be at the wrong speed, so it's an error rather than a fallback
+                    if (string.Equals(Path.GetFullPath(outputFile), Path.GetFullPath(audioLocation), StringComparison.OrdinalIgnoreCase))
+                        errorMessageList += "Didn't write " + newAudioName + " because it would replace the original audio. Export into a different folder.\n";
+                    else if (!AudioManager.ConvertToOggAtSpeed(audioLocation, outputFile, speed, pitched))
+                        errorMessageList += "Couldn't change the speed of " + Path.GetFileName(audioLocation) + ".\n";
+                    return;
+                }
+
                 bool shouldCopy = false;
 
                 foreach (string extention in COPY_IF_EXTENTION)

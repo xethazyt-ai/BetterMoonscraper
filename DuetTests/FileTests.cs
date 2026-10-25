@@ -55,6 +55,22 @@ public static class FileTests
         SessionTests.TestSong changed = Join(host, "files-joiner-3", out third);
         Expect("only a file that changed is sent again", changed.receivedFiles != null && third.songFiles.totalBytes == 120 * 1024 && SameFiles(found, changed.receivedFiles));
 
+        // The host opens another song mid-session: the joiner gets its chart and its own audio, and an edit made to
+        // the old song is turned away instead of landing in the new one
+        string otherFolder = Path.Combine(root, "host", "Other Song");
+        Directory.CreateDirectory(otherFolder);
+        List<string> otherFiles = new List<string> { Write(otherFolder, "song.ogg", 80 * 1024, random) };
+        Song other = new Song();
+        other.name = "Other Song";
+        hostSong.song = other;
+        hostSong.sharedFiles = otherFiles;
+        ++hostSong.songNumber;
+        changed.receivedFiles = null;
+        SessionTests.Pump(new List<DuetSession> { host, third }, () => changed.receivedFiles != null);
+        Expect("the host opening another song switches everyone to it", changed.song.name == "Other Song" && third.isActive);
+        Expect("and its audio comes along", changed.receivedFiles != null && SameFiles(otherFiles, changed.receivedFiles));
+        third.Leave();
+
         host.Leave();
 
         DuetFileEntry sneaky = DuetFiles.FromJson(new Dictionary<string, object> { { "name", "..\\..\\evil.ogg" }, { "size", 1.0 }, { "sha1", new string('a', 40) } });

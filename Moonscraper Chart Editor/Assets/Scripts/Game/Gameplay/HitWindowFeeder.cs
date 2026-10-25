@@ -21,6 +21,13 @@ public class HitWindowFeeder
         float time = editor.currentVisibleTime;
         Song song = editor.currentSong;
 
+        if (hitWindow != null)
+            hitWindow.RemoveDeletedNotes();
+
+        // Lots of notes deleted mid-song can leave the index past the end of the chart
+        if (feederNoteIndex > editor.currentChart.notes.Count)
+            feederNoteIndex = -1;
+
         if (feederNoteIndex <= 0)
         {
             uint currentTick = song.TimeToTick(time, song.resolution);

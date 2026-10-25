@@ -60,7 +60,8 @@ public interface IDuetConnector
 public interface IDuetRoomProvider
 {
     string status { get; }
-    IDuetListener CreateRoom();
+    // code: a room code to open again, for a host back after a crash. Null for a new one.
+    IDuetListener CreateRoom(string code = null);
     IDuetConnector JoinRoom(string roomCode);
 }
 
@@ -75,6 +76,10 @@ public static class DuetKeepAlive
     public static Action tick;      // Set by the online rooms provider. Always called under tickLock.
     public static readonly object tickLock = new object();
 
+    // How many Windows pop-ups are holding up Moonscraper right now
+    public static int blockedCount { get { return s_blockedCount; } }
+    static volatile int s_blockedCount = 0;
+
     // Wrap a call that blocks the main thread: using (DuetKeepAlive.WhileBlocked()) { ... }
     public static IDisposable WhileBlocked()
     {
@@ -87,6 +92,7 @@ public static class DuetKeepAlive
 
         public Scope()
         {
+            ++s_blockedCount;
             if (tick != null)
                 new Thread(Loop) { IsBackground = true, Name = "Duet keep alive" }.Start();
         }
@@ -117,6 +123,9 @@ public static class DuetKeepAlive
 
         public void Dispose()
         {
+            if (m_done)
+                return;
+            --s_blockedCount;
             m_done = true;
             lock (tickLock) { }     // Wait for a tick in progress, so the main thread has it to itself again
         }
@@ -126,6 +135,19 @@ public static class DuetKeepAlive
 public static class DuetRooms
 {
     public static IDuetRoomProvider provider;
+
+    // Moonscraper is closing normally. Sessions end here, while their connections can still say goodbye, so nobody
+    // takes it for a crash and waits.
+    public static event Action quitting;
+
+    public static void NotifyQuitting()
+    {
+        if (quitting != null)
+        {
+            try { quitting(); }
+            catch (Exception e) { UnityEngine.Debug.LogError("Duet: " + e); }
+        }
+    }
 
     public static bool isAvailable { get { return provider != null; } }
 

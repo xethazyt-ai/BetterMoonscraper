@@ -300,7 +300,9 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (type == LogType.Exception && !_ignoreExceptions)
         {
             string message = string.Format("Moonscraper Chart Editor has encounted an unexpected error:\n\n{0}\n{1}\nPlease report \"AppData\\LocalLow\\FireFox Dev\\Moonscraper Chart Editor\\output_log.txt\" to your local Moonscraper developer at your earliest convienance.\n\nAttempt to continue?", condition, stackTrace);
-            NativeMessageBox.Result result = NativeMessageBox.Show(message, "Oops", NativeMessageBox.Type.YesNo, windowHandleManager.nativeWindow);
+            NativeMessageBox.Result result;
+            using (DuetKeepAlive.WhileBlocked())     // Keeps a Collab room connected while the box is open
+                result = NativeMessageBox.Show(message, "Oops", NativeMessageBox.Type.YesNo, windowHandleManager.nativeWindow);
 
             switch (result)
             {
@@ -482,14 +484,30 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         });
     }
 
+    /// <summary>
+    /// How far apart notes a second apart are drawn. At 1x and faster the notes keep their 1x spacing (a sped up song
+    /// just scrolls faster). Slower than 1x spreads them out like Moonscraper always did, which makes dense patterns
+    /// easier to chart, unless "Non-Spaced Notes for Slowdown" keeps the 1x spacing there too, for previewing.
+    /// </summary>
+    public static float worldUnitsPerSecond
+    {
+        get
+        {
+            float speed = Mathf.Max(Globals.gameSettings.gameSpeed, 0.01f);
+            if (speed >= 1 || SpeedOptions.nonSpacedSlowdown)
+                return Globals.gameSettings.hyperspeed;
+            return Globals.gameSettings.hyperspeed / speed;
+        }
+    }
+
     public static float WorldYPositionToTime(float worldYPosition)
     {
-        return worldYPosition / (Globals.gameSettings.hyperspeed / Globals.gameSettings.gameSpeed);
+        return worldYPosition / worldUnitsPerSecond;
     }
 
     public static float TimeToWorldYPosition(float time)
     {
-        return time * Globals.gameSettings.hyperspeed / Globals.gameSettings.gameSpeed;
+        return time * worldUnitsPerSecond;
     }
 
     public static float WorldYPosition(SongObject songObject)
@@ -665,7 +683,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (!DuetPanel.isGuest)
             return false;
 
-        services.notificationBar.PushNotification("LEAVE THE DUET SESSION FIRST (F10) TO OPEN ANOTHER CHART", 3, true);
+        services.notificationBar.PushNotification("LEAVE THE COLLAB SESSION FIRST (F10) TO OPEN ANOTHER CHART", 3, true);
         return true;
     }
 
@@ -913,12 +931,13 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     /// Replaces the open song with one received in a Duet Mode session. keepView stays on the same
     /// instrument, difficulty and position, for when a joiner's copy is refreshed mid-session.
     /// </summary>
-    public void LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView)
+    /// keepFile keeps saving to the chart file that's open, for a host whose chart came back from a joiner after a crash.
+    public void LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView, bool keepFile = false)
     {
-        StartCoroutine(_LoadCollaborationSong(newSong, reloadAudio, keepView));
+        StartCoroutine(_LoadCollaborationSong(newSong, reloadAudio, keepView, keepFile));
     }
 
-    IEnumerator _LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView)
+    IEnumerator _LoadCollaborationSong(Song newSong, bool reloadAudio, bool keepView, bool keepFile)
     {
         isLoadingCollaborationSong = true;
 
@@ -945,7 +964,8 @@ public class ChartEditor : UnitySingleton<ChartEditor>
                 yield return null;
         }
 
-        lastLoadedFile = string.Empty;  // Saving asks where to save, rather than overwriting whatever was open before
+        if (!keepFile)
+            lastLoadedFile = string.Empty;  // Saving asks where to save, rather than overwriting whatever was open before
         currentSong = newSong;
         sessionFlags &= ~ChartEditorSessionFlags.CurrentChartSavedInProprietyFormat;
 
@@ -1238,7 +1258,8 @@ public class ChartEditor : UnitySingleton<ChartEditor>
             stream.volume = vol * Globals.gameSettings.vol_master;
             stream.pan = Globals.gameSettings.audio_pan;
 
-            if (speed < 1 && !Globals.gameSettings.slowdownPitchCorrectionEnabled)
+            // Pitched Speedups: both slowed down and sped up audio change pitch, like a record
+            if (speed != 1 && SpeedOptions.pitchedSpeedups)
             {
                 float originalFreq = stream.frequency;
 

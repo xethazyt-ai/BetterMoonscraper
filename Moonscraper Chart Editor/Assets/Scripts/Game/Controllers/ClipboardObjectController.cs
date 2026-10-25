@@ -18,9 +18,12 @@ public class ClipboardObjectController : Snapable {
 
     uint pastePos = 0;
 
+    public static ClipboardObjectController instance { get; private set; }
+
     protected override void Awake()
     {
         base.Awake();
+        instance = this;
         ren = GetComponent<Renderer>();
         editor.events.editorStateChangedEvent.Register(OnApplicationModeChanged);
         CLIPBOARD_FILE_LOCATION = UnityEngine.Application.persistentDataPath + "/MoonscraperClipboard.bin";
@@ -50,6 +53,18 @@ public class ClipboardObjectController : Snapable {
     {
         // Can only paste in editor mode
         gameObject.SetActive(editorState == ChartEditor.State.Editor);
+    }
+
+    // Pattern Blueprints paste where the mouse points on the highway, like Ctrl+V, otherwise at the strikeline
+    public void PasteAtMouseOrStrikeline(bool allowMouse)
+    {
+        uint tick = editor.currentSong.WorldPositionToSnappedTick(strikeline.position.y, Globals.gameSettings.step);
+        if (allowMouse && editor.services.mouseMonitorSystem.world2DPosition != null && !MouseMonitor.IsUIUnderPointer()
+            && Input.mousePosition.y < Camera.main.WorldToScreenPoint(editor.mouseYMaxLimit.position).y)
+            tick = objectSnappedChartPos;
+
+        Paste(tick);
+        groupSelectTool.reset();
     }
 
     public static void SetData(SongObject[] data, Clipboard.SelectionArea area, Song song)

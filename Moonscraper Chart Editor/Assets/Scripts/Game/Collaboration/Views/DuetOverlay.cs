@@ -18,6 +18,10 @@ public class DuetOverlay : MonoBehaviour
     readonly List<PlaceNote> m_placeNotes = new List<PlaceNote>();
     DuetPresence m_localPresence;
     DuetGhostNotes m_ghostNotes;
+    DuetHighlights m_highlights;
+    CursorSelect m_cursorSelect;
+    float m_nextSelectionCheck = 0;
+    const float SelectionCheckSeconds = 0.2f;
 
     Texture2D m_arrow;
     Texture2D m_marker;
@@ -34,6 +38,19 @@ public class DuetOverlay : MonoBehaviour
             if (placeNote.gameObject.scene.IsValid())
                 m_placeNotes.Add(placeNote);
         }
+
+        // The cursor tool draws the select box. (Moonscraper's separate Group Select tool isn't used any more.)
+        foreach (CursorSelect cursorSelect in Resources.FindObjectsOfTypeAll<CursorSelect>())
+        {
+            if (cursorSelect.gameObject.scene.IsValid())
+            {
+                m_cursorSelect = cursorSelect;
+                break;
+            }
+        }
+        m_highlights = m_cursorSelect != null
+            ? new DuetHighlights(m_editor.assets.selectedHighlight, m_cursorSelect.dragAreaRenderer, m_cursorSelect.dragAreaColor)
+            : new DuetHighlights(m_editor.assets.selectedHighlight, null, Color.clear);
 
         m_arrow = MakeArrowTexture(24, 34);
         m_marker = MakeMarkerTexture(32);
@@ -59,6 +76,8 @@ public class DuetOverlay : MonoBehaviour
         DuetEditorSong.onRemoteSongInfoApplied -= OnRemoteSongInfoApplied;
         if (m_ghostNotes != null)
             m_ghostNotes.Destroy();
+        if (m_highlights != null)
+            m_highlights.Destroy();
     }
 
     void OnRemoteSongInfoApplied()
@@ -75,12 +94,55 @@ public class DuetOverlay : MonoBehaviour
             m_localPresence = null;
             if (m_ghostNotes != null)
                 m_ghostNotes.HideAll();
+            m_highlights.HideAll();
             return;
         }
 
         m_localPresence = ReadLocalPresence();
         session.SetLocalPresence(m_localPresence);
+        if (Time.unscaledTime >= m_nextSelectionCheck)
+        {
+            m_nextSelectionCheck = Time.unscaledTime + SelectionCheckSeconds;
+            session.SetLocalSelection(ReadLocalSelection());
+        }
+
         ShowGhostNotes(session);
+        ShowHighlights(session);
+    }
+
+    void ShowHighlights(DuetSession session)
+    {
+        m_highlights.Begin();
+        if (m_editor.currentState == ChartEditor.State.Editor && m_editor.currentSong != null && m_editor.currentChart != null)
+        {
+            foreach (KeyValuePair<int, DuetSelection> pair in session.selections)
+            {
+                bool sameChart = pair.Value.instrument == m_localPresence.instrument && pair.Value.difficulty == m_localPresence.difficulty;
+                m_highlights.ShowSelection(pair.Value, sameChart);
+            }
+
+            foreach (KeyValuePair<int, DuetPresence> pair in session.presences)
+            {
+                if (m_localPresence.IsOnSameChart(pair.Value))
+                    m_highlights.ShowDrag(pair.Value);
+            }
+        }
+        m_highlights.End();
+    }
+
+    DuetSelection ReadLocalSelection()
+    {
+        DuetSelection selection = new DuetSelection();
+        selection.instrument = m_localPresence.instrument;
+        selection.difficulty = m_localPresence.difficulty;
+        foreach (SongObject songObject in m_editor.selectedObjectsManager.currentSelectedObjects)
+        {
+            if (selection.items.Count >= DuetSelection.MaxItems)
+                break;
+            if (songObject != null)
+                selection.items.Add(DuetSelection.ItemFor(songObject));
+        }
+        return selection;
     }
 
     void ShowGhostNotes(DuetSession session)
@@ -111,6 +173,11 @@ public class DuetOverlay : MonoBehaviour
         presence.instrument = MenuBar.currentInstrument.ToString();
         presence.difficulty = MenuBar.currentDifficulty.ToString();
         presence.isTyping = DuetChat.isTyping;
+
+        if (m_cursorSelect != null && m_editor.currentState == ChartEditor.State.Editor)
+        {
+            presence.hasDrag = m_cursorSelect.TryGetDragArea(out presence.dragX1, out presence.dragTick1, out presence.dragX2, out presence.dragTick2, out presence.dragRemoving);
+        }
 
         Vector2? mouse = m_editor.services.mouseMonitorSystem.world2DPosition;
         if (mouse != null && m_editor.currentState == ChartEditor.State.Editor)
@@ -263,6 +330,10 @@ public class DuetOverlay : MonoBehaviour
         background.Apply();
 
         GUIStyle style = new GUIStyle(GUI.skin.label);
+        Font font = DuetSkin.font;     // Moonscraper's own
+        if (font != null)
+            style.font = font;
+        style.fontSize = DuetSkin.FontSize;
         style.normal.background = background;
         style.fontStyle = FontStyle.Bold;
         style.padding = new RectOffset(5, 5, 2, 2);

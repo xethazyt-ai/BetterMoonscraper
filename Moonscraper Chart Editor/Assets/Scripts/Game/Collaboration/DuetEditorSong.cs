@@ -45,6 +45,23 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         }
     }
 
+    // Compared by reference: opening or making a song always gives the editor a new Song
+    Song m_lastSong;
+    int m_songNumber = 0;
+
+    public int songNumber
+    {
+        get
+        {
+            if (m_editor.currentSong != m_lastSong)
+            {
+                m_lastSong = m_editor.currentSong;
+                ++m_songNumber;
+            }
+            return m_songNumber;
+        }
+    }
+
     public bool isBusy
     {
         get { return m_tracker.hasPendingEdit || m_editor.isLoadingCollaborationSong || m_editor.services.loadingTasksManager.isRunningTask; }
@@ -67,6 +84,17 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         m_editor.currentSong.UpdateAllChartCaches();
         m_editor.songObjectPoolManager.SetAllPoolsDirty();
         m_editor.selectedObjectsManager.TryFindAndSelectSongObjects(selection);
+
+        // Noted in the Collab Logs, so an edit that seems not to arrive can be traced
+        int added = 0, deleted = 0, modified = 0;
+        foreach (SongEditChange change in changes)
+        {
+            if (change.type == SongEditChange.Type.Add) ++added;
+            else if (change.type == SongEditChange.Type.Delete) ++deleted;
+            else ++modified;
+        }
+        UnityEngine.Debug.Log(string.Format("Duet: {0} an edit ({1} added, {2} deleted, {3} changed) while {4}",
+            success ? "applied" : "couldn't apply", added, deleted, modified, m_editor.currentState));
 
         if (success)
         {
@@ -171,6 +199,19 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         snapshot.chartText = File.ReadAllText(path);
 
         return snapshot;
+    }
+
+    public void LoadRecoveredChart(string chartText)
+    {
+        string path = Path.Combine(WorkingDirectory, "recovered" + MsceIOHelper.FileExtention);
+        File.WriteAllText(path, chartText);
+        Song song = ChartReader.ReadChart(path);
+
+        // The audio is the host's own, as already open, never a path written in someone else's chart
+        foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
+            song.SetAudioLocation(audio, m_editor.currentSong.GetAudioLocation(audio));
+
+        m_editor.LoadCollaborationSong(song, false, true, true);
     }
 
     public void LoadSnapshot(DuetSongSnapshot snapshot, bool isResync)

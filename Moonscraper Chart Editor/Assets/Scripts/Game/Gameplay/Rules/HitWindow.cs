@@ -8,6 +8,7 @@ using MoonscraperChartEditor.Song;
 public interface IHitWindow
 {
     bool DetectEnter(Note note, float time);
+    void RemoveDeletedNotes();
     void Clear();
 }
 
@@ -36,7 +37,7 @@ public class HitWindow<TNoteHitKnowledge> : IHitWindow where TNoteHitKnowledge :
             // New notes inserted at the end
             for (int i = 0; i < noteKnowledgeQueue.Count; ++i)
             {
-                if (!noteKnowledgeQueue[i].hasBeenHit)
+                if (!noteKnowledgeQueue[i].hasBeenHit && !IsDeleted(noteKnowledgeQueue[i].note))
                     return noteKnowledgeQueue[i];
             }
             return null;
@@ -111,6 +112,25 @@ public class HitWindow<TNoteHitKnowledge> : IHitWindow where TNoteHitKnowledge :
         m_noteHitKnowledgePool.Add(knowledge);
     }
 
+    // A note can be deleted while the song plays (someone else's edit in Collab Mode, or undo). It no longer has a
+    // song to give it a time, so drop it quietly rather than count it as a miss.
+    static bool IsDeleted(Note note)
+    {
+        return note == null || note.song == null;
+    }
+
+    public void RemoveDeletedNotes()
+    {
+        for (int i = m_noteQueue.Count - 1; i >= 0; --i)
+        {
+            if (IsDeleted(m_noteQueue[i].note))
+            {
+                ReturnNoteKnowledgeToPool(m_noteQueue[i]);
+                m_noteQueue.RemoveAt(i);
+            }
+        }
+    }
+
     public void Clear()
     {
         noteKnowledgeQueue.Clear();
@@ -120,6 +140,7 @@ public class HitWindow<TNoteHitKnowledge> : IHitWindow where TNoteHitKnowledge :
     public List<TNoteHitKnowledge> DetectExit(float time)
     {
         elementsRemoved.Clear();
+        RemoveDeletedNotes();
 
         for (int i = m_noteQueue.Count - 1; i >= 0; --i)
         {

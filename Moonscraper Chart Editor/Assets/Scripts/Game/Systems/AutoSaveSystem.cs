@@ -14,10 +14,24 @@ public class AutoSaveSystem : SystemManagerState.System
     Song autosaveSong = null;
     Task currentAutosaveTask;
 
+    // Besides the backup copy above, the open chart file itself can be saved every few minutes. Set in Settings > Editor.
+    const string PrefChartMinutes = "Autosave.ChartMinutes";
+    public static readonly int[] ChartMinuteChoices = { 0, 1, 2, 5, 10 };
+    float chartAutosaveTimer = 0;
+    bool chartAutosaving = false;     // Waiting for the save to finish, to say so
+
+    public static int chartAutosaveMinutes
+    {
+        get { return Mathf.Max(0, PlayerPrefs.GetInt(PrefChartMinutes, 2)); }
+        set { PlayerPrefs.SetInt(PrefChartMinutes, Mathf.Max(0, value)); PlayerPrefs.Save(); }
+    }
+
     public override void SystemUpdate()
     {
         if (DuetPanel.isGuest)
             return;     // The chart is the Duet session host's, so it isn't kept here
+
+        UpdateChartAutosave();
 
         if (currentAutosaveTask == null || currentAutosaveTask.Status != TaskStatus.RanToCompletion)
         {
@@ -32,6 +46,41 @@ public class AutoSaveSystem : SystemManagerState.System
         {
             autosaveTimer = 0;
         }
+    }
+
+    void UpdateChartAutosave()
+    {
+        ChartEditor editor = ChartEditor.Instance;
+        if (chartAutosaving && !editor.isSaving)
+        {
+            chartAutosaving = false;
+            editor.services.notificationBar.PushNotification("CHART AUTOSAVED", 2, true);
+        }
+
+        int minutes = chartAutosaveMinutes;
+        if (minutes <= 0)
+        {
+            chartAutosaveTimer = 0;
+            return;
+        }
+
+        chartAutosaveTimer += Time.deltaTime;
+        if (chartAutosaveTimer < minutes * 60)
+            return;
+
+        // Waits for a quiet moment: not mid-drag or mid-save. Untitled charts and .mid files are left for the user to save.
+        string file = editor.currentChartFile;
+        if (string.IsNullOrEmpty(file) || editor.isSaving || editor.songEditGestureTracker.hasPendingEdit)
+            return;
+
+        chartAutosaveTimer = 0;
+        string extension = System.IO.Path.GetExtension(file).ToLowerInvariant();
+        if (!ChartEditor.isDirty || (extension != ".chart" && extension != MsceIOHelper.FileExtention))
+            return;
+
+        Debug.Log("Autosaving the chart to " + file);
+        chartAutosaving = true;
+        editor._Save();
     }
 
     async Task Autosave()

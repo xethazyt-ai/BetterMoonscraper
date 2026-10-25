@@ -39,6 +39,12 @@ public interface IDuetSongHost
 
     // Joining: the host's files have arrived, by file name, at these paths on this computer
     void UseSongFiles(Dictionary<string, string> localPaths);
+
+    // Goes up each time a different song is opened, for example when the host opens another chart mid-session
+    int songNumber { get; }
+
+    // Hosting again after a crash: a joiner's copy of the chart, which replaces the open chart but keeps its audio
+    void LoadRecoveredChart(string chartText);
 }
 
 public class DuetUser
@@ -68,7 +74,7 @@ public class DuetChatLine
 /// </summary>
 public class DuetSession
 {
-    public const int ProtocolVersion = 3;  // 2: song files sent on join. 3: joiners prove they have the room code
+    public const int ProtocolVersion = 4;  // 2: song files sent on join. 3: joiners prove they have the room code. 4: selections
     public const int DefaultPort = 47820;
     const int HostUserId = 0;
     const int MaxLogLines = 8;
@@ -79,7 +85,9 @@ public class DuetSession
     const int ChatHistoryForJoiners = 30;
 
     public enum Role { Host, Client }
-    public enum State { Connecting, Joining, Connected, Ended }
+    // HostLost: a joiner whose host vanished without ending the session, most likely a crash. The joiner keeps the
+    // chart and keeps trying to get back in, and once the host is back, gives them its copy, which has every edit.
+    public enum State { Connecting, Joining, Connected, HostLost, Ended }
 
     readonly IDuetSongHost m_song;
     readonly string m_username;
@@ -91,6 +99,9 @@ public class DuetSession
 
     // Hosting: while locked, nobody new can join. People already in stay.
     public bool isLocked { get; set; }
+
+    // Joining: the host's secret that lets you back in after losing the connection, even while it's locked
+    public string rejoinToken { get; set; }
 
     // Hosting: the most people allowed in at once, counting the host. Lowering it never removes anyone.
     int m_maxUsers = DuetRooms.MaxMembers;
@@ -107,6 +118,9 @@ public class DuetSession
 
     // Everyone else's latest presence, by user id
     public Dictionary<int, DuetPresence> presences { get; private set; }
+
+    // What everyone else has selected, by user id
+    public Dictionary<int, DuetSelection> selections { get; private set; }
 
     // The chat, oldest first, and how many lines have ever arrived (so the chat box can tell when there's a new one)
     public List<DuetChatLine> chat { get; private set; }
@@ -139,6 +153,12 @@ public class DuetSession
     // Hosting: who the host removed, or who got the code or password wrong too often, by IP or Epic ID. They can't
     // come back for the rest of the session.
     readonly HashSet<string> m_banned = new HashSet<string>();
+
+    // Hosting: a secret handed to each person who joins, so someone who lags out or closes Moonscraper can come back
+    // even while the session is locked. After a crash the host has forgotten them, so anyone coming back to the room
+    // after it counts too.
+    readonly HashSet<string> m_rejoinTokens = new HashSet<string>();
+    bool m_restartedAfterCrash = false;
     readonly Dictionary<string, int> m_wrongAttempts = new Dictionary<string, int>();
     const int MaxWrongAttempts = 5;
 
@@ -151,6 +171,24 @@ public class DuetSession
     IDuetLink m_host;
     IDuetConnector m_connector;
     Dictionary<string, object> m_heldHostMessage;
+
+    // Joining: how to reach the host again if they vanish, whether they said goodbye, and the next try
+    public Func<IDuetConnector> reconnect;
+    bool m_endedByHost = false;
+    bool m_recovering = false;
+    double m_nextReconnect = 0;
+    const double ReconnectEverySeconds = 3;
+    public double hostLostSeconds { get { return state == State.HostLost || m_recovering ? clockSeconds - m_hostLostAt : 0; } }
+    double m_hostLostAt = 0;
+
+    // Hosting again after a crash: waiting for a returning joiner's copy of the chart, from whom, and who else is waiting
+    bool m_awaitingRecoveryChart = false;
+    IDuetLink m_recoverySource;
+    readonly List<KeyValuePair<IDuetLink, Dictionary<string, object>>> m_waitingForChart = new List<KeyValuePair<IDuetLink, Dictionary<string, object>>>();
+    public bool isAwaitingRecoveryChart { get { return m_awaitingRecoveryChart; } }
+
+    // Once the recovered chart has loaded, only those who joined before it need it sent; the rest join with it
+    List<IDuetLink> m_joinedBeforeRecovery;
     int m_nextEditId = 1;
     readonly HashSet<int> m_unacknowledgedEdits = new HashSet<int>();
     bool m_awaitingSnapshot = false;
@@ -162,12 +200,30 @@ public class DuetSession
     readonly System.Diagnostics.Stopwatch m_clock = System.Diagnostics.Stopwatch.StartNew();
     DuetPresence m_localPresence;
     string m_lastSentPresence;
+    DuetSelection m_localSelection;
+
+    // Hosting: the song being shared, and the first edit number made to it
+    int m_songNumber;
+    int m_firstSeqOfSong = 0;
+    string m_lastSentSelection;
     double m_lastPresenceTime = double.MinValue;
     Dictionary<string, string> m_knownSongInfo;  // As last sent or received; null until the song settles
     double m_lastSongInfoTime = double.MinValue;
 
     public int unacknowledgedEditCount { get { return m_unacknowledgedEdits.Count; } }
     public bool isActive { get { return state != State.Ended; } }
+
+    // A line on what the session is doing, for the Duet log
+    public string Describe()
+    {
+        int sending = 0;
+        foreach (DuetFileSender sender in m_fileSenders.Values)
+        {
+            if (!sender.isDone)
+                ++sending;
+        }
+        return role + ", " + state + ", " + users.Count + " in the session, edit " + lastSeq + (sending > 0 ? ", sending files to " + sending : string.Empty);
+    }
 
     DuetSession(IDuetSongHost song, string username, Role role)
     {
@@ -177,6 +233,7 @@ public class DuetSession
         users = new List<DuetUser>();
         log = new List<string>();
         presences = new Dictionary<int, DuetPresence>();
+        selections = new Dictionary<int, DuetSelection>();
         chat = new List<DuetChatLine>();
     }
 
@@ -196,6 +253,7 @@ public class DuetSession
     {
         DuetSession session = new DuetSession(song, username, Role.Host);
         session.m_listener = listener;
+        session.m_songNumber = song.songNumber;
         session.state = State.Connected;
         session.users.Add(new DuetUser { id = HostUserId, name = session.m_username });
         session.Log(logLine);
@@ -205,6 +263,7 @@ public class DuetSession
     public static DuetSession Join(IDuetSongHost song, string username, string address, int port, string password)
     {
         DuetSession session = Join(song, username, new DuetTcpConnector(address, port), "Connecting to " + address + ":" + port);
+        session.reconnect = () => new DuetTcpConnector(address, port);
         session.port = port;
         session.m_joinPassword = password;
         return session;
@@ -226,6 +285,26 @@ public class DuetSession
         End("You left the session");
     }
 
+    static string NewRejoinToken()
+    {
+        byte[] bytes = new byte[16];
+        using (System.Security.Cryptography.RandomNumberGenerator random = System.Security.Cryptography.RandomNumberGenerator.Create())
+            random.GetBytes(bytes);
+        return BitConverter.ToString(bytes).Replace("-", string.Empty);
+    }
+
+    // Hosting again after a crash: the first joiner to come back sends their copy of the chart, which has every edit
+    // made up to the crash, and it replaces the host's
+    public void ExpectRecovery()
+    {
+        if (role == Role.Host)
+        {
+            m_awaitingRecoveryChart = true;
+            m_restartedAfterCrash = true;
+            Log("Restarted after a crash. Waiting for someone to come back with the latest chart.");
+        }
+    }
+
     // Call every frame from the main thread
     public void Update()
     {
@@ -239,6 +318,8 @@ public class DuetSession
 
         if (state == State.Connected)
         {
+            if (role == Role.Host)
+                SendNewSongIfChanged();
             SendPresenceIfChanged();
             SendSongInfoIfChanged();
         }
@@ -308,6 +389,32 @@ public class DuetSession
         m_localPresence = presence;
         if (state == State.Connected)
             SendPresenceIfChanged();
+    }
+
+    // Call whenever the local user's selection might have changed. Sent only when it has.
+    public void SetLocalSelection(DuetSelection selection)
+    {
+        if (state != State.Connected || selection == null)
+            return;
+
+        Dictionary<string, object> message = selection.ToJson();
+        string json = DuetJson.Write(message);
+        if (json == m_lastSentSelection)
+            return;
+
+        m_localSelection = selection;
+        m_lastSentSelection = json;
+
+        if (role == Role.Host)
+        {
+            message["user"] = (double)HostUserId;
+            foreach (IDuetLink client in m_joinedClients)
+                client.Send(message);
+        }
+        else
+        {
+            m_host.Send(message);
+        }
     }
 
     void SendPresenceIfChanged()
@@ -450,6 +557,75 @@ public class DuetSession
 
     #region Host
 
+    // The details the snapshot leaves out, then the song's files, to a joiner that just got the song
+    void SendSongDetailsAndFiles(IDuetLink client)
+    {
+        // The snapshot carries most song details, but not the custom ini settings, so send them all
+        Dictionary<string, object> songInfo = new Dictionary<string, object>();
+        foreach (KeyValuePair<string, string> field in m_song.ReadSongInfo())
+            songInfo[field.Key] = field.Value;
+        client.Send(Message("songinfo", "fields", songInfo));
+
+        // Offer the song's files; the joiner asks for the ones it doesn't already have from an earlier session
+        DuetFileSender sender;
+        if (m_fileSenders.TryGetValue(client, out sender))
+        {
+            sender.Close();     // Files of a song that's no longer open
+            m_fileSenders.Remove(client);
+        }
+
+        Dictionary<string, string> offered = new Dictionary<string, string>();
+        List<object> files = new List<object>();
+        foreach (DuetFileEntry entry in DuetFiles.Describe(m_song.GetSongFilePaths(), offered))
+            files.Add(DuetFiles.ToJson(entry));
+        m_offeredFiles[client] = offered;
+        client.Send(Message("files", "files", files));
+    }
+
+    // The host opened a different song, so everyone switches to it, audio and all
+    void SendNewSongIfChanged()
+    {
+        if (m_song.songNumber == m_songNumber || m_song.isBusy)
+            return;
+
+        m_songNumber = m_song.songNumber;
+        m_knownSongInfo = null;
+
+        // Edits made before this were made to the old song. Numbering moves on so they're recognised and turned away.
+        // Not for the chart recovered after a crash: those who brought it back joined with it, and edit it already.
+        List<IDuetLink> recipients = m_joinedBeforeRecovery ?? new List<IDuetLink>(m_joinedClients);
+        if (m_joinedBeforeRecovery == null)
+        {
+            ++lastSeq;
+            m_firstSeqOfSong = lastSeq;
+            Log("Sharing the newly opened chart with everyone");
+        }
+        m_joinedBeforeRecovery = null;
+
+        DuetSongSnapshot snapshot = m_song.TakeSnapshot();
+        foreach (IDuetLink client in recipients)
+        {
+            if (client.isClosed || !m_joinedClients.Contains(client))
+                continue;
+
+            Dictionary<string, object> message = SnapshotMessage("newsong", snapshot);
+            message["seq"] = (double)lastSeq;
+            client.Send(message);
+            SendSongDetailsAndFiles(client);
+        }
+    }
+
+    // Lets everyone who was waiting for the recovered chart carry on joining, or start over if its sender left
+    void ReleaseWaitingForChart()
+    {
+        foreach (KeyValuePair<IDuetLink, Dictionary<string, object>> waiting in m_waitingForChart)
+        {
+            if (!waiting.Key.isClosed)
+                m_heldMessages[waiting.Key] = waiting.Value;
+        }
+        m_waitingForChart.Clear();
+    }
+
     void UpdateHost()
     {
         if (m_listener.error != null)
@@ -509,11 +685,18 @@ public class DuetSession
                     m_fileSenders.Remove(client);
                 }
 
+                if (client == m_recoverySource)
+                {
+                    m_recoverySource = null;
+                    ReleaseWaitingForChart();   // Somebody else will be asked instead
+                }
+
                 if (m_joinedClients.Remove(client))
                 {
                     DuetUser user = users.Find(u => u.id == client.id);
                     users.Remove(user);
                     presences.Remove(client.id);
+                    selections.Remove(client.id);
                     Log((user != null ? user.name : "Someone") + " left (" + client.closeReason + ")");
                     BroadcastUsers();
                 }
@@ -533,12 +716,14 @@ public class DuetSession
 
             // Cursors and chat keep going even while the song is busy
             string type = DuetJson.GetString(message, "type");
-            if (type == "presence" || type == "chat")
+            if (type == "presence" || type == "selection" || type == "chat")
             {
                 if (m_joinedClients.Contains(client))
                 {
                     if (type == "presence")
                         RelayPresence(client, message);
+                    else if (type == "selection")
+                        RelaySelection(client, message);
                     else
                         RelayChat(client, message);
                 }
@@ -570,12 +755,23 @@ public class DuetSession
         string type = DuetJson.GetString(message, "type");
         bool joined = m_joinedClients.Contains(client);
 
+        if (type == "chart" && !joined && client == m_recoverySource && m_awaitingRecoveryChart)
+        {
+            m_awaitingRecoveryChart = false;
+            m_recoverySource = null;
+            m_joinedBeforeRecovery = new List<IDuetLink>(m_joinedClients);
+            m_song.LoadRecoveredChart(DuetJson.GetString(message, "chart", string.Empty));
+            Log("Got the latest chart back from the session. Everything up to the crash is here.");
+            ReleaseWaitingForChart();
+            return;
+        }
+
         if (type == "hello" && !joined)
         {
             int protocol = (int)DuetJson.GetNumber(message, "protocol");
             if (protocol != ProtocolVersion)
             {
-                client.Send(Message("rejected", "reason", string.Format("Version mismatch: the host has Duet Mode version {0} and you have version {1}. You both need the same build.", ProtocolVersion, protocol)));
+                client.Send(Message("rejected", "reason", string.Format("Version mismatch: the host has Collab Mode version {0} and you have version {1}. You both need the same build.", ProtocolVersion, protocol)));
                 client.CloseAfterSending("Version mismatch");
                 return;
             }
@@ -603,7 +799,10 @@ public class DuetSession
                 return;
             }
 
-            if (isLocked)
+            object recover;
+            bool recovering = message.TryGetValue("recover", out recover) && recover is bool && (bool)recover;
+            bool returning = m_rejoinTokens.Contains(DuetJson.GetString(message, "rejoin", string.Empty)) || (m_restartedAfterCrash && recovering);
+            if (isLocked && !returning)
             {
                 client.Send(Message("rejected", "reason", "The host has locked this session, so nobody new can join right now."));
                 client.CloseAfterSending("Session locked");
@@ -619,29 +818,42 @@ public class DuetSession
                 return;
             }
 
+            // Back after a crash: the first returning joiner sends their chart before joining, and the rest wait for it
+            if (m_awaitingRecoveryChart && recovering)
+            {
+                if (m_waitingForChart.Count >= MaxWaitingConnections)
+                {
+                    client.Close("Too many people connecting at once");
+                    return;
+                }
+
+                m_waitingForChart.Add(new KeyValuePair<IDuetLink, Dictionary<string, object>>(client, message));
+                if (m_recoverySource == null)
+                {
+                    m_recoverySource = client;
+                    client.Send(Message("sendchart"));
+                }
+                return;
+            }
+
             client.id = m_nextUserId++;
             DuetUser user = new DuetUser { id = client.id, name = UniqueName(CleanName(DuetJson.GetString(message, "name", "Charter"))) };
             users.Add(user);
             m_joinedClients.Add(client);
+            string token = DuetJson.GetString(message, "rejoin", string.Empty);
+            if (!m_rejoinTokens.Contains(token))
+            {
+                token = NewRejoinToken();
+                m_rejoinTokens.Add(token);
+            }
 
             Dictionary<string, object> welcome = SnapshotMessage("welcome", m_song.TakeSnapshot());
             welcome["you"] = (double)client.id;
+            welcome["rejoin"] = token;
             welcome["users"] = UsersJson();
+            welcome["seq"] = (double)lastSeq;
             client.Send(welcome);
-
-            // The snapshot carries most song details, but not the custom ini settings, so send them all
-            Dictionary<string, object> songInfo = new Dictionary<string, object>();
-            foreach (KeyValuePair<string, string> field in m_song.ReadSongInfo())
-                songInfo[field.Key] = field.Value;
-            client.Send(Message("songinfo", "fields", songInfo));
-
-            // Offer the song's files; the joiner asks for the ones it doesn't already have from an earlier session
-            Dictionary<string, string> offered = new Dictionary<string, string>();
-            List<object> files = new List<object>();
-            foreach (DuetFileEntry entry in DuetFiles.Describe(m_song.GetSongFilePaths(), offered))
-                files.Add(DuetFiles.ToJson(entry));
-            m_offeredFiles[client] = offered;
-            client.Send(Message("files", "files", files));
+            SendSongDetailsAndFiles(client);
 
             // Show the newcomer where everyone already is
             if (m_lastSentPresence != null)
@@ -651,6 +863,18 @@ public class DuetSession
                 client.Send(hostPresence);
             }
             foreach (KeyValuePair<int, DuetPresence> pair in presences)
+            {
+                Dictionary<string, object> other = pair.Value.ToJson();
+                other["user"] = (double)pair.Key;
+                client.Send(other);
+            }
+            if (m_localSelection != null)
+            {
+                Dictionary<string, object> hostSelection = m_localSelection.ToJson();
+                hostSelection["user"] = (double)HostUserId;
+                client.Send(hostSelection);
+            }
+            foreach (KeyValuePair<int, DuetSelection> pair in selections)
             {
                 Dictionary<string, object> other = pair.Value.ToJson();
                 other["user"] = (double)pair.Key;
@@ -674,6 +898,13 @@ public class DuetSession
             case "edit":
                 {
                     double editId = DuetJson.GetNumber(message, "id");
+                    if (DuetJson.GetNumber(message, "basedOn") < m_firstSeqOfSong)
+                    {
+                        // Made to the song that was open before. The joiner's newsong is on its way.
+                        client.Send(Message("nack", "id", editId, "reason", "made to the previous song", "oldsong", true));
+                        break;
+                    }
+
                     List<SongEditChange> changes = DuetSerialization.ChangesFromJson(DuetJson.GetArray(message, "changes"));
 
                     string failure;
@@ -752,6 +983,7 @@ public class DuetSession
                 m_joinedClients.Remove(client);
                 users.RemoveAll(u => u.id == userId);
                 presences.Remove(userId);
+                selections.Remove(userId);
                 BroadcastUsers();
                 return;
             }
@@ -767,6 +999,21 @@ public class DuetSession
         string name = UserName(client.id);
         AddChat(client.id, name, text);
         BroadcastChat(client.id, name, text, client);
+    }
+
+    void RelaySelection(IDuetLink client, Dictionary<string, object> message)
+    {
+        // Passed on as it was understood, so nobody can send the others more than the limit
+        DuetSelection selection = DuetSelection.FromJson(message);
+        selections[client.id] = selection;
+
+        Dictionary<string, object> relayed = selection.ToJson();
+        relayed["user"] = (double)client.id;
+        foreach (IDuetLink other in m_joinedClients)
+        {
+            if (other != client)
+                other.Send(relayed);
+        }
     }
 
     void RelayPresence(IDuetLink client, Dictionary<string, object> message)
@@ -836,15 +1083,38 @@ public class DuetSession
 
     void UpdateClient()
     {
+        if (state == State.HostLost)
+        {
+            if (m_connector == null)
+            {
+                if (clockSeconds < m_nextReconnect)
+                    return;
+                m_connector = reconnect();
+            }
+            state = State.Connecting;
+        }
+
         if (state == State.Connecting)
         {
             IDuetLink link;
             string error;
             if (!m_connector.TryFinish(out link, out error))
+            {
+                if (m_recovering)
+                    state = State.HostLost;     // Still shown as waiting for the host
                 return;
+            }
 
             if (link == null)
             {
+                if (m_recovering)
+                {
+                    // Not back yet. Try again in a moment.
+                    m_connector = null;
+                    m_nextReconnect = clockSeconds + ReconnectEverySeconds;
+                    state = State.HostLost;
+                    return;
+                }
                 End("Couldn't connect: " + error);
                 return;
             }
@@ -857,8 +1127,12 @@ public class DuetSession
                 hello["room"] = m_joinCode;
             if (m_joinPassword != null)
                 hello["password"] = m_joinPassword;
+            if (m_recovering)
+                hello["recover"] = true;
+            if (!string.IsNullOrEmpty(rejoinToken))
+                hello["rejoin"] = rejoinToken;
             m_host.Send(hello);
-            Log("Connected, waiting for the host's chart");
+            Log(m_recovering ? "Reached the host again" : "Connected, waiting for the host's chart");
         }
 
         while (state != State.Ended)
@@ -881,6 +1155,15 @@ public class DuetSession
                 int userId = (int)DuetJson.GetNumber(message, "user", -1);
                 if (userId >= 0 && userId != localUserId && users.Exists(u => u.id == userId))
                     presences[userId] = DuetPresence.FromJson(message);
+                continue;
+            }
+            if (type == "selection")
+            {
+                // Kept even before the user list says who this is, since a selection is only sent when it changes.
+                // The user list clears out anyone who isn't there.
+                int userId = (int)DuetJson.GetNumber(message, "user", -1);
+                if (userId >= 0 && userId != localUserId && (selections.ContainsKey(userId) || selections.Count < DuetRooms.MaxMembers))
+                    selections[userId] = DuetSelection.FromJson(message);
                 continue;
             }
             if (type == "chat")
@@ -910,26 +1193,70 @@ public class DuetSession
 
         if (state != State.Ended && m_host.isClosed && m_heldHostMessage == null)
         {
-            End("Disconnected from host: " + m_host.closeReason);
+            // Gone without ending the session, most likely a crash: hold on to the chart and wait for them
+            if (!m_endedByHost && hasReceivedSong && reconnect != null)
+                LoseHost(m_host.closeReason);
+            else
+                End("Disconnected from host: " + m_host.closeReason);
         }
+    }
+
+    void LoseHost(string reason)
+    {
+        if (!m_recovering)
+        {
+            m_hostLostAt = clockSeconds;
+            Log("The host disconnected (" + reason + "). Don't leave: you'll be reconnected as soon as they're back.");
+        }
+
+        state = State.HostLost;
+        m_nextReconnect = clockSeconds + (m_recovering ? ReconnectEverySeconds : 1);
+        m_recovering = true;
+        m_heldHostMessage = null;
+        m_awaitingSnapshot = false;
+        m_unacknowledgedEdits.Clear();
+        presences.Clear();
+        selections.Clear();
+        if (songFiles != null && !songFiles.isComplete)
+            songFiles.Close();
     }
 
     void HandleClientMessage(Dictionary<string, object> message)
     {
         switch (DuetJson.GetString(message, "type"))
         {
+            case "ended":
+                m_endedByHost = true;
+                End(DuetJson.GetString(message, "reason", "The host ended the session"));
+                break;
+
+            case "sendchart":
+                // The host is back after a crash and needs the chart, which has everything up to then
+                if (m_recovering)
+                {
+                    m_host.Send(Message("chart", "chart", m_song.TakeSnapshot().chartText));
+                    Log("Sending the host the latest chart");
+                }
+                break;
+
             case "rejected":
                 End(DuetJson.GetString(message, "reason", "The host refused the connection"));
                 break;
 
             case "welcome":
-                localUserId = (int)DuetJson.GetNumber(message, "you");
-                LoadSnapshot(message, false);
-                hasReceivedSong = true;
-                ReadUsers(message);
-                state = State.Connected;
-                Log("Joined. You now have the host's chart.");
-                break;
+                {
+                    bool back = m_recovering && hasReceivedSong;
+                    localUserId = (int)DuetJson.GetNumber(message, "you");
+                    rejoinToken = DuetJson.GetString(message, "rejoin", rejoinToken);
+                    lastSeq = (int)DuetJson.GetNumber(message, "seq", lastSeq);
+                    LoadSnapshot(message, back);    // Coming back keeps the audio already here, and where you were
+                    hasReceivedSong = true;
+                    m_recovering = false;
+                    ReadUsers(message);
+                    state = State.Connected;
+                    Log(back ? "The host is back. Carry on!" : "Joined. You now have the host's chart.");
+                    break;
+                }
 
             case "users":
                 ReadUsers(message);
@@ -942,6 +1269,12 @@ public class DuetSession
                 break;
 
             case "nack":
+                object oldSong;
+                if (message.TryGetValue("oldsong", out oldSong) && oldSong is bool && (bool)oldSong)
+                {
+                    m_unacknowledgedEdits.Remove((int)DuetJson.GetNumber(message, "id"));
+                    break;  // The new song replaces it anyway
+                }
                 RequestResync("The host couldn't apply one of your edits because it clashed with another edit. Getting a fresh copy.");
                 break;
 
@@ -963,6 +1296,16 @@ public class DuetSession
                     }
                     break;
                 }
+
+            case "newsong":
+                // A whole new song, so its own audio and files come next, as when joining
+                lastSeq = (int)DuetJson.GetNumber(message, "seq", lastSeq);
+                LoadSnapshot(message, false);
+                m_awaitingSnapshot = false;
+                m_unacknowledgedEdits.Clear();
+                m_songFilesUsed = false;
+                Log("The host opened another chart. You now have it.");
+                break;
 
             case "snapshot":
                 LoadSnapshot(message, true);
@@ -1093,8 +1436,16 @@ public class DuetSession
             if (!users.Exists(u => u.id == id))
                 gone.Add(id);
         }
+        foreach (int id in selections.Keys)
+        {
+            if (!users.Exists(u => u.id == id) && !gone.Contains(id))
+                gone.Add(id);
+        }
         foreach (int id in gone)
+        {
             presences.Remove(id);
+            selections.Remove(id);
+        }
     }
 
     #endregion
@@ -1117,9 +1468,22 @@ public class DuetSession
         if (m_listener != null)
             m_listener.Stop();
 
+        // Joiners are told, so they know it ended on purpose and don't wait for the host to come back
         foreach (IDuetLink client in m_clients)
-            client.Close("The host ended the session");
+        {
+            if (m_joinedClients.Contains(client))
+            {
+                client.Send(Message("ended", "reason", "The host ended the session"));
+                client.CloseAfterSending("The host ended the session");
+            }
+            else
+            {
+                client.Close("The host ended the session");
+            }
+        }
         m_clients.Clear();
+        m_waitingForChart.Clear();
+        m_recoverySource = null;
         m_joinedClients.Clear();
         m_waitingSince.Clear();
 
@@ -1133,8 +1497,8 @@ public class DuetSession
 
         if (m_host != null)
             m_host.Close(reason);
-        else if (m_connector != null)
-            m_connector.Cancel();
+        if (m_connector != null)
+            m_connector.Cancel();   // Also while trying to get back to a host that vanished
     }
 
     void Log(string line)
