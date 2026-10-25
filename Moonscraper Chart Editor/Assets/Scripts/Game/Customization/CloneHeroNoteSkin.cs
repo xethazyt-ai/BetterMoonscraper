@@ -33,6 +33,17 @@ public static class CloneHeroNoteSkin
     static readonly Color32 s_defaultOpen = Hex(0xBA00FF);
     static readonly Color32 s_defaultStarPower = Hex(0x00FFFF);
 
+    const string PrefLastResult = "Customize.NoteSkinResult";
+
+    /// <summary>
+    /// What happened to the note skin the last time Moonscraper opened, to show in Settings > Customize
+    /// </summary>
+    public static string lastResult
+    {
+        get { return PlayerPrefs.GetString(PrefLastResult, string.Empty); }
+        private set { PlayerPrefs.SetString(PrefLastResult, value ?? string.Empty); PlayerPrefs.Save(); }
+    }
+
     public static string builtFolder
     {
         get { return Path.Combine(CustomizationPrefs.storageFolder, "NoteSkinBuilt"); }
@@ -46,7 +57,10 @@ public static class CloneHeroNoteSkin
     {
         string notesPath = FindFile(skinFolder, NotesFile);
         if (notesPath == null)
+        {
+            lastResult = "Note skin loaded as Moonscraper pictures (no Clone Hero " + NotesFile + " in it).";
             return null;
+        }
 
         try
         {
@@ -110,11 +124,15 @@ public static class CloneHeroNoteSkin
             }
 
             Debug.Log("Built " + written + " note pictures from the Clone Hero note skin in " + skinFolder);
+            lastResult = written > 0
+                ? "Clone Hero notes: built " + written + " note pictures when Moonscraper opened" + (profile != null ? ", colored with your color profile." : ", in Clone Hero's default colors.")
+                : "Clone Hero notes: found the folder but couldn't build any notes from it.";
             return written > 0 ? output : null;
         }
         catch (Exception e)
         {
             Debug.LogWarning("Couldn't build notes from the Clone Hero note skin. " + e);
+            lastResult = "Clone Hero notes failed to build: " + e.Message;
             return null;
         }
     }

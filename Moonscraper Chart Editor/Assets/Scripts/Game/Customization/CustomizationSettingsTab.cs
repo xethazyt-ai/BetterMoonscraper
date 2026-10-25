@@ -139,6 +139,9 @@ public class CustomizationSettingsTab : MonoBehaviour
 
         m_built = true;
         Refresh();
+
+        if (CustomizationPrefs.GetStored(CustomizationPrefs.Kind.NoteSkin) != null)
+            m_statusText.text = CloneHeroNoteSkin.lastResult;
     }
 
     // "Autosave chart" in the Editor tab, under New Song Resolution, copied from the BG swap time row above it
