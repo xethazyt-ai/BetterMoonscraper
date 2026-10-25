@@ -32,6 +32,10 @@ public static class CloneHeroNoteSkin
     const int StrikerBase = 0, StrikerBasePressed = 3, StrikerRing = 6, StrikerRingFront = 9;
     const int StrikerHead = 0, StrikerHeadRim = 3, StrikerLightHit = 0, StrikerLightHeld = 3;
     const float StrikerTintBoost = 1.3f;
+    // Clone Hero's striker art leans: drawn as if seen from the left, its top sits right of its bottom by about this
+    // many pixels per row, around this row (from the bottom). Each lane leans it by its own amount instead.
+    const float StrikerLeanPerRow = 0.36f;
+    const int StrikerLeanRow = 25;
     const int StrikerRaise = 7;             // Pixels from the head's middle (row 40 of 64 from the top) up to the picture's middle
 
     // Clone Hero's default colors, for keys the profile doesn't have
@@ -170,11 +174,14 @@ public static class CloneHeroNoteSkin
             Color32[] head = Layer(Tint(heads[StrikerHead], baseColor, 1), Tint(heads[StrikerHeadRim], headCover, StrikerTintBoost));
             Color32[] pressed = Layer(Tint(bottoms[StrikerBasePressed], baseColor, 1), ring);
 
-            written += Write(output, fret + "_fret_base", NoteWidth, NoteHeight, Place(Layer(Tint(bottoms[StrikerBase], baseColor, 1), ring)));
-            written += Write(output, fret + "_fret_release", NoteWidth, NoteHeight, Place(head));
-            written += Write(output, fret + "_fret_press", NoteWidth, NoteHeight, Place(AddLight(pressed, lights[StrikerLightHeld], light)));
-            written += Write(output, fret + "_fret_anim", NoteWidth, NoteHeight, Place(AddLight(head, lights[StrikerLightHit], light)));
-            written += Write(output, fret + "_fret_cover", NoteWidth, NoteHeight, Place(Tint(bottoms[StrikerRingFront], cover, StrikerTintBoost)));
+            // Green keeps the art's lean and orange gets the opposite, yellow stands upright and red and blue lean
+            // half way, as the highway's perspective would show them. Nothing is mirrored, so the shine stays put.
+            float lean = 1 - fret * 0.5f;
+            written += Write(output, fret + "_fret_base", NoteWidth, NoteHeight, Place(Layer(Tint(bottoms[StrikerBase], baseColor, 1), ring), lean));
+            written += Write(output, fret + "_fret_release", NoteWidth, NoteHeight, Place(head, lean));
+            written += Write(output, fret + "_fret_press", NoteWidth, NoteHeight, Place(AddLight(pressed, lights[StrikerLightHeld], light), lean));
+            written += Write(output, fret + "_fret_anim", NoteWidth, NoteHeight, Place(AddLight(head, lights[StrikerLightHit], light), lean));
+            written += Write(output, fret + "_fret_cover", NoteWidth, NoteHeight, Place(Tint(bottoms[StrikerRingFront], cover, StrikerTintBoost), lean));
         }
 
         // Clone Hero's strikers have no stem, so hide Moonscraper's
@@ -182,17 +189,37 @@ public static class CloneHeroNoteSkin
         return written;
     }
 
-    // Raised so the head's middle is the picture's middle, which Moonscraper puts on the strikeline (Clone Hero
-    // pins its strikers there too). All five face the same way, like green (Robert's call).
-    static Color32[] Place(Color32[] pixels)
+    // Leaned by `lean` (1 is the art's own lean, 0 upright, -1 the opposite) by sliding each row sideways, then raised
+    // so the head's middle is the picture's middle, which Moonscraper puts on the strikeline (Clone Hero pins its
+    // strikers there too)
+    static Color32[] Place(Color32[] pixels, float lean)
     {
         Color32[] result = new Color32[pixels.Length];
         for (int y = StrikerRaise; y < NoteHeight; ++y)     // Rows go bottom to top
         {
+            int row = y - StrikerRaise;
+            float shift = (lean - 1) * StrikerLeanPerRow * (row - StrikerLeanRow);
+            int whole = Mathf.FloorToInt(shift);
+            float part = shift - whole;
+
             for (int x = 0; x < NoteWidth; ++x)
-                result[y * NoteWidth + x] = pixels[(y - StrikerRaise) * NoteWidth + x];
+            {
+                // Blend the two source pixels this one falls between, weighted by their alpha so edges don't darken
+                Color left = PixelAt(pixels, row, x - whole - 1), right = PixelAt(pixels, row, x - whole);
+                float a = left.a * part + right.a * (1 - part);
+                if (a <= 0)
+                    continue;
+                Color c = (left * left.a * part + right * right.a * (1 - part)) / a;
+                c.a = a;
+                result[y * NoteWidth + x] = c;
+            }
         }
         return result;
+    }
+
+    static Color PixelAt(Color32[] pixels, int row, int x)
+    {
+        return x >= 0 && x < NoteWidth ? (Color)pixels[row * NoteWidth + x] : Color.clear;
     }
 
     // A glow on black, added on top of `bottom` the way Clone Hero draws its striker lights
