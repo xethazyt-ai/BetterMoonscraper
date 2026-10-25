@@ -19,7 +19,7 @@ public class CustomizationSettingsTab : MonoBehaviour
     static readonly ExtensionFilter s_imageFilter = new ExtensionFilter("Images", "png", "jpg", "jpeg", "gif");
     static readonly ExtensionFilter s_profileFilter = new ExtensionFilter("Clone Hero color profiles", "ini");
 
-    const string NoteSkinRestartNote = "Note skins change the next time Moonscraper opens.";
+    const string NoteSkinRestartNote = "Note skins change the next time Moonscraper opens. Clone Hero notes are colored with your color profile.";
 
     class Choice
     {

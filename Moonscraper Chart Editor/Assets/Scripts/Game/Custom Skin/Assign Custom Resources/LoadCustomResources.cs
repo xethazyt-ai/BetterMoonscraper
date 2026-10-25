@@ -141,7 +141,14 @@ public class LoadCustomResources : MonoBehaviour {
         // The note skin picked in Settings > Customize. Its files win over Custom Resources files with the same name.
         string noteSkinDirectory = CustomizationPrefs.GetStored(CustomizationPrefs.Kind.NoteSkin);
         if (noteSkinDirectory != null)
+        {
+            // Clone Hero's note textures are grey pieces, so put colored notes together from them first
+            string built = CloneHeroNoteSkin.BuildIfCloneHero(noteSkinDirectory);
+            if (built != null)
+                noteSkinDirectory = built;
+
             Debug.Log("Loading note skin from directory " + noteSkinDirectory);
+        }
 
         if (Directory.Exists(skinDirectory) || noteSkinDirectory != null)
         {
