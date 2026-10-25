@@ -80,6 +80,8 @@ public class CustomizationSettingsTab : MonoBehaviour
         m_dropdownTemplate = FindComponent<Dropdown>(graphicsGroup, "AA Level Dropdown");
         m_buttonTemplate = graphicsButton;
 
+        AddAutosaveRow(content ? content.Find("Editor Settings") as RectTransform : null);
+
         if (!graphicsButton || !lastButton || !graphicsGroup || !m_labelTemplate || !m_dropdownTemplate)
         {
             Debug.LogWarning("Settings menu layout has changed, so the Customize tab wasn't added");
@@ -137,6 +139,51 @@ public class CustomizationSettingsTab : MonoBehaviour
 
         m_built = true;
         Refresh();
+    }
+
+    // "Autosave chart" in the Editor tab, under New Song Resolution, copied from the BG swap time row above it
+    static void AddAutosaveRow(RectTransform editorGroup)
+    {
+        Text labelTemplate = FindComponent<Text>(editorGroup, "BG Swap Time Text");
+        Dropdown dropdownTemplate = FindComponent<Dropdown>(editorGroup, "BG Swap Dropdown");
+        RectTransform lastRow = editorGroup ? editorGroup.Find("New Song Resolution") as RectTransform : null;
+        if (!labelTemplate || !dropdownTemplate || !lastRow)
+        {
+            Debug.LogWarning("Settings menu layout has changed, so the autosave setting wasn't added");
+            return;
+        }
+
+        const float RowStep = 32;
+        float labelY = lastRow.anchoredPosition.y - RowStep;
+
+        Text label = Instantiate(labelTemplate, editorGroup);
+        label.name = "Autosave Chart Text";
+        label.text = "Autosave chart";
+        label.rectTransform.anchoredPosition = new Vector2(labelTemplate.rectTransform.anchoredPosition.x, labelY);
+
+        RectTransform templateRect = (RectTransform)dropdownTemplate.transform;
+        Dropdown dropdown = Instantiate(dropdownTemplate, editorGroup);
+        dropdown.name = "Autosave Chart Dropdown";
+        dropdown.onValueChanged = new Dropdown.DropdownEvent();
+        ((RectTransform)dropdown.transform).anchoredPosition = new Vector2(templateRect.anchoredPosition.x,
+            labelY + templateRect.anchoredPosition.y - labelTemplate.rectTransform.anchoredPosition.y);
+
+        List<string> options = new List<string>();
+        int selected = 0;
+        for (int i = 0; i < AutoSaveSystem.ChartMinuteChoices.Length; ++i)
+        {
+            int minutes = AutoSaveSystem.ChartMinuteChoices[i];
+            options.Add(minutes <= 0 ? "Off" : minutes == 1 ? "1 minute" : minutes + " minutes");
+            if (minutes == AutoSaveSystem.chartAutosaveMinutes)
+                selected = i;
+        }
+        dropdown.ClearOptions();
+        dropdown.AddOptions(options);
+        dropdown.value = selected;
+        dropdown.RefreshShownValue();
+        dropdown.onValueChanged.AddListener((index) => AutoSaveSystem.chartAutosaveMinutes = AutoSaveSystem.ChartMinuteChoices[index]);
+
+        editorGroup.sizeDelta = new Vector2(editorGroup.sizeDelta.x, editorGroup.sizeDelta.y + RowStep);
     }
 
     void AddChoiceRow(string label, CustomizationPrefs.Kind kind, Action browse)

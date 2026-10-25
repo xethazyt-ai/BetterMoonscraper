@@ -39,6 +39,34 @@ public class DuetPanel : MonoBehaviour
         get { return s_instance != null && s_instance.m_session != null && s_instance.m_session.isActive ? s_instance.m_session : null; }
     }
 
+    // Who's charting, in their Collab colors, for the charter in song.ini: everyone in the session in the order the
+    // session lists them, joined by " & ", or just this computer's Collab name and color outside a session.
+    public static string CharterCredit()
+    {
+        if (s_instance == null)
+            return null;
+
+        DuetSession session = activeSession;
+        if (session == null)
+        {
+            string name = s_instance.m_username.Trim();
+            return DuetPresence.ToRichText(s_instance.m_color, name.Length > 0 ? name : Environment.UserName);
+        }
+
+        List<string> names = new List<string>();
+        foreach (DuetUser user in session.users)
+        {
+            DuetPresence presence;
+            int color = 0;
+            if (user.id == session.localUserId)
+                color = s_instance.m_color;
+            else if (session.presences.TryGetValue(user.id, out presence))
+                color = presence.color;
+            names.Add(DuetPresence.ToRichText(color, user.name));
+        }
+        return string.Join(" & ", names.ToArray());
+    }
+
     // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
     public static bool isMouseHeldOnPanel { get; private set; }
 

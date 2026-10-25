@@ -92,6 +92,30 @@ public class DuetPresence
         }
     }
 
+    // A name in this color as rich text tags, such as for the charter in song.ini. A rainbow gets a hue per letter.
+    public static string ToRichText(int color, string text)
+    {
+        text = (text ?? string.Empty).Replace("<", string.Empty).Replace(">", string.Empty);
+        if (!IsRainbow(color))
+            return "<color=#" + Hex(GetColor(color)) + ">" + text + "</color>";
+
+        System.Text.StringBuilder rich = new System.Text.StringBuilder();
+        for (int i = 0; i < text.Length; ++i)
+        {
+            if (char.IsWhiteSpace(text[i]))
+                rich.Append(text[i]);
+            else
+                rich.Append("<color=#").Append(Hex(FromHue((float)i / text.Length))).Append(">").Append(text[i]).Append("</color>");
+        }
+        return rich.ToString();
+    }
+
+    static string Hex(Color color)
+    {
+        return string.Format("{0:X2}{1:X2}{2:X2}", Mathf.Clamp(Mathf.RoundToInt(color.r * 255), 0, 255),
+            Mathf.Clamp(Mathf.RoundToInt(color.g * 255), 0, 255), Mathf.Clamp(Mathf.RoundToInt(color.b * 255), 0, 255));
+    }
+
     public static int MakeCustomColor(Color color)
     {
         int r = Mathf.Clamp(Mathf.RoundToInt(color.r * 255), 0, 255);

@@ -71,9 +71,26 @@ public class DisplayProperties : UpdateableService
     Text hyperspeedLabel;
     Text highwayLengthLabel;
 
+    // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
+    // Moonscraper's old maximum, so the new top of the highway slider reads 200%.
+    const float MaxHyperspeed = 30;
+    const float FullHighwayLength = 6;
+    const float MaxHighwayLength = 12;
+
+    // The highway visuals (fretboard and rails) and the camera's far plane, as the scene set them, so a longer
+    // highway can stretch them to reach the new end
+    Transform m_highwayVisuals;
+    Renderer m_fretboard;
+    Vector3 m_highwayVisualsPosition;
+    Vector3 m_highwayVisualsScale;
+    Vector2 m_fretboardTiling;
+    float m_defaultFarClip = -1;
+
     protected override void Start()
     {
         editor = ChartEditor.Instance;
+        hyperspeedSlider.maxValue = MaxHyperspeed;
+        highwayLengthSlider.maxValue = MaxHighwayLength;
         hyperspeedSlider.value = Globals.gameSettings.hyperspeed;
         highwayLengthSlider.value = Globals.gameSettings.highwayLength;
 
@@ -221,7 +238,7 @@ public class DisplayProperties : UpdateableService
         if (!highwayLengthLabel)
             return;
 
-        float range = highwayLengthSlider.maxValue - highwayLengthSlider.minValue;
+        float range = FullHighwayLength - highwayLengthSlider.minValue;
         float percent = range > 0 ? (Globals.gameSettings.highwayLength - highwayLengthSlider.minValue) / range * 100 : 100;
         highwayLengthLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
         highwayLengthLabel.text = string.Format("Highway Length- {0:0}%", percent);
@@ -248,11 +265,65 @@ public class DisplayProperties : UpdateableService
         Vector3 pos = Vector3.zero;
         pos.y = value * 5 + minHighwayLength;
         maxHighwayLength.transform.localPosition = pos;
+        FitHighwayVisuals();
 
         bgFade.AdjustHeight();
         UpdateHighwayLengthText();
 
         editor.events.hyperspeedChangeEvent.Fire();
+    }
+
+    // Past Moonscraper's old maximum the fretboard and rails would stop short of the highway's end, and the camera
+    // would clip it, so stretch them from the bottom up and push the far plane back
+    void FitHighwayVisuals()
+    {
+        if (!m_highwayVisuals)
+        {
+            FretboardWrapMovement fretboard = FindObjectOfType<FretboardWrapMovement>();
+            if (!fretboard || !fretboard.transform.parent)
+                return;
+
+            m_fretboard = fretboard.GetComponent<Renderer>();
+            m_highwayVisuals = fretboard.transform.parent;
+            m_highwayVisualsPosition = m_highwayVisuals.localPosition;
+            m_highwayVisualsScale = m_highwayVisuals.localScale;
+            if (m_fretboard && m_fretboard.sharedMaterial)
+                m_fretboardTiling = m_fretboard.sharedMaterial.mainTextureScale;
+        }
+
+        // How far past the highway's end the visuals went at Moonscraper's old maximum
+        float extra = Mathf.Max(0, Globals.gameSettings.highwayLength - FullHighwayLength) * 5;
+        float stretch = (m_highwayVisualsScale.y * 16 + extra) / (m_highwayVisualsScale.y * 16);     // The fretboard is 16 units tall before its parent's scale
+
+        Vector3 scale = m_highwayVisualsScale;
+        scale.y *= stretch;
+        m_highwayVisuals.localScale = scale;
+
+        // Keep the bottom where it was: children are centred near 0.35 and 8 units tall each way
+        Vector3 position = m_highwayVisualsPosition;
+        position.y += (8 - 0.35f) * (scale.y - m_highwayVisualsScale.y);
+        m_highwayVisuals.localPosition = position;
+
+        // Repeat the texture more instead of stretching it, which also keeps its scrolling in step
+        if (m_fretboard && m_fretboard.sharedMaterial)
+            m_fretboard.sharedMaterial.mainTextureScale = new Vector2(m_fretboardTiling.x, m_fretboardTiling.y * stretch);
+
+        Camera camera = Camera.main;
+        if (camera)
+        {
+            if (m_defaultFarClip < 0)
+                m_defaultFarClip = camera.farClipPlane;
+
+            float endDepth = Vector3.Dot(maxHighwayLength.position - camera.transform.position, camera.transform.forward);
+            camera.farClipPlane = Mathf.Max(m_defaultFarClip, endDepth + 10);
+        }
+    }
+
+    void OnApplicationQuit()
+    {
+        // The fretboard material is a shared asset, so put its tiling back (it would otherwise stick in the Unity editor)
+        if (m_fretboard && m_fretboard.sharedMaterial && m_highwayVisuals)
+            m_fretboard.sharedMaterial.mainTextureScale = m_fretboardTiling;
     }
 
     public void ToggleClap(bool value)

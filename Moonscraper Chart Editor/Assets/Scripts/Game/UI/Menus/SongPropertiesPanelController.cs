@@ -322,11 +322,19 @@ public class SongPropertiesPanelController : TabMenu
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
     }
 
-    // Fills the empty album, year and genre from the name and artist typed in
+    // Looks the typed name and artist up on iTunes and fills in the name and artist as iTunes spells them, the album,
+    // year and genre. Also credits whoever is charting, in their Collab colors.
     void LookUpSongInfo()
     {
         if (lookingUp || !formatBar)
             return;
+
+        string credit = DuetPanel.CharterCredit();
+        if (!string.IsNullOrEmpty(credit))
+        {
+            SetRich(charter, credit);
+            setSongProperties();    // The words may be the same with new colors, which typing alone wouldn't send
+        }
 
         lookingUp = true;
         formatBar.SetStatus("Looking up \"" + RichTextIni.Strip(songName.text) + "\" on iTunes...");
@@ -335,28 +343,29 @@ public class SongPropertiesPanelController : TabMenu
             lookingUp = false;
             if (result == null)
             {
-                formatBar.SetStatus(error);
+                formatBar.SetStatus(error + (credit != null ? " The charter is filled in." : string.Empty));
                 return;
             }
 
-            List<string> filled = new List<string>();
-            FillIfEmpty(album, result.album, "album", filled);
-            FillIfEmpty(year, result.year, "year", filled);
-            FillIfEmpty(genre, result.genre, "genre", filled);
+            FillRich(songName, result.title);
+            FillRich(artist, result.artist);
+            FillRich(album, result.album);
+            FillRich(genre, result.genre);
+            if (!string.IsNullOrEmpty(result.year))
+                year.text = result.year;
+            setSongProperties();
 
-            string found = "Found \"" + result.title + "\" by " + result.artist + " on iTunes: album " + (result.album ?? "unknown")
-                + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + ".";
-            formatBar.SetStatus(found + (filled.Count > 0 ? " Filled in the " + string.Join(", ", filled.ToArray()) + "." : " Clear a field to have it filled in."));
+            formatBar.SetStatus("Filled in from iTunes: \"" + result.title + "\" by " + result.artist + ", album " + (result.album ?? "unknown")
+                + ", year " + (result.year ?? "unknown") + ", genre " + (result.genre ?? "unknown") + "."
+                + (credit != null ? " Charter: " + RichTextIni.Strip(credit) + "." : string.Empty));
         }));
     }
 
-    static void FillIfEmpty(InputField field, string value, string what, List<string> filled)
+    // Replaces what's there, formatting and all, with iTunes's spelling. Left alone if iTunes doesn't know it.
+    void FillRich(InputField field, string value)
     {
-        if (string.IsNullOrEmpty(value) || !string.IsNullOrEmpty(field.text.Trim()))
-            return;
-
-        field.text = value;     // Goes through setSongProperties like typing it, so Collab Mode shares it
-        filled.Add(what);
+        if (!string.IsNullOrEmpty(value))
+            SetRich(field, value);
     }
 
     public void UpdateIni()
