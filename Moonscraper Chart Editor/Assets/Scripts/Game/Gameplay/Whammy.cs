@@ -52,7 +52,7 @@ public class Whammy : MonoBehaviour {
     void UpdateWhammy(float desiredWhammy)
     {
         pointsController.UpdateLineRendererPoints();
-        ShiftAnimationKeys(lineCurve, keyShiftSpeed * Time.deltaTime * Globals.gameSettings.hyperspeed / transform.localScale.y);
+        ShiftAnimationKeys(lineCurve, keyShiftSpeed * Time.deltaTime * ChartEditor.worldUnitsPerSecond / transform.localScale.y);
 
         float whammyVal = (GetLerpedWhammyVal(desiredWhammy) + 1) * widthMultiplier;
         lineCurve.AddKey(new Keyframe(0, whammyVal + 1));

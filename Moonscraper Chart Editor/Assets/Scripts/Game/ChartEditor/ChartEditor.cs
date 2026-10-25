@@ -484,15 +484,24 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         });
     }
 
+    /// <summary>
+    /// How far apart notes a second apart are drawn. At 1x and faster, notes are spaced by song time alone, like
+    /// Clone Hero: speeding the song up makes the notes come faster, not closer together. Slower than 1x spreads them
+    /// out like Moonscraper always did, which makes dense patterns easier to chart.
+    /// </summary>
+    public static float worldUnitsPerSecond
+    {
+        get { return Globals.gameSettings.hyperspeed / Mathf.Clamp(Globals.gameSettings.gameSpeed, 0.01f, 1); }
+    }
+
     public static float WorldYPositionToTime(float worldYPosition)
     {
-        // Notes are spaced by song time alone, like Clone Hero: speeding the song up makes the notes come faster, not closer together
-        return worldYPosition / Globals.gameSettings.hyperspeed;
+        return worldYPosition / worldUnitsPerSecond;
     }
 
     public static float TimeToWorldYPosition(float time)
     {
-        return time * Globals.gameSettings.hyperspeed;
+        return time * worldUnitsPerSecond;
     }
 
     public static float WorldYPosition(SongObject songObject)
