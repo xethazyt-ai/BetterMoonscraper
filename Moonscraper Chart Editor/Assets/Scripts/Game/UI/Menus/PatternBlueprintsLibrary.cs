@@ -7,14 +7,14 @@ using MoonscraperChartEditor.Song;
 
 /// <summary>
 /// The Pattern Library: every saved pattern in a scrolling list, each drawn as a small chart so you can see it before
-/// pasting. Time runs left to right with beat lines (brighter on each beat, brightest on each bar of four) and one
-/// row per lane, green at the top. The picked pattern is drawn as it would paste, with Fit to step and Speed applied.
+/// pasting. It reads like the highway: one column per lane (green on the left) and time going up, with beat lines
+/// (brighter on each beat, brightest on each bar of four). The picked pattern is drawn as it would paste, with Fit to step and Speed applied.
 /// Opened with the Library button in Pattern Blueprints.
 /// </summary>
 public partial class PatternBlueprints
 {
     const int LibraryWindowId = 0x4251;
-    const float PreviewHeight = 74;
+    const float PreviewHeight = 150;
 
     readonly DuetWindow m_libraryWindow = new DuetWindow(LibraryWindowId, "PatternLibrary", new Rect(0, 0, 560, 460), new Vector2(380, 240), true, false);
     bool m_libraryVisible = false;
@@ -154,23 +154,26 @@ public partial class PatternBlueprints
             end = Math.Max(end, note.beat + note.lengthBeats);
         end = Math.Max(end, 0.25);
 
-        const float Pad = 10;
-        Rect inner = new Rect(area.x + Pad, area.y + 6, area.width - Pad * 2, area.height - 12);
-        float rowHeight = inner.height / lanes;
-        float dot = Mathf.Clamp(rowHeight * 1.1f, 6, 16);
-        Func<double, float> x = beat => inner.x + (float)(beat / end) * inner.width;
+        // Drawn like the highway: one column per lane (green on the left), time going up
+        const float Pad = 8;
+        float laneWidth = Mathf.Clamp((area.width - Pad * 2) / lanes, 14, 26);
+        float columnsWidth = laneWidth * lanes;
+        Rect inner = new Rect(area.x + (area.width - columnsWidth) / 2, area.y + Pad, columnsWidth, area.height - Pad * 2);
+        float dot = Mathf.Clamp(laneWidth * 0.8f, 6, 16);
+        Func<double, float> y = beat => inner.yMax - (float)(beat / end) * inner.height;
 
         Color old = GUI.color;
 
-        // Background and lane rows
+        // Background and lane columns
         Fill(area, picked ? new Color(0.05f, 0.12f, 0.2f, 0.95f) : new Color(0.03f, 0.05f, 0.09f, 0.9f));
+        Fill(new Rect(inner.x - 2, inner.y - 2, inner.width + 4, inner.height + 4), new Color(0, 0, 0, 0.35f));
         for (int lane = 0; lane < lanes; ++lane)
-            Fill(new Rect(inner.x, inner.y + rowHeight * (lane + 0.5f), inner.width, 1), new Color(1, 1, 1, 0.08f));
+            Fill(new Rect(inner.x + laneWidth * (lane + 0.5f), inner.y, 1, inner.height), new Color(1, 1, 1, 0.08f));
 
         // Beat lines: one per step, brighter on beats, brightest every four beats
         double gap = 4.0 / Math.Max(1, fitStep) / speed;
         int lines = (int)Math.Min(4000, Math.Floor(end / gap + 1e-6));
-        float minSpacing = inner.width / Math.Max(1, lines);
+        float minSpacing = inner.height / Math.Max(1, lines);
         for (int i = 0; i <= lines; ++i)
         {
             double beat = i * gap;
@@ -179,12 +182,12 @@ public partial class PatternBlueprints
             if (!onBeat && minSpacing < 3)
                 continue;   // Too dense to see; beats are still drawn
             float alpha = onBar ? 0.55f : onBeat ? 0.32f : 0.12f;
-            Fill(new Rect(x(beat), inner.y, onBar ? 2 : 1, inner.height), new Color(1, 1, 1, alpha));
+            Fill(new Rect(inner.x, y(beat) - (onBar ? 1 : 0), inner.width, onBar ? 2 : 1), new Color(1, 1, 1, alpha));
         }
         for (int beat = 0; beat <= (int)end; ++beat)
         {
             if (lines >= 4000)
-                Fill(new Rect(x(beat), inner.y, beat % 4 == 0 ? 2 : 1, inner.height), new Color(1, 1, 1, beat % 4 == 0 ? 0.55f : 0.32f));
+                Fill(new Rect(inner.x, y(beat), inner.width, beat % 4 == 0 ? 2 : 1), new Color(1, 1, 1, beat % 4 == 0 ? 0.55f : 0.32f));
         }
 
         // Sustains first, so notes sit on top of them
@@ -192,32 +195,33 @@ public partial class PatternBlueprints
         {
             if (note.lengthBeats <= 0)
                 continue;
-            int row;
+            int column;
             Color color;
             bool fullWidth;
-            LaneOf(gameMode, note.rawNote, lanes, out row, out color, out fullWidth);
-            float y = fullWidth ? inner.y + inner.height / 2 : inner.y + rowHeight * (row + 0.5f);
+            LaneOf(gameMode, note.rawNote, lanes, out column, out color, out fullWidth);
+            float x = fullWidth ? inner.x + inner.width / 2 : inner.x + laneWidth * (column + 0.5f);
             color.a = 0.75f;
-            Fill(new Rect(x(note.beat), y - dot * 0.18f, x(note.beat + note.lengthBeats) - x(note.beat), dot * 0.36f), color);
+            float top = y(note.beat + note.lengthBeats);
+            Fill(new Rect(x - dot * 0.18f, top, dot * 0.36f, y(note.beat) - top), color);
         }
 
         foreach (Placed note in placed)
         {
-            int row;
+            int column;
             Color color;
             bool fullWidth;
-            LaneOf(gameMode, note.rawNote, lanes, out row, out color, out fullWidth);
-            float nx = x(note.beat);
+            LaneOf(gameMode, note.rawNote, lanes, out column, out color, out fullWidth);
+            float ny = y(note.beat);
 
             if (fullWidth)
             {
                 // Open notes and kicks are bars across every lane, as on the highway
-                Fill(new Rect(nx - 2, inner.y, 4, inner.height), color);
+                Fill(new Rect(inner.x, ny - 2, inner.width, 4), color);
                 continue;
             }
 
-            float y = inner.y + rowHeight * (row + 0.5f);
-            Rect circle = new Rect(nx - dot / 2, y - dot / 2, dot, dot);
+            float x = inner.x + laneWidth * (column + 0.5f);
+            Rect circle = new Rect(x - dot / 2, ny - dot / 2, dot, dot);
             bool tap = (note.note.flags & (int)Note.Flags.Tap) != 0;
             bool cymbal = (note.note.flags & (int)Note.Flags.ProDrums_Cymbal) != 0;
             GUI.color = color;
@@ -225,14 +229,14 @@ public partial class PatternBlueprints
             if (tap)
             {
                 GUI.color = new Color(1, 1, 1, 0.9f);
-                GUI.DrawTexture(new Rect(nx - dot * 0.2f, y - dot * 0.2f, dot * 0.4f, dot * 0.4f), s_dot);
+                GUI.DrawTexture(new Rect(x - dot * 0.2f, ny - dot * 0.2f, dot * 0.4f, dot * 0.4f), s_dot);
             }
         }
 
         GUI.color = old;
     }
 
-    // Which row a note sits on (green at the top, as the lanes run left to right on the highway) and its color
+    // Which column a note sits in (green on the left, as on the highway) and its color
     static void LaneOf(Chart.GameMode gameMode, int rawNote, int lanes, out int row, out Color color, out bool fullWidth)
     {
         fullWidth = false;
