@@ -72,6 +72,21 @@ public class CustomizationManager : MonoBehaviour
 
     Color? m_menuBarThemeColor;     // The menu bar's own color while it's matched to a Windows 10 title bar
     Color m_menuBarWindowsColor;
+    UnityEngine.UI.Graphic m_menuBarGraphic;
+
+    // Windows 10's dark title bar goes grey while another window (such as one on a second monitor) has focus, so the
+    // menu bar follows it straight away
+    void OnApplicationFocus(bool focused)
+    {
+        if (!m_menuBarThemeColor.HasValue || !m_menuBarGraphic || m_menuBarGraphic.color != m_menuBarWindowsColor)
+            return;
+        Color? windows = DarkTitleBar.WindowsTitleBarColor(UITheme.current == UITheme.Theme.Dark, focused);
+        if (windows.HasValue)
+        {
+            m_menuBarWindowsColor = windows.Value;
+            m_menuBarGraphic.color = windows.Value;
+        }
+    }
 
     /// <summary>
     /// Colors the Windows title bar like the menu bar under it (Light and Dark themes), so the two match
@@ -106,9 +121,10 @@ public class CustomizationManager : MonoBehaviour
             if (!DarkTitleBar.SetColor(bar))
             {
                 // Windows 10 can't color the title bar, so the menu bar takes the title bar's black or white instead
-                Color? windows = DarkTitleBar.WindowsTitleBarColor(UITheme.current == UITheme.Theme.Dark);
+                Color? windows = DarkTitleBar.WindowsTitleBarColor(UITheme.current == UITheme.Theme.Dark, Application.isFocused);
                 if (windows.HasValue)
                 {
+                    m_menuBarGraphic = barGraphic;
                     m_menuBarThemeColor = barGraphic.color;
                     m_menuBarWindowsColor = windows.Value;
                     barGraphic.color = windows.Value;

@@ -74,9 +74,10 @@ public static class DarkTitleBar
     }
 
     /// <summary>
-    /// The color Windows draws a title bar it can't recolor (Windows 10), or null when it uses the accent color
+    /// The color Windows draws a title bar it can't recolor (Windows 10), or null when it uses the accent color.
+    /// Dark title bars go grey while another window has focus.
     /// </summary>
-    public static UnityEngine.Color? WindowsTitleBarColor(bool dark)
+    public static UnityEngine.Color? WindowsTitleBarColor(bool dark, bool focused)
     {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         try
@@ -92,7 +93,9 @@ public static class DarkTitleBar
         {
         }
 #endif
-        return dark ? UnityEngine.Color.black : UnityEngine.Color.white;
+        if (!dark)
+            return UnityEngine.Color.white;
+        return focused ? UnityEngine.Color.black : new UnityEngine.Color32(43, 43, 43, 255);
     }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
