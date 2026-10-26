@@ -79,6 +79,8 @@ public partial class PatternBlueprints
             bool picked = i == m_selected;
             int fitStep = picked ? m_fitStep : OriginalStep(blueprint);
             float speed = picked ? m_speed : 1;
+            bool mirror = picked && m_mirror;
+            int laneShift = picked ? m_laneShift : 0;
 
             GUILayout.BeginVertical("box");
             GUILayout.BeginHorizontal();
@@ -92,7 +94,7 @@ public partial class PatternBlueprints
 
             Rect area = GUILayoutUtility.GetRect(10, PreviewHeight, GUILayout.ExpandWidth(true));
             if (UnityEngine.Event.current.type == EventType.Repaint)
-                DrawPreview(area, blueprint, fitStep, speed, picked);
+                DrawPreview(area, blueprint, fitStep, speed, mirror, laneShift, picked);
             else if (UnityEngine.Event.current.type == EventType.MouseDown && area.Contains(UnityEngine.Event.current.mousePosition))
             {
                 m_libraryPick = i;
@@ -135,13 +137,13 @@ public partial class PatternBlueprints
         ApplyPending();
     }
 
-    void DrawPreview(Rect area, Blueprint blueprint, int fitStep, float speed, bool picked)
+    void DrawPreview(Rect area, Blueprint blueprint, int fitStep, float speed, bool mirror, int laneShift, bool picked)
     {
         EnsureTextures();
 
         int count;
         double span;
-        List<Placed> placed = Arrange(blueprint, fitStep, speed, out count, out span);
+        List<Placed> placed = Arrange(blueprint, fitStep, speed, mirror, laneShift, out count, out span);
 
         Chart.GameMode gameMode = ParseGameMode(blueprint.gameMode);
         int lanes = gameMode == Chart.GameMode.GHLGuitar ? 6 : 5;
@@ -193,7 +195,7 @@ public partial class PatternBlueprints
             int row;
             Color color;
             bool fullWidth;
-            LaneOf(gameMode, note.note.rawNote, lanes, out row, out color, out fullWidth);
+            LaneOf(gameMode, note.rawNote, lanes, out row, out color, out fullWidth);
             float y = fullWidth ? inner.y + inner.height / 2 : inner.y + rowHeight * (row + 0.5f);
             color.a = 0.75f;
             Fill(new Rect(x(note.beat), y - dot * 0.18f, x(note.beat + note.lengthBeats) - x(note.beat), dot * 0.36f), color);
@@ -204,7 +206,7 @@ public partial class PatternBlueprints
             int row;
             Color color;
             bool fullWidth;
-            LaneOf(gameMode, note.note.rawNote, lanes, out row, out color, out fullWidth);
+            LaneOf(gameMode, note.rawNote, lanes, out row, out color, out fullWidth);
             float nx = x(note.beat);
 
             if (fullWidth)

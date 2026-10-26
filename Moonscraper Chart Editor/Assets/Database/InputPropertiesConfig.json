@@ -1158,7 +1158,7 @@
         {
             "mSChartEditorInputAction": "PatternBlueprintPaste",
             "properties": {
-                "displayName": "Paste Pattern Blueprint At Strikeline",
+                "displayName": "Paste Pattern Blueprint (At Mouse Or Strikeline)",
                 "rebindable": true,
                 "hiddenInLists": false,
                 "anyDirectionAxis": false,

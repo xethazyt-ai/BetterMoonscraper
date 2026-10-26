@@ -57,6 +57,8 @@ public partial class PatternBlueprints : MonoBehaviour
     int m_selected = -1;
     int m_fitStep = 16;             // The step the pattern is re-spaced at
     float m_speed = 1;
+    bool m_mirror = false;          // Green and orange swap sides, and so on
+    int m_laneShift = 0;            // Lanes to move the pattern by: + towards orange, - towards green
     string m_targetStep = "16";
     string m_status = string.Empty;
     Vector2 m_listScroll;
@@ -129,6 +131,16 @@ public partial class PatternBlueprints : MonoBehaviour
             }
             else
                 m_editor.services.notificationBar.PushNotification("PICK A PATTERN IN PATTERN BLUEPRINTS (F9) FIRST", 3, true);
+        }
+
+        if (m_packRequested != 0)
+        {
+            bool import = m_packRequested == 1;
+            m_packRequested = 0;
+            if (import)
+                ImportPack();
+            else
+                ExportPack();
         }
 
         if (m_pasteRequested)
@@ -249,6 +261,8 @@ public partial class PatternBlueprints : MonoBehaviour
             GUILayout.Label("3. Pick the pattern, point the mouse where it should start on the highway and press Ctrl+B (works with this window closed too). Or press Paste pattern to put it at the strikeline. Ctrl+Z undoes it.");
             GUILayout.Label("Fit to step: type a step (8, 12, 16, 24, 32...) and press Fit. The same notes are re-spaced at that step, so 32nds fitted to 16 take twice the beat lines.");
             GUILayout.Label("Library: every saved pattern drawn as a small chart, to scroll through, search, pick and paste.");
+            GUILayout.Label("Mirror swaps the pattern left to right (green and orange trade places). The arrows move it a lane towards green or orange, as far as it fits.");
+            GUILayout.Label("Packs: Export pack saves every pattern to a file to share; Import pack adds the patterns from one.");
             GUILayout.Label("Speed: above 1x the pattern repeats faster in the same beat lines (2x of four 16ths is eight 32nds), always finishing the last repeat. Below 1x it spreads out over more beat lines (0.5x takes twice as many).");
         }
 
@@ -284,6 +298,16 @@ public partial class PatternBlueprints : MonoBehaviour
         if (m_selected >= 0 && m_selected < m_file.blueprints.Count)
             DrawSelected(m_file.blueprints[m_selected]);
 
+        GUILayout.Space(6);
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("Import pack..."))
+            m_pendingImport = true;
+        GUI.enabled = m_file.blueprints.Count > 0;
+        if (GUILayout.Button("Export pack..."))
+            m_pendingExport = true;
+        GUI.enabled = true;
+        GUILayout.EndHorizontal();
+
         if (m_status.Length > 0)
             GUILayout.Label(m_status);
 
@@ -292,6 +316,13 @@ public partial class PatternBlueprints : MonoBehaviour
 
     void ApplyPending()
     {
+        if (m_pendingImport || m_pendingExport)
+        {
+            bool import = m_pendingImport;
+            m_pendingImport = m_pendingExport = false;
+            m_packRequested = import ? 1 : 2;     // The file window blocks, so it opens from Update, away from drawing
+        }
+
         if (m_pendingSave)
         {
             m_pendingSave = false;
@@ -335,6 +366,22 @@ public partial class PatternBlueprints : MonoBehaviour
             ResetShape(blueprint);
         GUILayout.EndHorizontal();
 
+        int minShift, maxShift;
+        ShiftRange(blueprint, m_mirror, out minShift, out maxShift);
+        m_laneShift = Mathf.Clamp(m_laneShift, minShift, maxShift);
+        GUILayout.BeginHorizontal();
+        m_mirror = GUILayout.Toggle(m_mirror, "Mirror", "button", GUILayout.Width(70));
+        GUILayout.Label("Lanes", GUILayout.Width(44));
+        GUI.enabled = m_laneShift > minShift;
+        if (GUILayout.Button("<", GUILayout.Width(28)))
+            --m_laneShift;
+        GUI.enabled = m_laneShift < maxShift;
+        if (GUILayout.Button(">", GUILayout.Width(28)))
+            ++m_laneShift;
+        GUI.enabled = true;
+        GUILayout.Label(m_laneShift == 0 ? "as saved" : (m_laneShift > 0 ? "+" : string.Empty) + m_laneShift);
+        GUILayout.EndHorizontal();
+
         GUILayout.BeginHorizontal();
         GUILayout.Label("Speed " + m_speed.ToString("0.##") + "x", GUILayout.Width(80));
         float speed = GUILayout.HorizontalSlider(m_speed, MinSpeed, MaxSpeed);
@@ -361,13 +408,15 @@ public partial class PatternBlueprints : MonoBehaviour
         m_fitStep = OriginalStep(blueprint);
         m_targetStep = m_fitStep.ToString();
         m_speed = 1;
+        m_mirror = false;
+        m_laneShift = 0;
     }
 
     static string Describe(Blueprint blueprint, int fitStep, float speed)
     {
         int count;
         double span;
-        Arrange(blueprint, fitStep, speed, out count, out span);
+        Arrange(blueprint, fitStep, speed, false, 0, out count, out span);
 
         float step = fitStep * speed;
         string stepText = Mathf.Abs(step - Mathf.Round(step)) < 0.01f ? Mathf.RoundToInt(step).ToString() : step.ToString("0.##");
@@ -379,12 +428,13 @@ public partial class PatternBlueprints : MonoBehaviour
         public double beat;
         public double lengthBeats;
         public BlueprintNote note;
+        public int rawNote;         // After Mirror and the lane shift
     }
 
     // Where each note goes. The pattern is cut into slots one step apart (a chord shares a slot, a rest is an empty
     // one), re-spaced at fitStep and then sped up. Faster than 1x, it plays again until it fills the beat lines it
     // took at 1x, always finishing the last repeat (1.5x plays it twice); slower, it plays once over more of them.
-    static List<Placed> Arrange(Blueprint blueprint, int fitStep, float speed, out int noteCount, out double span)
+    static List<Placed> Arrange(Blueprint blueprint, int fitStep, float speed, bool mirror, int laneShift, out int noteCount, out double span)
     {
         double originalGap = 4.0 / OriginalStep(blueprint);
         double gap = 4.0 / Math.Max(1, fitStep) / speed;
@@ -409,6 +459,7 @@ public partial class PatternBlueprints : MonoBehaviour
                     beat = playedSlot * gap + (note.beat - slot * originalGap) * factor,    // Keeps any off-grid nudge
                     lengthBeats = note.lengthBeats * factor,
                     note = note,
+                    rawNote = MapLane(blueprint, note.rawNote, mirror, laneShift),
                 });
             }
         }
@@ -487,11 +538,11 @@ public partial class PatternBlueprints : MonoBehaviour
         uint last = 0;
         int count;
         double span;
-        foreach (Placed placed in Arrange(blueprint, m_fitStep, m_speed, out count, out span))
+        foreach (Placed placed in Arrange(blueprint, m_fitStep, m_speed, m_mirror, m_laneShift, out count, out span))
         {
             uint tick = (uint)Math.Round(placed.beat * resolution);
             uint length = (uint)Math.Round(placed.lengthBeats * resolution);
-            notes.Add(new Note(tick, placed.note.rawNote, length, (Note.Flags)placed.note.flags));
+            notes.Add(new Note(tick, placed.rawNote, length, (Note.Flags)placed.note.flags));
             last = Math.Max(last, tick);
         }
         notes.Sort((a, b) => a.tick.CompareTo(b.tick));
