@@ -72,6 +72,8 @@ public class DisplayProperties : UpdateableService
     Text highwayLengthLabel;
     Text gemSizeLabel;
     const int GemSizeStep = 5;  // percent
+    Text highwayTransparencyLabel;
+    const int HighwayTransparencyStep = 5;  // percent
 
     // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
     // Moonscraper's old maximum, so the new top of the highway slider reads 200%.
@@ -112,7 +114,9 @@ public class DisplayProperties : UpdateableService
         UpdateHyperspeedText();
         UpdateHighwayLengthText();
         float gemSizeRow = AddGemSizeSlider();
-        AddSpeedToggles(gemSizeRow);
+        float transparencyRow = AddHighwayTransparencySlider(gemSizeRow);
+        AddSpeedToggles(gemSizeRow + transparencyRow);
+        HighwayTransparency.Apply();
 
         UpdateGameSpeedText();
 
@@ -367,16 +371,16 @@ public class DisplayProperties : UpdateableService
         editor.events.hyperspeedChangeEvent.Fire();
     }
 
-    // "Pitched Speedups" and "Non-Spaced Notes for Slowdown", under the Gem Size slider (gemSizeRow below the
-    // highway length slider), copied from the Clap row
-    void AddSpeedToggles(float gemSizeRow)
+    // "Pitched Speedups" and "Non-Spaced Notes for Slowdown", under the Gem Size and Highway Transparency sliders
+    // (slidersHeight below the highway length slider), copied from the Clap row
+    void AddSpeedToggles(float slidersHeight)
     {
         RectTransform content = clapToggle.transform.parent as RectTransform;
         RectTransform lastRow = highwayLengthSlider.transform as RectTransform;
         if (!content || !lastRow)
             return;
 
-        float y = lastRow.anchoredPosition.y - gemSizeRow - 27;
+        float y = lastRow.anchoredPosition.y - slidersHeight - 27;
         MakeSpeedToggle("Pitched Speedups:", y, SpeedOptions.pitchedSpeedups, (on) => SpeedOptions.pitchedSpeedups = on);
         MakeSpeedToggle("Non-Spaced Notes for Slowdown:", y - 30, SpeedOptions.nonSpacedSlowdown, (on) =>
         {
@@ -420,6 +424,50 @@ public class DisplayProperties : UpdateableService
         UpdateGemSizeText();
         content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep);
         return rowStep;
+    }
+
+    // "Highway Transparency", under Gem Size (gemSizeRow further down than Highway Length), made the same way.
+    // Returns how far down it went.
+    float AddHighwayTransparencySlider(float gemSizeRow)
+    {
+        RectTransform content = clapToggle.transform.parent as RectTransform;
+        if (!content || !highwayLengthLabel || !gameSpeed || gemSizeRow <= 0)
+            return 0;
+
+        float rowStep = gemSizeRow;
+        float drop = gemSizeRow + rowStep;
+
+        highwayTransparencyLabel = Instantiate(highwayLengthLabel, highwayLengthLabel.transform.parent);
+        highwayTransparencyLabel.name = "Highway Transparency Text";
+        MoveDown(highwayTransparencyLabel.transform, content, drop);
+
+        Slider slider = Instantiate(highwayLengthSlider, highwayLengthSlider.transform.parent);
+        slider.name = "Highway Transparency Slider";
+        slider.onValueChanged = new Slider.SliderEvent();
+        slider.wholeNumbers = true;
+        slider.minValue = HighwayTransparency.MinPercent / HighwayTransparencyStep;
+        slider.maxValue = HighwayTransparency.MaxPercent / HighwayTransparencyStep;
+        slider.value = HighwayTransparency.percent / HighwayTransparencyStep;
+        slider.interactable = true;
+        slider.onValueChanged.AddListener((value) =>
+        {
+            HighwayTransparency.percent = Mathf.RoundToInt(value) * HighwayTransparencyStep;
+            UpdateHighwayTransparencyText();
+        });
+        MoveDown(slider.transform, content, drop);
+
+        UpdateHighwayTransparencyText();
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep);
+        return rowStep;
+    }
+
+    void UpdateHighwayTransparencyText()
+    {
+        if (!highwayTransparencyLabel)
+            return;
+
+        highwayTransparencyLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        highwayTransparencyLabel.text = string.Format("Hwy Transparency- {0}%", HighwayTransparency.percent);
     }
 
     static void MoveDown(Transform item, RectTransform content, float distance)
@@ -513,6 +561,7 @@ public class DisplayProperties : UpdateableService
         // The fretboard material is a shared asset, so put its tiling back (it would otherwise stick in the Unity editor)
         if (m_fretboard && m_fretboard.sharedMaterial && m_highwayVisuals)
             m_fretboard.sharedMaterial.mainTextureScale = m_fretboardTiling;
+        HighwayTransparency.Restore();
     }
 
     public void ToggleClap(bool value)
