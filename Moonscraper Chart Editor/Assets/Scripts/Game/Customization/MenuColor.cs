@@ -164,6 +164,8 @@ public static class MenuColor
         "panel3", "panel4", "panel_bg", "UISprite", "Background", "InputFieldBackground", "white_1", "Knob",
         "rect_knob_test", "1491902985_Checkbox Empty", "dropdown_arrow", "arrow", "handle_end", "UIMask", "dropshadow",
         "logo_0", "fade", "fade2", "fade3", "border", "WhiteBox", "settings_panel_resz",
+        // The menu bar's blue icons
+        "undo", "redo", "undo_grey", "redo_grey", "play", "play_highlight", "play_pressed", "pause", "pause_pressed",
     };
 
     static bool IsIcon(Graphic graphic)
@@ -266,7 +268,7 @@ public static class MenuColor
         Color shifted = Color.HSVToRGB(Mathf.Repeat(hue + hueShift, 1), Mathf.Clamp01(saturation * saturationScale), Mathf.Clamp01(value * valueScale));
         if (darkNeutral)
         {
-            float darkPart = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(0.22f, 0.32f, value));
+            float darkPart = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(0.10f, 0.16f, value));
             float grey = Mathf.Max(value * 0.9f, 0.06f);
             shifted = Color.Lerp(shifted, new Color(grey, grey, grey), darkPart);
         }

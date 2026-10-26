@@ -91,10 +91,21 @@ public class CustomizationManager : MonoBehaviour
 
     IEnumerator MatchTitleBarNextFrame()
     {
-        yield return null;  // Let the recolored menu bar draw first
+        yield return null;  // Let the menu bar take the theme first
 
-        // An open menu (such as Settings, where the theme is picked) darkens the screen behind it, menu bar included,
-        // so wait until it's closed to see the menu bar's real color
+        // The menu bar's own color, worked out rather than read off the screen, so it's right straight away even with
+        // Settings open and darkening everything behind it
+        GameObject menuBar = GameObject.Find("Menu Bar");
+        UnityEngine.UI.Graphic barGraphic = menuBar ? menuBar.GetComponent<UnityEngine.UI.Graphic>() : null;
+        if (barGraphic)
+        {
+            Color bar = MenuColor.Shift(barGraphic.color);
+            bar.a = 1;
+            DarkTitleBar.SetColor(bar);
+            m_titleBarMatch = null;
+            yield break;
+        }
+
         while (ChartEditor.InstanceExists && ChartEditor.Instance.currentState == ChartEditor.State.Menu)
             yield return null;
         yield return new WaitForSecondsRealtime(0.1f);

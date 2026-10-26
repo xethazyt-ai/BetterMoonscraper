@@ -128,9 +128,9 @@ Shader "Hidden/MenuColor"
                 float colored = saturate((hsv.y - 0.08) / 0.1);
                 float3 shifted = HsvToRgb(float3(frac(hsv.x + _HueShift), saturate(hsv.y * _SaturationScale), saturate(hsv.z * _ValueScale)));
                 float amount = inRange * colored;
-                // Dark theme: the dark navy insides of panels and boxes go a neutral near-black, so only the outlines
-                // and highlights carry the menu color
-                float darkPart = _DarkNeutral * (1 - smoothstep(0.22, 0.32, hsv.z));
+                // Dark theme: the darkest navy (panel insides) goes a neutral near-black, so the outlines, tabs and buttons
+                // carry the menu color
+                float darkPart = _DarkNeutral * (1 - smoothstep(0.10, 0.16, hsv.z));
                 shifted = lerp(shifted, max(hsv.z * 0.9, 0.06).xxx, darkPart);
                 return lerp(rgb, shifted, amount);
             }
