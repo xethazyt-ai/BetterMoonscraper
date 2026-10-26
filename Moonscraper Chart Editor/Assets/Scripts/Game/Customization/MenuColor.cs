@@ -48,9 +48,12 @@ public static class MenuColor
             PlayerPrefs.SetString(PrefColor, value.HasValue ? ColorUtility.ToHtmlStringRGB(value.Value) : string.Empty);
             PlayerPrefs.Save();
             UpdateMaterial();
-            if (value.HasValue != s_applied)
+            if (wantedOnUi != s_applied)
                 Apply();
             DuetSkin.Reset();
+            // The Dark theme's title bar is matched to the menu bar's color
+            if (darkNeutral && CustomizationManager.instance)
+                CustomizationManager.instance.MatchTitleBarToMenuBar(true);
         }
     }
 
@@ -108,6 +111,20 @@ public static class MenuColor
         s_material.SetFloat("_HueShift", hueShift);
         s_material.SetFloat("_SaturationScale", saturationScale);
         s_material.SetFloat("_ValueScale", valueScale);
+        s_material.SetFloat("_DarkNeutral", darkNeutral ? 1 : 0);
+    }
+
+    static bool darkNeutral { get { return UITheme.current == UITheme.Theme.Dark; } }
+
+    // On or off for everything (the Dark theme also uses this material, for its near-black panels)
+    static bool wantedOnUi { get { return color.HasValue || darkNeutral; } }
+
+    /// <summary>The Light or Dark theme was picked.</summary>
+    public static void OnThemeChanged()
+    {
+        UpdateMaterial();
+        Apply();
+        RefreshStarPowerIcon();
     }
 
     static void GetShift(out float hueShift, out float saturationScale, out float valueScale)
@@ -130,7 +147,7 @@ public static class MenuColor
     /// </summary>
     public static void Apply()
     {
-        bool wanted = color.HasValue && material;
+        bool wanted = wantedOnUi && material;
         foreach (Graphic graphic in Resources.FindObjectsOfTypeAll<Graphic>())
         {
             if (graphic && graphic.gameObject.scene.IsValid())
@@ -146,7 +163,7 @@ public static class MenuColor
         "TestUISprite", "SliderBG", "settings_panel", "settings_panel_no_title", "settings_panel_resz", "panel1", "panel2",
         "panel3", "panel4", "panel_bg", "UISprite", "Background", "InputFieldBackground", "white_1", "Knob",
         "rect_knob_test", "1491902985_Checkbox Empty", "dropdown_arrow", "arrow", "handle_end", "UIMask", "dropshadow",
-        "logo_0",
+        "logo_0", "fade", "fade2", "fade3", "border", "WhiteBox", "settings_panel_resz",
     };
 
     static bool IsIcon(Graphic graphic)
@@ -233,7 +250,7 @@ public static class MenuColor
     /// <summary>A color of Moonscraper's look in the menu color, for things drawn without the UI shader.</summary>
     public static Color Shift(Color original)
     {
-        if (!color.HasValue)
+        if (!wantedOnUi)
             return original;
 
         float hue, saturation, value;
@@ -247,6 +264,12 @@ public static class MenuColor
         float hueShift, saturationScale, valueScale;
         GetShift(out hueShift, out saturationScale, out valueScale);
         Color shifted = Color.HSVToRGB(Mathf.Repeat(hue + hueShift, 1), Mathf.Clamp01(saturation * saturationScale), Mathf.Clamp01(value * valueScale));
+        if (darkNeutral)
+        {
+            float darkPart = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(0.22f, 0.32f, value));
+            float grey = Mathf.Max(value * 0.9f, 0.06f);
+            shifted = Color.Lerp(shifted, new Color(grey, grey, grey), darkPart);
+        }
         shifted = Color.Lerp(original, shifted, amount);
         shifted.a = original.a;
         return shifted;
@@ -261,7 +284,7 @@ public static class MenuColor
     /// <summary>A copy of a texture in the menu color, multiplied by tint (such as the Dark theme's).</summary>
     public static Texture2D Shift(Texture2D original, Color tint)
     {
-        if ((!color.HasValue && tint == Color.white) || !original)
+        if ((!wantedOnUi && tint == Color.white) || !original)
             return original;
 
         // The texture may not be readable, so read it back from the GPU
