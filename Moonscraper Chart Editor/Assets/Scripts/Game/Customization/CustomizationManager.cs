@@ -92,6 +92,12 @@ public class CustomizationManager : MonoBehaviour
     IEnumerator MatchTitleBarNextFrame()
     {
         yield return null;  // Let the recolored menu bar draw first
+
+        // An open menu (such as Settings, where the theme is picked) darkens the screen behind it, menu bar included,
+        // so wait until it's closed to see the menu bar's real color
+        while (ChartEditor.InstanceExists && ChartEditor.Instance.currentState == ChartEditor.State.Menu)
+            yield return null;
+        yield return new WaitForSecondsRealtime(0.1f);
         yield return new WaitForEndOfFrame();
 
         // A few spots along the menu bar's empty right-hand side, a little below the window's top edge
