@@ -109,6 +109,10 @@ jobs:
           printf -- '-define:DUET_EOS\n-define:EOS_DYNAMIC_BINDINGS\n' > "$PROJECT_PATH/Assets/csc.rsp"
           echo "Room codes enabled"
 
+      # Lets Collab Mode tell people when they're on different builds
+      - name: Stamp the build with its commit
+        run: echo "$GITHUB_SHA" > "$PROJECT_PATH/Assets/Resources/BuildId.txt"
+
       - name: Build Windows x64
         uses: game-ci/unity-builder@v4
         env:

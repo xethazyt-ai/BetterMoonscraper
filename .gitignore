@@ -53,3 +53,7 @@ Moonscraper Chart Editor/Assets/Plugins/EOS/
 Moonscraper Chart Editor/Assets/Plugins/EOS.meta
 Moonscraper Chart Editor/Assets/csc.rsp
 Moonscraper Chart Editor/Assets/csc.rsp.meta
+
+# Written by the build workflow
+Moonscraper Chart Editor/Assets/Resources/BuildId.txt
+Moonscraper Chart Editor/Assets/Resources/BuildId.txt.meta

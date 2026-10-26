@@ -78,6 +78,12 @@ public class DuetSession
     public const int DefaultPort = 47820;
     const int HostUserId = 0;
     const int MaxLogLines = 8;
+
+    /// <summary>
+    /// Which BetterMoonscraper download this is (version and commit), set at launch. Everyone in a session is told
+    /// when someone's differs, since mixed builds can crash or disagree about edits.
+    /// </summary>
+    public static string buildId = string.Empty;
     const double PresenceIntervalSeconds = 0.05;
     const double SongInfoIntervalSeconds = 0.25;
     public const int MaxChatLength = 300;
@@ -838,6 +844,7 @@ public class DuetSession
 
             client.id = m_nextUserId++;
             DuetUser user = new DuetUser { id = client.id, name = UniqueName(CleanName(DuetJson.GetString(message, "name", "Charter"))) };
+            WarnIfOtherBuild(user.name, DuetJson.GetString(message, "build", string.Empty));
             users.Add(user);
             m_joinedClients.Add(client);
             string token = DuetJson.GetString(message, "rejoin", string.Empty);
@@ -852,6 +859,7 @@ public class DuetSession
             welcome["rejoin"] = token;
             welcome["users"] = UsersJson();
             welcome["seq"] = (double)lastSeq;
+            welcome["build"] = buildId;
             client.Send(welcome);
             SendSongDetailsAndFiles(client);
 
@@ -1122,7 +1130,7 @@ public class DuetSession
             m_host = link;
             m_connector = null;
             state = State.Joining;
-            Dictionary<string, object> hello = Message("hello", "protocol", (double)ProtocolVersion, "name", m_username);
+            Dictionary<string, object> hello = Message("hello", "protocol", (double)ProtocolVersion, "name", m_username, "build", buildId);
             if (m_joinCode != null)
                 hello["room"] = m_joinCode;
             if (m_joinPassword != null)
@@ -1255,6 +1263,8 @@ public class DuetSession
                     ReadUsers(message);
                     state = State.Connected;
                     Log(back ? "The host is back. Carry on!" : "Joined. You now have the host's chart.");
+                    if (!back)
+                        WarnIfOtherBuild("The host", DuetJson.GetString(message, "build", string.Empty));
                     break;
                 }
 
@@ -1499,6 +1509,16 @@ public class DuetSession
             m_host.Close(reason);
         if (m_connector != null)
             m_connector.Cancel();   // Also while trying to get back to a host that vanished
+    }
+
+    void WarnIfOtherBuild(string who, string theirBuild)
+    {
+        if (string.IsNullOrEmpty(theirBuild) || string.IsNullOrEmpty(buildId) || theirBuild == buildId)
+            return;     // Same download, or one too old to say
+        if (theirBuild.Length > 40)
+            theirBuild = theirBuild.Substring(0, 40);
+
+        Log(string.Format("Warning: {0} is on a different BetterMoonscraper build ({1}, you have {2}). Use the same download to avoid crashes.", who, theirBuild, buildId));
     }
 
     void Log(string line)
