@@ -106,7 +106,7 @@ public class SongPropertiesPanelController : TabMenu
         SetRich(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
         SetRich(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
         year.text = metaData.year;
-        offset.text = song.offset.ToString();
+        offset.text = OffsetText(song.offset);
         difficulty.text = metaData.difficulty.ToString();
         SetRich(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
         mediaType.text = metaData.mediatype;
@@ -147,7 +147,7 @@ public class SongPropertiesPanelController : TabMenu
         SetRichUnlessTyping(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
         SetRichUnlessTyping(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
         SetUnlessTyping(year, metaData.year);
-        SetUnlessTyping(offset, song.offset.ToString());
+        SetUnlessTyping(offset, OffsetText(song.offset));
         SetUnlessTyping(difficulty, metaData.difficulty.ToString());
         SetRichUnlessTyping(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
         SetUnlessTyping(mediaType, metaData.mediatype);
@@ -157,6 +157,11 @@ public class SongPropertiesPanelController : TabMenu
 
         if (!customIniSettings.isFocused)
             UpdateIniTextFromSongProperties();
+    }
+
+    static string OffsetText(float value)
+    {
+        return value.ToString(System.Globalization.CultureInfo.CurrentCulture);
     }
 
     static void SetUnlessTyping(InputField field, string text)
@@ -227,13 +232,14 @@ public class SongPropertiesPanelController : TabMenu
             metaData.album = RichTextIni.Strip(album.text);
             metaData.year = year.text;
 
-            try
+            // Kept as it was if the box holds something that isn't a number (empty, or just "-"), rather than becoming 0
+            float typedOffset;
+            if (float.TryParse(offset.text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out typedOffset)
+                && !float.IsNaN(typedOffset) && !float.IsInfinity(typedOffset))
             {
-                song.offset = float.Parse(offset.text);
-            }
-            catch
-            {
-                song.offset = 0;
+                // Only a real change: the box shows a rounded copy, which mustn't nudge the exact value
+                if (offset.text != OffsetText(song.offset))
+                    song.offset = typedOffset;
             }
 
             try
