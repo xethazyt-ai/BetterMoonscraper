@@ -29,6 +29,7 @@ public class SongVideoBackground : MonoBehaviour
     string m_path;
     double m_startSeconds;      // song.ini's video_start_time
     bool m_prepared;
+    bool m_triedFileUrl;
     bool m_shown;
     double m_lastScrubTarget = double.NaN;
     float m_lastScrubAt;
@@ -99,6 +100,7 @@ public class SongVideoBackground : MonoBehaviour
         }
 
         m_path = path;
+        m_triedFileUrl = false;
         m_startSeconds = ReadStartSeconds();
         status = "Loading " + Path.GetFileName(path) + "...";
 
@@ -107,7 +109,7 @@ public class SongVideoBackground : MonoBehaviour
         m_player = holder.AddComponent<VideoPlayer>();
         m_player.playOnAwake = false;
         m_player.source = VideoSource.Url;
-        m_player.url = new Uri(path).AbsoluteUri;
+        m_player.url = path.Replace('\\', '/');      // A plain path: Unity can't open file:// links with %20 for spaces
         m_player.audioOutputMode = VideoAudioOutputMode.None;     // The song's own audio plays as usual
         m_player.renderMode = VideoRenderMode.RenderTexture;
         m_player.isLooping = false;
@@ -186,6 +188,15 @@ public class SongVideoBackground : MonoBehaviour
 
         Debug.LogWarning("Couldn't play the song's video " + m_path + ": " + message);
         string name = m_path != null ? Path.GetFileName(m_path) : "the video";
+        if (!m_triedFileUrl && m_path != null)
+        {
+            // Some Windows setups want a file:// link instead, so try that once before giving up
+            m_triedFileUrl = true;
+            string path = m_path;
+            m_player.url = "file:///" + path.Replace('\\', '/');
+            m_player.Prepare();
+            return;
+        }
         Close();
         status = "Couldn't play " + name + ". BetterMoonscraper plays H.264 .mp4 and VP8 .webm videos; VP9 or AV1 .webm needs converting.";
         if (ChartEditor.InstanceExists)

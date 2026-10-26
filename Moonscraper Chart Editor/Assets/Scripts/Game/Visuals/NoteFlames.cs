@@ -22,7 +22,9 @@ public class NoteFlames : MonoBehaviour
     const float HoldSeconds = 0.08f;    // A held flame goes out this long after the sustain stops asking for it
     const int MaxFlames = 48;
     const float LiftLanes = 0.75f;      // In lane widths: the striker heads sit about this far up the screen from the strikeline
-    const int TextureWidth = 64, TextureHeight = 128;
+    const int FrameWidth = 64, FrameHeight = 128, FrameCount = 16;
+    const int NoisePeriod = 4;
+    const float FramesPerSecond = 24;
 
     class Flame
     {
@@ -198,19 +200,21 @@ public class NoteFlames : MonoBehaviour
             return;
 
         float t = Mathf.Clamp01(flame.age / flame.life);
-        float flicker = 0.85f + 0.15f * Mathf.PerlinNoise(flame.seed, Time.time * 18);
-        float height, brightness, width;
+        float height, brightness, width, flash;
         if (flame.held)
         {
-            height = 1.5f * flicker;
+            height = 1.6f;
             width = 1;
-            brightness = 0.8f;
+            brightness = 0.85f;
+            flash = 0.3f;
         }
         else
         {
-            height = Mathf.Lerp(1.1f, 2.0f, Mathf.Sqrt(t)) * flicker;
-            width = Mathf.Lerp(1.0f, 0.6f, t);
+            // A hit bursts up, then dies down
+            height = Mathf.Lerp(1.3f, 2.1f, Mathf.Sqrt(t));
+            width = Mathf.Lerp(1.15f, 0.8f, t);
             brightness = 1 - t * t;
+            flash = (1 - t) * (1 - t);
         }
 
         Transform transform = flame.gameObject.transform;
@@ -221,7 +225,10 @@ public class NoteFlames : MonoBehaviour
 
         Color color = flame.color;
         color.a = brightness;
+        int frame = (int)(Time.time * FramesPerSecond + flame.seed) % FrameCount;
         m_properties.SetColor("_Color", color);
+        m_properties.SetFloat("_Flash", flash);
+        m_properties.SetVector("_MainTex_ST", new Vector4(1f / FrameCount, 1, frame / (float)FrameCount, 0));
         flame.renderer.SetPropertyBlock(m_properties);
     }
 
@@ -309,35 +316,93 @@ public class NoteFlames : MonoBehaviour
         return m_camera;
     }
 
-    // A flame shape: R is the glow, wide at the bottom and licking up to a point, G its white-hot core
+    // A strip of flame frames, drawn like Clone Hero's: three licks of fire (a tall one in the middle, shorter ones
+    // leaning out) that flicker on their own. R is the glow, G its white-hot core, B a flash of light at the base for
+    // hits. The noise repeats every NoisePeriod cells, so the last frame runs back into the first.
     static Texture2D MakeFlameTexture()
     {
-        Texture2D texture = new Texture2D(TextureWidth, TextureHeight, TextureFormat.RGBA32, false);
+        Texture2D texture = new Texture2D(FrameWidth * FrameCount, FrameHeight, TextureFormat.RGBA32, false);
         texture.wrapMode = TextureWrapMode.Clamp;
         texture.name = "Note Flame";
 
-        Color32[] pixels = new Color32[TextureWidth * TextureHeight];
-        for (int y = 0; y < TextureHeight; ++y)
+        Color32[] pixels = new Color32[FrameWidth * FrameCount * FrameHeight];
+        for (int frame = 0; frame < FrameCount; ++frame)
         {
-            float v = (y + 0.5f) / TextureHeight;                       // 0 bottom, 1 top
-            float halfWidth = Mathf.Lerp(0.46f, 0.02f, Mathf.Pow(v, 0.8f));
-            float rise = Mathf.SmoothStep(0, 1, v / 0.12f);               // Soft bottom edge
-            float fade = 1 - Mathf.SmoothStep(0.55f, 1, v);               // Fades out towards the tip
-
-            for (int x = 0; x < TextureWidth; ++x)
+            float t = frame / (float)FrameCount;
+            for (int y = 0; y < FrameHeight; ++y)
             {
-                float u = Mathf.Abs((x + 0.5f) / TextureWidth - 0.5f);
-                float across = 1 - Mathf.SmoothStep(0, 1, u / Mathf.Max(halfWidth, 0.001f));
-                float glow = across * rise * fade;
-                float core = Mathf.Clamp01((across - 0.55f) / 0.45f) * (1 - Mathf.SmoothStep(0.15f, 0.6f, v));
+                float v = (y + 0.5f) / FrameHeight;                         // 0 bottom, 1 top
+                float rise = Mathf.SmoothStep(0, 1, v / 0.05f);             // Soft bottom edge
+                for (int x = 0; x < FrameWidth; ++x)
+                {
+                    float u = (x + 0.5f) / FrameWidth - 0.5f;
+                    float n = Fbm(u * 6, v * 3.5f - t * NoisePeriod);
+                    float wavy = u + (n - 0.5f) * 0.3f * v;
 
-                pixels[y * TextureWidth + x] = new Color32((byte)(glow * 255), (byte)(core * 255), 0, 255);
+                    float body = 0;
+                    for (int lick = 0; lick < 3; ++lick)
+                    {
+                        float offset = (lick - 1) * 0.17f;
+                        float tall = lick == 1 ? 1 : 0.62f;
+                        float top = tall * (0.75f + 0.4f * Fbm((lick + 1) * 7.3f, -t * NoisePeriod));
+                        if (v >= top)
+                            continue;
+
+                        float centre = offset + (lick - 1) * 0.22f * v;
+                        float halfWidth = (lick == 1 ? 0.24f : 0.2f) * Mathf.Pow(1 - v / top, 0.6f) + 0.005f;
+                        float across = 1 - SmoothStep(0, halfWidth, Mathf.Abs(wavy - centre));
+                        body = Mathf.Max(body, across * (1 - SmoothStep(top * 0.6f, top, v)));
+                    }
+                    body *= rise;
+
+                    float glow = Mathf.Clamp01((body + (n - 0.5f) * 0.9f * v * body) * 1.6f);
+                    float core = Mathf.Clamp01(Mathf.Clamp01((body - 0.4f) / 0.6f) * (1 - SmoothStep(0.05f, 0.45f, v)) * (0.7f + 0.6f * n));
+                    float flashDistance = u * u + (v - 0.08f) * 1.6f * (v - 0.08f) * 1.6f;
+                    float flash = Mathf.Exp(-flashDistance / 0.035f);
+
+                    pixels[y * FrameWidth * FrameCount + frame * FrameWidth + x] = new Color32((byte)(glow * 255), (byte)(core * 255), (byte)(flash * 255), 255);
+                }
             }
         }
 
         texture.SetPixels32(pixels);
         texture.Apply(false, true);
         return texture;
+    }
+
+    static float SmoothStep(float from, float to, float x)
+    {
+        float t = Mathf.Clamp01((x - from) / (to - from));
+        return t * t * (3 - 2 * t);
+    }
+
+    static float Fbm(float x, float y)
+    {
+        return 0.6f * ValueNoise(x, y, NoisePeriod) + 0.3f * ValueNoise(x * 2 + 17, y * 2, NoisePeriod * 2) + 0.1f * ValueNoise(x * 4 + 31, y * 4, NoisePeriod * 4);
+    }
+
+    // Smooth noise that repeats every period cells going up
+    static float ValueNoise(float x, float y, int period)
+    {
+        int ix = Mathf.FloorToInt(x), iy = Mathf.FloorToInt(y);
+        float fx = x - ix, fy = y - iy;
+        float sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+
+        float a = Hash(ix, iy, period), b = Hash(ix + 1, iy, period);
+        float c = Hash(ix, iy + 1, period), d = Hash(ix + 1, iy + 1, period);
+        float bottom = a + (b - a) * sx, top = c + (d - c) * sx;
+        return bottom + (top - bottom) * sy;
+    }
+
+    static float Hash(int x, int y, int period)
+    {
+        y = ((y % period) + period) % period;
+        unchecked
+        {
+            uint n = (uint)(x * 374761393 + y * 668265263);
+            n = (n ^ (n >> 13)) * 1274126177u;
+            return ((n ^ (n >> 16)) & 0xffff) / 65535f;
+        }
     }
 
     static Mesh MakeQuad()
