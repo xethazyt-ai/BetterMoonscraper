@@ -106,7 +106,8 @@ public class MovablePanel : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
 {
     public const float MinScale = 0.5f, MaxScale = 3f;
     const float GripSize = 16;
-    const float TopMargin = 0.032f;     // Of the window's height: kept clear for the menu bar
+    const float TopMargin = 0.025f;     // Of the window's height: kept clear for the menu bar
+    const float KeepVisible = 60;       // Canvas units of a panel always left on screen
 
     string m_prefKey;
     RectTransform m_rect;
@@ -213,15 +214,18 @@ public class MovablePanel : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         root.GetWorldCorners(screen);
         screen[1].y -= (screen[1].y - screen[0].y) * TopMargin;
 
+        // Panels may hang off the sides and bottom (Moonscraper's own Settings panel starts partly off the left
+        // edge), as long as enough stays on screen to grab. The top stays below the menu bar so the title shows.
+        float keep = KeepVisible * root.lossyScale.x;
         Vector3 move = Vector3.zero;
-        if (panel[2].x > screen[2].x)
-            move.x = screen[2].x - panel[2].x;
-        if (panel[0].x + move.x < screen[0].x)
-            move.x = screen[0].x - panel[0].x;      // Too wide to fit: the left side shows
-        if (panel[0].y < screen[0].y)
-            move.y = screen[0].y - panel[0].y;
-        if (panel[1].y + move.y > screen[1].y)
-            move.y = screen[1].y - panel[1].y;      // Too tall to fit: the top shows
+        if (panel[2].x < screen[0].x + keep)
+            move.x = screen[0].x + keep - panel[2].x;
+        if (panel[0].x > screen[2].x - keep)
+            move.x = screen[2].x - keep - panel[0].x;
+        if (panel[1].y < screen[0].y + keep)
+            move.y = screen[0].y + keep - panel[1].y;
+        if (panel[1].y > screen[1].y)
+            move.y = screen[1].y - panel[1].y;
 
         if (move != Vector3.zero)
             MoveBy(move);
