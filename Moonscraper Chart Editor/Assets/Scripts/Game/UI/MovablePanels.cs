@@ -5,17 +5,16 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 
 /// <summary>
-/// The left side panels (Settings and Tools) can be dragged anywhere on screen and made bigger or smaller with the
-/// grip in their bottom right corner, like the Collab Mode and Pattern Blueprints windows. Where they were left is
-/// remembered, as a share of the window so it follows the window's size. The Reset Menu Positions key (F8 unless
-/// rebound in Controls) puts these panels and the Collab Mode and Pattern Blueprints windows back where they started.
+/// The Tools panel can be dragged anywhere on screen and made bigger or smaller with the grip in its bottom right
+/// corner, like the Collab Mode and Pattern Blueprints windows. Where it was left is remembered, as a share of the
+/// window so it follows the window's size. The Reset Menu Positions key (F8 unless rebound in Controls) puts it and the
+/// Collab Mode and Pattern Blueprints windows back where they started. The Settings panel stays where Moonscraper has it.
 /// </summary>
 public class MovablePanels : MonoBehaviour
 {
     // The panels under the Editor Panels Canvas that can be moved, by object name, and the name their place is kept under
     static readonly string[,] s_panels =
     {
-        { "Properties", "Settings" },
         { "Highway Object Tool Panel", "Tools" },
     };
 
@@ -68,6 +67,10 @@ public class MovablePanels : MonoBehaviour
 
     void Build()
     {
+        // The Settings panel used to move too, and stays where Moonscraper puts it now: forget any place it was left
+        foreach (string key in new[] { ".X", ".Y", ".Scale" })
+            PlayerPrefs.DeleteKey("Panels.Settings" + key);
+
         GameObject canvas = GameObject.Find("Editor Panels Canvas");
         if (!canvas)
         {
