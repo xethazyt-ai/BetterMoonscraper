@@ -134,7 +134,7 @@ public class DuetLogKeeper : MonoBehaviour
 
     static string DescribeNow()
     {
-        ChartEditor editor = ChartEditor.Instance;
+        ChartEditor editor = ChartEditor.InstanceExists ? ChartEditor.Instance : null;     // Instance logs an error every time while loading
         string editorState = editor != null ? editor.currentState.ToString() : "Loading";
         DuetSession session = DuetPanel.activeSession;
         return editorState + " | " + (session != null ? "Duet: " + session.Describe() : "Not in Duet");

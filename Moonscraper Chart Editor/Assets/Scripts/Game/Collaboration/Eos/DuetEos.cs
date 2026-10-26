@@ -55,6 +55,13 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
     ulong m_requestNotification = 0;
     ulong m_closedNotification = 0;
     ulong m_memberNotification = 0;
+    ulong m_authNotification = 0;
+
+    // Epic's sign-in only lasts about an hour. It warns before then, and signing in again with the same device ID
+    // keeps the same user, rooms and connections. Without this, sending fails with InvalidAuth after an hour.
+    bool m_reloginRunning = false;
+    float m_reloginAt = -1;
+    const float ReloginRetrySeconds = 15;
 
     readonly Dictionary<string, Link> m_links = new Dictionary<string, Link>();
     Room m_room;
@@ -238,8 +245,53 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         AddNotifyLobbyMemberStatusReceivedOptions memberOptions = new AddNotifyLobbyMemberStatusReceivedOptions();
         m_memberNotification = m_platform.GetLobbyInterface().AddNotifyLobbyMemberStatusReceived(ref memberOptions, null, OnLobbyMemberStatus);
 
+        AddNotifyAuthExpirationOptions expirationOptions = new AddNotifyAuthExpirationOptions();
+        m_authNotification = m_platform.GetConnectInterface().AddNotifyAuthExpiration(ref expirationOptions, null, (ref AuthExpirationCallbackInfo info) =>
+        {
+            OnMainThread(() =>
+            {
+                Debug.Log("Duet EOS: sign-in is about to expire, signing in again");
+                RequestRelogin();
+            });
+        });
+
         m_phase = Phase.Ready;
         Debug.Log("Duet EOS: signed in as " + m_localUser);
+    }
+
+    void RequestRelogin()
+    {
+        if (m_reloginAt < 0 && !m_reloginRunning)
+            m_reloginAt = 0;
+    }
+
+    void UpdateRelogin()
+    {
+        if (m_reloginRunning || m_reloginAt < 0 || Time.realtimeSinceStartup < m_reloginAt)
+            return;
+
+        m_reloginRunning = true;
+        m_reloginAt = -1;
+        LoginOptions loginOptions = new LoginOptions
+        {
+            Credentials = new Credentials { Type = ExternalCredentialType.DeviceidAccessToken, Token = null },
+            UserLoginInfo = new UserLoginInfo { DisplayName = "Moonscraper Duet" },
+        };
+        m_platform.GetConnectInterface().Login(ref loginOptions, null, (ref LoginCallbackInfo info) =>
+        {
+            Result result = info.ResultCode;
+            OnMainThread(() =>
+            {
+                m_reloginRunning = false;
+                if (result == Result.Success)
+                    Debug.Log("Duet EOS: signed in again");
+                else
+                {
+                    Debug.LogWarning("Duet EOS: couldn't sign in again (" + result + "), trying again soon");
+                    m_reloginAt = Time.realtimeSinceStartup + ReloginRetrySeconds;
+                }
+            });
+        });
     }
 
     void Fail(string reason)
@@ -296,7 +348,11 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
                 m_platform.GetP2PInterface().RemoveNotifyPeerConnectionClosed(m_closedNotification);
             if (m_memberNotification != 0)
                 m_platform.GetLobbyInterface().RemoveNotifyLobbyMemberStatusReceived(m_memberNotification);
-            m_requestNotification = m_closedNotification = m_memberNotification = 0;
+            if (m_authNotification != 0)
+                m_platform.GetConnectInterface().RemoveNotifyAuthExpiration(m_authNotification);
+            m_requestNotification = m_closedNotification = m_memberNotification = m_authNotification = 0;
+            m_reloginRunning = false;
+            m_reloginAt = -1;
 
             m_platform.Release();
             m_platform = null;
@@ -360,6 +416,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         if (m_platform == null || m_phase != Phase.Ready)
             return;
 
+        UpdateRelogin();
         ReceivePackets();
 
         foreach (Link link in new List<Link>(m_links.Values))
@@ -617,7 +674,9 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
         Result result = m_platform.GetP2PInterface().SendPacket(ref options);
         if (result == Result.Success)
             return true;
-        if (result != Result.LimitExceeded)
+        if (result == Result.InvalidAuth)
+            RequestRelogin();       // Kept and sent once signed in again, rather than dropping the connection
+        else if (result != Result.LimitExceeded)
             error = "Couldn't send (" + result + ")";
         return false;
     }
@@ -1074,6 +1133,15 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
                 return;
             }
 
+            if (result == Result.InvalidAuth)
+            {
+                // Signed out by time: sign in again and try once that's done
+                m_owner.RequestRelogin();
+                m_retryAt = Time.realtimeSinceStartup + RetrySeconds;
+                m_createStarted = false;
+                return;
+            }
+
             error = "Couldn't open an online room (" + result + ")";
         }
 
@@ -1137,6 +1205,12 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
         public void OnFailed(string error)
         {
+            if (error.Contains("InvalidAuth"))
+            {
+                // Signed out by time: sign in again, so the next try (or the automatic rejoin) works
+                m_owner.RequestRelogin();
+                error = "Epic sign-in expired and is being renewed. Try again in a few seconds.";
+            }
             m_error = error;
         }
 

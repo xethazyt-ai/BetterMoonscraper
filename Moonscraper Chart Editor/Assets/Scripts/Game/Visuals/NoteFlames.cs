@@ -236,7 +236,7 @@ public class NoteFlames : MonoBehaviour
         if (!m_material)
             return;
 
-        bool playing = ChartEditor.Instance && ChartEditor.Instance.currentState == ChartEditor.State.Playing;
+        bool playing = ChartEditor.InstanceExists && ChartEditor.Instance.currentState == ChartEditor.State.Playing;
         float delta = Time.deltaTime;
         m_animationClock += delta * animationSpeed;
         if (m_animationClock > 3600)
