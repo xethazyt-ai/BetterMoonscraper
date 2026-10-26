@@ -14,8 +14,8 @@ public class NoteFlames : MonoBehaviour
     const string PrefEnabled = "Display.NoteFlames";
     const string PrefSize = "Display.NoteFlameSizePercent";
     public const int MinSizePercent = 25, MaxSizePercent = 200;
-    const string PrefSpeed = "Display.NoteFlameSpeedPercent";
-    public const int MinSpeedPercent = 25, MaxSpeedPercent = 300;
+    const string PrefSpeed = "Display.NoteFlameSpeed";    // New name, so everyone starts at the 300% default once
+    public const int MinSpeedPercent = 25, MaxSpeedPercent = 300, DefaultSpeedPercent = 300;
 
     // Clone Hero's own colors, for when no color profile is picked or it leaves these out
     static readonly Color DefaultFlame = new Color32(0xFF, 0xB7, 0x6D, 0xFF);
@@ -58,7 +58,7 @@ public class NoteFlames : MonoBehaviour
         get
         {
             if (!s_speedPercent.HasValue)
-                s_speedPercent = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpeed, 100), MinSpeedPercent, MaxSpeedPercent);
+                s_speedPercent = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpeed, DefaultSpeedPercent), MinSpeedPercent, MaxSpeedPercent);
             return s_speedPercent.Value;
         }
         set

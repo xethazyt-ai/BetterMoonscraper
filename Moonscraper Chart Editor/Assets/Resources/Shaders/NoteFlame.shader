@@ -1,5 +1,6 @@
-// The note flames: an animated flame (one frame of a strip) drawn additively in one color, white-hot at its core,
-// with a flash of light at its base on a hit. Always on top of the highway.
+// The note flames: an animated flame (one frame of a strip) in one color, white-hot at its core,
+// with a flash of light at its base on a hit. Always on top of the highway, and solid
+// (it covers what's behind it rather than adding light), so a see-through highway doesn't make the flames see-through.
 Shader "Hidden/NoteFlame"
 {
     Properties
@@ -15,7 +16,7 @@ Shader "Hidden/NoteFlame"
         ZWrite Off
         ZTest Always
         Cull Off
-        Blend One One
+        Blend One OneMinusSrcAlpha    // Premultiplied: the color is already scaled by how much flame covers the pixel
 
         Pass
         {
@@ -50,8 +51,10 @@ Shader "Hidden/NoteFlame"
                 fixed3 edge = _Color.rgb * fixed3(1, 0.55, 0.25);
                 fixed3 body = lerp(edge, _Color.rgb, shape.r);
                 fixed3 color = lerp(body, fixed3(1, 0.97, 0.85), shape.g * 0.9) * shape.r;
-                color += lerp(_Color.rgb, fixed3(1, 1, 1), 0.5) * shape.b * _Flash;
-                return fixed4(color * _Color.a, 1);
+                float flash = shape.b * _Flash;
+                color += lerp(_Color.rgb, fixed3(1, 1, 1), 0.5) * flash;
+                fixed cover = saturate(max(shape.r, flash));
+                return fixed4(color, cover) * _Color.a;
             }
             ENDCG
         }
