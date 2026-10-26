@@ -12,6 +12,8 @@ using MoonscraperChartEditor.Song;
 public class NoteFlames : MonoBehaviour
 {
     const string PrefEnabled = "Display.NoteFlames";
+    const string PrefSize = "Display.NoteFlameSizePercent";
+    public const int MinSizePercent = 25, MaxSizePercent = 200;
 
     // Clone Hero's own colors, for when no color profile is picked or it leaves these out
     static readonly Color DefaultFlame = new Color32(0xFF, 0xB7, 0x6D, 0xFF);
@@ -21,7 +23,7 @@ public class NoteFlames : MonoBehaviour
     const float BurstSeconds = 0.3f;
     const float HoldSeconds = 0.08f;    // A held flame goes out this long after the sustain stops asking for it
     const int MaxFlames = 48;
-    const float LiftLanes = 0.75f;      // In lane widths: the striker heads sit about this far up the screen from the strikeline
+    const float OpenScale = 0.7f;       // Open notes and kicks: a smaller flame on every lane
     const int FrameWidth = 64, FrameHeight = 128, FrameCount = 16;
     const int NoisePeriod = 4;
     const float FramesPerSecond = 24;
@@ -33,7 +35,6 @@ public class NoteFlames : MonoBehaviour
         public Vector3 basePosition;
         public Color color;
         public float width;
-        public float lift;          // How far above the strikeline it starts, so it rises from the striker head in front of the note
         public float age;
         public float life;
         public bool held;
@@ -43,6 +44,26 @@ public class NoteFlames : MonoBehaviour
 
     static NoteFlames s_instance;
     static bool? s_enabled;
+    static int? s_sizePercent;
+
+    /// <summary>
+    /// How big the flames are, from the Flame Size slider
+    /// </summary>
+    public static int sizePercent
+    {
+        get
+        {
+            if (!s_sizePercent.HasValue)
+                s_sizePercent = Mathf.Clamp(PlayerPrefs.GetInt(PrefSize, 100), MinSizePercent, MaxSizePercent);
+            return s_sizePercent.Value;
+        }
+        set
+        {
+            s_sizePercent = Mathf.Clamp(value, MinSizePercent, MaxSizePercent);
+            PlayerPrefs.SetInt(PrefSize, s_sizePercent.Value);
+            PlayerPrefs.Save();
+        }
+    }
 
     readonly List<Flame> m_flames = new List<Flame>();
     readonly Dictionary<int, Flame> m_heldByLane = new Dictionary<int, Flame>();
@@ -130,13 +151,36 @@ public class NoteFlames : MonoBehaviour
             return;
 
         ChartEditor editor = ChartEditor.Instance;
-        bool open = note.IsOpenNote();
-        int lane = open ? -1 : note.rawNote;
+        float laneSpacing = LaneSpacing(editor);
+        Vector3 position = note.controller.transform.position;
+        position.y = editor.visibleStrikeline.position.y;
+        position.z = editor.visibleStrikeline.position.z;
+        Color color = FlameColor(editor, note);
 
+        if (!note.IsOpenNote())
+        {
+            SpawnAt(note.rawNote, position, laneSpacing, 1, color, held);
+            return;
+        }
+
+        // Open notes and kicks burn on every lane, smaller, rather than as one flame across the highway
+        LaneInfo laneInfo = editor.laneInfo;
+        int lanes = laneInfo != null ? laneInfo.laneCount : 5;
+        for (int lane = 0; lane < lanes; ++lane)
+        {
+            Vector3 lanePosition = position;
+            if (laneInfo != null)
+                lanePosition.x = position.x + laneInfo.GetLanePosition(lane, false);
+            SpawnAt(-1 - lane, lanePosition, laneSpacing, OpenScale, color, held);
+        }
+    }
+
+    void SpawnAt(int key, Vector3 position, float laneSpacing, float scale, Color color, bool held)
+    {
         if (held)
         {
             Flame existing;
-            if (m_heldByLane.TryGetValue(lane, out existing) && existing.active && existing.held)
+            if (m_heldByLane.TryGetValue(key, out existing) && existing.active && existing.held)
             {
                 existing.age = 0;
                 return;
@@ -147,15 +191,9 @@ public class NoteFlames : MonoBehaviour
         if (flame == null)
             return;
 
-        float laneSpacing = LaneSpacing(editor);
-        Vector3 position = note.controller.transform.position;
-        position.y = editor.visibleStrikeline.position.y;
-        position.z = editor.visibleStrikeline.position.z;
-
         flame.basePosition = position;
-        flame.color = FlameColor(editor, note);
-        flame.width = laneSpacing * (open ? 3.6f : 0.95f) * (held ? 0.7f : 1);
-        flame.lift = laneSpacing * LiftLanes;
+        flame.color = color;
+        flame.width = laneSpacing * 0.95f * scale * (held ? 0.7f : 1);
         flame.age = 0;
         flame.life = held ? HoldSeconds : BurstSeconds;
         flame.held = held;
@@ -163,7 +201,7 @@ public class NoteFlames : MonoBehaviour
         flame.gameObject.SetActive(true);
 
         if (held)
-            m_heldByLane[lane] = flame;
+            m_heldByLane[key] = flame;
 
         Place(flame);
     }
@@ -219,9 +257,10 @@ public class NoteFlames : MonoBehaviour
 
         Transform transform = flame.gameObject.transform;
         transform.rotation = camera.transform.rotation;
-        Vector3 size = new Vector3(flame.width * width, flame.width * height, 1);
+        float sizeScale = sizePercent / 100f;
+        Vector3 size = new Vector3(flame.width * width * sizeScale, flame.width * height * sizeScale, 1);
         transform.localScale = size;
-        transform.position = flame.basePosition + camera.transform.up * (flame.lift + size.y * 0.42f);
+        transform.position = flame.basePosition + camera.transform.up * (size.y * 0.42f);    // Rises from the strikeline
 
         Color color = flame.color;
         color.a = brightness;

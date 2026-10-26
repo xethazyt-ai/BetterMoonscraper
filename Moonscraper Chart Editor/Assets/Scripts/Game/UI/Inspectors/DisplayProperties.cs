@@ -74,6 +74,8 @@ public class DisplayProperties : UpdateableService
     const int GemSizeStep = 5;  // percent
     Text highwayTransparencyLabel;
     const int HighwayTransparencyStep = 5;  // percent
+    Text flameSizeLabel;
+    const int FlameSizeStep = 5;            // percent
 
     // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
     // Moonscraper's old maximum, so the new top of the highway slider reads 200%.
@@ -115,7 +117,8 @@ public class DisplayProperties : UpdateableService
         UpdateHighwayLengthText();
         float gemSizeRow = AddGemSizeSlider();
         float transparencyRow = AddHighwayTransparencySlider(gemSizeRow);
-        AddSpeedToggles(gemSizeRow + transparencyRow);
+        float flameSizeRow = AddFlameSizeSlider(gemSizeRow, gemSizeRow + transparencyRow);
+        AddSpeedToggles(gemSizeRow + transparencyRow + flameSizeRow);
         HighwayTransparency.Apply();
 
         UpdateGameSpeedText();
@@ -494,6 +497,48 @@ public class DisplayProperties : UpdateableService
         UpdateHighwayTransparencyText();
         content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep);
         return rowStep;
+    }
+
+    // "Flame Size", under Highway Transparency (above, how far the sliders before it reach below Highway Length)
+    float AddFlameSizeSlider(float rowStep, float above)
+    {
+        RectTransform content = clapToggle.transform.parent as RectTransform;
+        if (!content || !highwayLengthLabel || rowStep <= 0)
+            return 0;
+
+        float drop = above + rowStep;
+
+        flameSizeLabel = Instantiate(highwayLengthLabel, highwayLengthLabel.transform.parent);
+        flameSizeLabel.name = "Flame Size Text";
+        MoveDown(flameSizeLabel.transform, content, drop);
+
+        Slider slider = Instantiate(highwayLengthSlider, highwayLengthSlider.transform.parent);
+        slider.name = "Flame Size Slider";
+        slider.onValueChanged = new Slider.SliderEvent();
+        slider.wholeNumbers = true;
+        slider.minValue = NoteFlames.MinSizePercent / FlameSizeStep;
+        slider.maxValue = NoteFlames.MaxSizePercent / FlameSizeStep;
+        slider.value = NoteFlames.sizePercent / FlameSizeStep;
+        slider.interactable = true;
+        slider.onValueChanged.AddListener((value) =>
+        {
+            NoteFlames.sizePercent = Mathf.RoundToInt(value) * FlameSizeStep;
+            UpdateFlameSizeText();
+        });
+        MoveDown(slider.transform, content, drop);
+
+        UpdateFlameSizeText();
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep);
+        return rowStep;
+    }
+
+    void UpdateFlameSizeText()
+    {
+        if (!flameSizeLabel)
+            return;
+
+        flameSizeLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        flameSizeLabel.text = string.Format("Flame Size- {0}%", NoteFlames.sizePercent);
     }
 
     void UpdateHighwayTransparencyText()
