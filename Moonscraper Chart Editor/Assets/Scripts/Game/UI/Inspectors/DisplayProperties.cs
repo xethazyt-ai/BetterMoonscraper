@@ -422,7 +422,8 @@ public class DisplayProperties : UpdateableService
         MakeSpeedToggle("Song Video:", y - 98, SongVideoBackground.isEnabled, (on) =>
         {
             SongVideoBackground.isEnabled = on;
-            if (on && !string.IsNullOrEmpty(SongVideoBackground.status) && !SongVideoBackground.status.StartsWith("Loading"))
+            if (on && !string.IsNullOrEmpty(SongVideoBackground.status) && !SongVideoBackground.status.StartsWith("Loading")
+                && !SongVideoBackground.status.StartsWith("Showing") && !SongVideoBackground.status.StartsWith("Ready"))
                 editor.services.notificationBar.PushNotification(SongVideoBackground.status.TrimEnd('.').ToUpperInvariant(), 3, true);
         });
 

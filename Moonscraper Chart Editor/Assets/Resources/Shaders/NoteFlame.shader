@@ -46,7 +46,10 @@ Shader "Hidden/NoteFlame"
             fixed4 frag(v2f i) : SV_Target
             {
                 fixed4 shape = tex2D(_MainTex, i.uv);
-                fixed3 color = lerp(_Color.rgb, fixed3(1, 1, 1), shape.g * 0.85) * shape.r;
+                // Like fire: deeper orange at the faint edges, the flame color in the body and white-hot at the core
+                fixed3 edge = _Color.rgb * fixed3(1, 0.55, 0.25);
+                fixed3 body = lerp(edge, _Color.rgb, shape.r);
+                fixed3 color = lerp(body, fixed3(1, 0.97, 0.85), shape.g * 0.9) * shape.r;
                 color += lerp(_Color.rgb, fixed3(1, 1, 1), 0.5) * shape.b * _Flash;
                 return fixed4(color * _Color.a, 1);
             }

@@ -393,8 +393,8 @@ public class NoteFlames : MonoBehaviour
         return m_camera;
     }
 
-    // A strip of flame frames, drawn like Clone Hero's: three licks of fire (a tall one in the middle, shorter ones
-    // leaning out) that flicker on their own. R is the glow, G its white-hot core, B a flash of light at the base for
+    // A strip of flame frames, drawn like Clone Hero's: one tall flame with two small licks hugging it, all flickering
+    // on their own. R is the glow, G its white-hot core, B a flash of light at the base for
     // hits. The noise repeats every NoisePeriod cells, so the last frame runs back into the first.
     static Texture2D MakeFlameTexture()
     {
@@ -409,33 +409,35 @@ public class NoteFlames : MonoBehaviour
             for (int y = 0; y < FrameHeight; ++y)
             {
                 float v = (y + 0.5f) / FrameHeight;                         // 0 bottom, 1 top
-                float rise = Mathf.SmoothStep(0, 1, v / 0.05f);             // Soft bottom edge
                 for (int x = 0; x < FrameWidth; ++x)
                 {
                     float u = (x + 0.5f) / FrameWidth - 0.5f;
                     float n = Fbm(u * 6, v * 3.5f - t * NoisePeriod);
-                    float wavy = u + (n - 0.5f) * 0.3f * v;
+                    float n2 = Fbm(u * 11 + 40, v * 6 - t * NoisePeriod * 2);
+                    float wavy = u + (n - 0.5f) * 0.32f * v + (n2 - 0.5f) * 0.08f * v;
 
+                    // One big flame with two small licks hugging it, like Clone Hero's hit flame
                     float body = 0;
                     for (int lick = 0; lick < 3; ++lick)
                     {
-                        float offset = (lick - 1) * 0.17f;
-                        float tall = lick == 1 ? 1 : 0.62f;
-                        float top = tall * (0.75f + 0.4f * Fbm((lick + 1) * 7.3f, -t * NoisePeriod));
+                        int side = lick - 1;
+                        float tall = side == 0 ? 0.95f : 0.5f;
+                        float top = tall * (0.78f + 0.35f * Fbm((lick + 1) * 7.3f, -t * NoisePeriod));
                         if (v >= top)
                             continue;
 
-                        float centre = offset + (lick - 1) * 0.22f * v;
-                        float halfWidth = (lick == 1 ? 0.24f : 0.2f) * Mathf.Pow(1 - v / top, 0.6f) + 0.005f;
+                        float centre = side * 0.13f + side * 0.12f * v;
+                        float baseWidth = side == 0 ? 0.3f : 0.15f;
+                        float halfWidth = baseWidth * Mathf.Pow(1 - v / top, 0.75f) * (1 + 0.6f * SmoothStep(0, 0.25f, v) * (1 - v / top)) + 0.004f;
                         float across = 1 - SmoothStep(0, halfWidth, Mathf.Abs(wavy - centre));
-                        body = Mathf.Max(body, across * (1 - SmoothStep(top * 0.6f, top, v)));
+                        body = Mathf.Max(body, across * (1 - SmoothStep(top * 0.55f, top, v)));
                     }
-                    body *= rise;
+                    body *= SmoothStep(0, 0.04f, v);    // Soft bottom edge
 
-                    float glow = Mathf.Clamp01((body + (n - 0.5f) * 0.9f * v * body) * 1.6f);
-                    float core = Mathf.Clamp01(Mathf.Clamp01((body - 0.4f) / 0.6f) * (1 - SmoothStep(0.05f, 0.45f, v)) * (0.7f + 0.6f * n));
-                    float flashDistance = u * u + (v - 0.08f) * 1.6f * (v - 0.08f) * 1.6f;
-                    float flash = Mathf.Exp(-flashDistance / 0.035f);
+                    float glow = Mathf.Clamp01((body + (n - 0.5f) * v * body + (n2 - 0.5f) * 0.4f * body) * 1.7f);
+                    float core = Mathf.Clamp01(Mathf.Clamp01((body - 0.35f) / 0.65f) * (1 - SmoothStep(0.02f, 0.42f, v)) * (0.75f + 0.5f * n));
+                    float flashDistance = u * u * 1.2f + (v - 0.06f) * 1.8f * (v - 0.06f) * 1.8f;
+                    float flash = Mathf.Exp(-flashDistance / 0.03f);
 
                     pixels[y * FrameWidth * FrameCount + frame * FrameWidth + x] = new Color32((byte)(glow * 255), (byte)(core * 255), (byte)(flash * 255), 255);
                 }

@@ -47,7 +47,7 @@ public class SongVideoBackground : MonoBehaviour
             PlayerPrefs.SetInt(PrefEnabled, value ? 1 : 0);
             PlayerPrefs.Save();
             if (instance)
-                instance.Reload();
+                instance.SetVisible(value);
         }
     }
 
@@ -102,12 +102,7 @@ public class SongVideoBackground : MonoBehaviour
     {
         Close();
 
-        if (!isEnabled)
-        {
-            status = "Song videos are off.";
-            return;
-        }
-
+        // The video is loaded even while the checkbox is off, so turning it on shows it straight away
         string path = FindVideo();
         if (path == null)
         {
@@ -168,10 +163,38 @@ public class SongVideoBackground : MonoBehaviour
     // The background was just set again (for example a new one picked in Settings), so put the video back in front
     public void ShowAgain()
     {
-        if (m_prepared && m_texture && CustomizationManager.instance)
+        if (m_prepared && m_texture && CustomizationManager.instance && isEnabled)
         {
             CustomizationManager.instance.ShowVideoBackground(m_texture, m_texture.width / (float)m_texture.height);
             m_shown = true;
+        }
+    }
+
+    // The checkbox: shows or hides the loaded video at once, at the right frame
+    void SetVisible(bool visible)
+    {
+        if (!m_player)
+        {
+            if (visible)
+                Reload();   // Nothing loaded yet, such as after a video that couldn't play
+            return;
+        }
+
+        if (visible)
+        {
+            Seek(TargetSeconds());
+            m_lastScrubTarget = double.NaN;
+            ShowAgain();
+            return;
+        }
+
+        if (m_player.isPlaying)
+            m_player.Pause();
+        if (m_shown)
+        {
+            m_shown = false;
+            if (CustomizationManager.instance)
+                CustomizationManager.instance.ApplyBackground();
         }
     }
 
@@ -187,13 +210,13 @@ public class SongVideoBackground : MonoBehaviour
         player.targetTexture = m_texture;
         m_prepared = true;
 
-        if (CustomizationManager.instance)
+        if (CustomizationManager.instance && isEnabled)
         {
             CustomizationManager.instance.ShowVideoBackground(m_texture, width / (float)height);
             m_shown = true;
         }
 
-        status = "Showing " + Path.GetFileName(m_path) + (m_startSeconds != 0 ? " (video_start_time " + Math.Round(m_startSeconds * 1000) + " ms)" : string.Empty) + ".";
+        status = (isEnabled ? "Showing " : "Ready to show ") + Path.GetFileName(m_path) + (m_startSeconds != 0 ? " (video_start_time " + Math.Round(m_startSeconds * 1000) + " ms)" : string.Empty) + ".";
         Seek(TargetSeconds());
     }
 
@@ -223,6 +246,13 @@ public class SongVideoBackground : MonoBehaviour
     {
         if (!m_prepared || !m_player || QuitState.isQuitting)
             return;
+
+        if (!isEnabled)
+        {
+            if (m_player.isPlaying)
+                m_player.Pause();   // Hidden: don't spend time decoding it
+            return;
+        }
 
         ChartEditor editor = ChartEditor.Instance;
         double target = TargetSeconds();
