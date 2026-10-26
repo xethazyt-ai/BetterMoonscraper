@@ -55,6 +55,7 @@ public static class UITheme
     public static void Apply()
     {
         Theme theme = current;
+        DarkTitleBar.Set(theme == Theme.Dark);
         if (theme == Theme.Default && s_applied == Theme.Default)
             return;     // Nothing has been changed, so there's nothing to put back
 

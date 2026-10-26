@@ -1,0 +1,43 @@
+// See LICENSE in project root for license information.
+
+using System;
+using System.Runtime.InteropServices;
+
+/// <summary>
+/// Turns the Windows title bar dark or light, to go with the Dark theme. Windows 10 (1809 and later) and 11 only;
+/// elsewhere it does nothing.
+/// </summary>
+public static class DarkTitleBar
+{
+    public static void Set(bool dark)
+    {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        try
+        {
+            IntPtr window = WindowFitOnLaunch.FindOwnWindow();
+            if (window == IntPtr.Zero)
+                return;
+
+            int value = dark ? 1 : 0;
+            // 20 on Windows 10 20H1 and later and Windows 11, 19 on the 1809-1909 builds
+            if (DwmSetWindowAttribute(window, DwmUseImmersiveDarkMode, ref value, sizeof(int)) != 0)
+                DwmSetWindowAttribute(window, DwmUseImmersiveDarkModeOld, ref value, sizeof(int));
+
+            // Redraw the frame so it changes now rather than on the next focus change
+            SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogWarning("Couldn't change the title bar: " + e.Message);
+        }
+#endif
+    }
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+    const int DwmUseImmersiveDarkMode = 20, DwmUseImmersiveDarkModeOld = 19;
+    const uint SwpNoSize = 0x1, SwpNoMove = 0x2, SwpNoZOrder = 0x4, SwpNoActivate = 0x10, SwpFrameChanged = 0x20;
+
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+#endif
+}

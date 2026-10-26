@@ -125,7 +125,7 @@ public class WindowFitOnLaunch : MonoBehaviour
     }
 
     // This process's Unity window
-    static IntPtr FindOwnWindow()
+    internal static IntPtr FindOwnWindow()
     {
         uint ourProcess = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
         IntPtr found = IntPtr.Zero;
