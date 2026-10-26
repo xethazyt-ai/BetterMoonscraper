@@ -12,6 +12,9 @@ public class SustainController : SelectableClick {
     ChartEditor editor;
 
     LineRenderer sustainRen;
+    LineRenderer m_starPowerOutline;    // A slightly wider copy behind the sustain in the color profile's Star Power color
+    const float StarPowerOutlineWidth = 1.35f;
+    bool m_starPowerOutlineWanted;
 
     // This is the data we use to track command pushing and popping when adjusting the length of sustains. 
     // We keep this static to minimise memory usage as there should only be one instance of dragging at a time (chord are handled as a single instance)
@@ -126,11 +129,6 @@ public class SustainController : SelectableClick {
                 sustainRen.sharedMaterial = resources.ghlSustainColours[nCon.note.rawNote];
             }
 
-            else if (CustomNoteColors.starPowerSustain && nCon.note.chart != null && NoteVisualsManager.IsStarpower(nCon.note) == Note.SpecialType.StarPower)
-            {
-                sustainRen.sharedMaterial = CustomNoteColors.starPowerSustain;     // The color profile's Star Power sustain
-            }
-
             else if (nCon.note.rawNote < customSkin.sustain_mats.Length)
             {
                 if (customSkin.sustain_mats[(int)nCon.note.guitarFret])
@@ -140,6 +138,67 @@ public class SustainController : SelectableClick {
                 else
                     sustainRen.sharedMaterial = resources.sustainColours[(int)nCon.note.guitarFret];
             }
+
+            UpdateStarPowerOutline();
+        }
+    }
+
+    // Star Power sustains keep the fret color, outlined in the profile's sustain_sp_phrase like the notes' star outline
+    void UpdateStarPowerOutline()
+    {
+        bool show = !Globals.ghLiveMode && CustomNoteColors.starPowerSustain && nCon.note != null && nCon.note.chart != null
+            && NoteVisualsManager.IsStarpower(nCon.note) == Note.SpecialType.StarPower;
+        m_starPowerOutlineWanted = show;
+
+        if (!show)
+        {
+            if (m_starPowerOutline)
+                m_starPowerOutline.enabled = false;
+            return;
+        }
+
+        if (!m_starPowerOutline)
+        {
+            GameObject outline = new GameObject("Star Power Outline");
+            outline.layer = gameObject.layer;
+            outline.transform.SetParent(transform, false);
+            m_starPowerOutline = outline.AddComponent<LineRenderer>();
+            m_starPowerOutline.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            m_starPowerOutline.receiveShadows = false;
+        }
+
+        m_starPowerOutline.enabled = sustainRen.enabled;
+        m_starPowerOutline.sharedMaterial = CustomNoteColors.starPowerSustain;
+        SyncStarPowerOutline();
+    }
+
+    void SyncStarPowerOutline()
+    {
+        LineRenderer outline = m_starPowerOutline;
+        outline.useWorldSpace = sustainRen.useWorldSpace;
+        outline.alignment = sustainRen.alignment;
+        outline.textureMode = sustainRen.textureMode;
+        outline.numCapVertices = sustainRen.numCapVertices;
+        outline.widthCurve = sustainRen.widthCurve;
+        outline.widthMultiplier = sustainRen.widthMultiplier * StarPowerOutlineWidth;
+        outline.sortingLayerID = sustainRen.sortingLayerID;
+        outline.sortingOrder = sustainRen.sortingOrder - 1;     // Behind, so only its edges show
+
+        int count = sustainRen.positionCount;
+        if (outline.positionCount != count)
+            outline.positionCount = count;
+        for (int i = 0; i < count; ++i)
+            outline.SetPosition(i, sustainRen.GetPosition(i));
+    }
+
+    void LateUpdate()
+    {
+        // Whammy bends the sustain and hits move it behind the note, every frame
+        if (m_starPowerOutlineWanted && m_starPowerOutline)
+        {
+            m_starPowerOutline.enabled = sustainRen.enabled;
+            if (sustainRen.enabled)
+                SyncStarPowerOutline();
         }
     }
 
