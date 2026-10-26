@@ -33,7 +33,7 @@ public class NoteFlames : MonoBehaviour
     {
         public GameObject gameObject;
         public MeshRenderer renderer;
-        public Vector3 basePosition;
+        public Vector3 basePosition;    // y is ignored: it follows the strikeline, which moves up the chart as the song plays
         public Color color;
         public float width;
         public float age;
@@ -153,6 +153,7 @@ public class NoteFlames : MonoBehaviour
 
         ChartEditor editor = ChartEditor.Instance;
         float laneSpacing = LaneSpacing(editor);
+        m_layer = note.controller.gameObject.layer;
         Vector3 position = note.controller.transform.position;
         position.y = editor.visibleStrikeline.position.y + laneSpacing * LiftLanes;
         // z stays the note's own: the strikeline object sits nearer the camera, which put the flames below the strikers
@@ -193,6 +194,7 @@ public class NoteFlames : MonoBehaviour
             return;
 
         flame.basePosition = position;
+        flame.gameObject.layer = m_layer;
         flame.color = color;
         flame.width = laneSpacing * 0.95f * scale * (held ? 0.7f : 1);
         flame.age = 0;
@@ -261,7 +263,12 @@ public class NoteFlames : MonoBehaviour
         float sizeScale = sizePercent / 100f;
         Vector3 size = new Vector3(flame.width * width * sizeScale, flame.width * height * sizeScale, 1);
         transform.localScale = size;
-        transform.position = flame.basePosition + camera.transform.up * (size.y * 0.42f);    // Rises from the strikeline
+        // Stays on its fret: the strikeline (and the camera with it) moves up the chart while the song plays
+        Vector3 basePosition = flame.basePosition;
+        ChartEditor editor = ChartEditor.Instance;
+        if (editor && editor.visibleStrikeline)
+            basePosition.y = editor.visibleStrikeline.position.y + LaneSpacing(editor) * LiftLanes;
+        transform.position = basePosition + camera.transform.up * (size.y * 0.42f);    // Rises from the fret
 
         Color color = flame.color;
         color.a = brightness;
@@ -293,7 +300,7 @@ public class NoteFlames : MonoBehaviour
         }
 
         GameObject gameObject = new GameObject("Note Flame");
-        gameObject.layer = 0;   // Drawn by the highway's cameras
+        gameObject.layer = m_layer;     // The notes' layer, set again on each spawn
         gameObject.transform.SetParent(transform, false);
         gameObject.AddComponent<MeshFilter>().sharedMesh = m_quad;
         MeshRenderer renderer = gameObject.AddComponent<MeshRenderer>();
@@ -340,17 +347,19 @@ public class NoteFlames : MonoBehaviour
     }
 
     Camera m_camera;
+    int m_layer = 0;
 
-    // The camera drawing the highway: the 3D one, or the 2D one in 2D mode
+    // The camera that draws the notes, which draws the flames too (on the notes' layer), so they go over the notes
+    // and frets rather than under a camera drawn after them
     Camera FindCamera()
     {
-        if (m_camera && m_camera.isActiveAndEnabled)
+        if (m_camera && m_camera.isActiveAndEnabled && (m_camera.cullingMask & (1 << m_layer)) != 0)
             return m_camera;
 
         m_camera = null;
         foreach (Camera camera in Camera.allCameras)
         {
-            if ((camera.cullingMask & 1) != 0 && camera.isActiveAndEnabled && (m_camera == null || camera.depth < m_camera.depth))
+            if ((camera.cullingMask & (1 << m_layer)) != 0 && camera.isActiveAndEnabled && (m_camera == null || camera.depth > m_camera.depth))
                 m_camera = camera;
         }
         return m_camera;
