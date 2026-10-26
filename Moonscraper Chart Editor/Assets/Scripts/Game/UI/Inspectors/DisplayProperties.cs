@@ -74,7 +74,6 @@ public class DisplayProperties : UpdateableService
     const int GemSizeStep = 5;  // percent
     Text highwayTransparencyLabel;
     const int HighwayTransparencyStep = 5;  // percent
-    Text flameSizeLabel;
     const int FlameSizeStep = 5;            // percent
 
     // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
@@ -118,7 +117,8 @@ public class DisplayProperties : UpdateableService
         float gemSizeRow = AddGemSizeSlider();
         float transparencyRow = AddHighwayTransparencySlider(gemSizeRow);
         float flameSizeRow = AddFlameSizeSlider(gemSizeRow, gemSizeRow + transparencyRow);
-        AddSpeedToggles(gemSizeRow + transparencyRow + flameSizeRow);
+        float flameSpeedRow = AddFlameSpeedSlider(gemSizeRow, gemSizeRow + transparencyRow + flameSizeRow);
+        AddSpeedToggles(gemSizeRow + transparencyRow + flameSizeRow + flameSpeedRow);
         HighwayTransparency.Apply();
 
         UpdateGameSpeedText();
@@ -502,43 +502,50 @@ public class DisplayProperties : UpdateableService
     // "Flame Size", under Highway Transparency (above, how far the sliders before it reach below Highway Length)
     float AddFlameSizeSlider(float rowStep, float above)
     {
+        return AddPercentSlider("Flame Size", rowStep, above, NoteFlames.MinSizePercent, NoteFlames.MaxSizePercent,
+            () => NoteFlames.sizePercent, (percent) => NoteFlames.sizePercent = percent);
+    }
+
+    // "Flame Speed", under Flame Size: how fast the flames flicker and how quickly a hit's flame burns out
+    float AddFlameSpeedSlider(float rowStep, float above)
+    {
+        return AddPercentSlider("Flame Speed", rowStep, above, NoteFlames.MinSpeedPercent, NoteFlames.MaxSpeedPercent,
+            () => NoteFlames.speedPercent, (percent) => NoteFlames.speedPercent = percent);
+    }
+
+    // A "<name>- N%" label and slider in 5% steps, copied from Highway Length's and placed `above` + rowStep below it
+    float AddPercentSlider(string name, float rowStep, float above, int min, int max, System.Func<int> get, System.Action<int> set)
+    {
         RectTransform content = clapToggle.transform.parent as RectTransform;
         if (!content || !highwayLengthLabel || rowStep <= 0)
             return 0;
 
         float drop = above + rowStep;
 
-        flameSizeLabel = Instantiate(highwayLengthLabel, highwayLengthLabel.transform.parent);
-        flameSizeLabel.name = "Flame Size Text";
-        MoveDown(flameSizeLabel.transform, content, drop);
+        Text label = Instantiate(highwayLengthLabel, highwayLengthLabel.transform.parent);
+        label.name = name + " Text";
+        label.horizontalOverflow = HorizontalWrapMode.Overflow;
+        MoveDown(label.transform, content, drop);
+        System.Action updateText = () => label.text = string.Format("{0}- {1}%", name, get());
 
         Slider slider = Instantiate(highwayLengthSlider, highwayLengthSlider.transform.parent);
-        slider.name = "Flame Size Slider";
+        slider.name = name + " Slider";
         slider.onValueChanged = new Slider.SliderEvent();
         slider.wholeNumbers = true;
-        slider.minValue = NoteFlames.MinSizePercent / FlameSizeStep;
-        slider.maxValue = NoteFlames.MaxSizePercent / FlameSizeStep;
-        slider.value = NoteFlames.sizePercent / FlameSizeStep;
+        slider.minValue = min / FlameSizeStep;
+        slider.maxValue = max / FlameSizeStep;
+        slider.value = get() / FlameSizeStep;
         slider.interactable = true;
         slider.onValueChanged.AddListener((value) =>
         {
-            NoteFlames.sizePercent = Mathf.RoundToInt(value) * FlameSizeStep;
-            UpdateFlameSizeText();
+            set(Mathf.RoundToInt(value) * FlameSizeStep);
+            updateText();
         });
         MoveDown(slider.transform, content, drop);
 
-        UpdateFlameSizeText();
+        updateText();
         content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + rowStep);
         return rowStep;
-    }
-
-    void UpdateFlameSizeText()
-    {
-        if (!flameSizeLabel)
-            return;
-
-        flameSizeLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
-        flameSizeLabel.text = string.Format("Flame Size- {0}%", NoteFlames.sizePercent);
     }
 
     void UpdateHighwayTransparencyText()

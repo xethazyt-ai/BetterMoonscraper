@@ -14,6 +14,8 @@ public class NoteFlames : MonoBehaviour
     const string PrefEnabled = "Display.NoteFlames";
     const string PrefSize = "Display.NoteFlameSizePercent";
     public const int MinSizePercent = 25, MaxSizePercent = 200;
+    const string PrefSpeed = "Display.NoteFlameSpeedPercent";
+    public const int MinSpeedPercent = 25, MaxSpeedPercent = 300;
 
     // Clone Hero's own colors, for when no color profile is picked or it leaves these out
     static readonly Color DefaultFlame = new Color32(0xFF, 0xB7, 0x6D, 0xFF);
@@ -46,6 +48,26 @@ public class NoteFlames : MonoBehaviour
     static NoteFlames s_instance;
     static bool? s_enabled;
     static int? s_sizePercent;
+    static int? s_speedPercent;
+
+    /// <summary>
+    /// How fast the flames flicker and a hit's flame burns out, from the Flame Speed slider
+    /// </summary>
+    public static int speedPercent
+    {
+        get
+        {
+            if (!s_speedPercent.HasValue)
+                s_speedPercent = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpeed, 100), MinSpeedPercent, MaxSpeedPercent);
+            return s_speedPercent.Value;
+        }
+        set
+        {
+            s_speedPercent = Mathf.Clamp(value, MinSpeedPercent, MaxSpeedPercent);
+            PlayerPrefs.SetInt(PrefSpeed, s_speedPercent.Value);
+            PlayerPrefs.Save();
+        }
+    }
 
     /// <summary>
     /// How big the flames are, from the Flame Size slider
@@ -216,13 +238,16 @@ public class NoteFlames : MonoBehaviour
 
         bool playing = ChartEditor.Instance && ChartEditor.Instance.currentState == ChartEditor.State.Playing;
         float delta = Time.deltaTime;
+        m_animationClock += delta * animationSpeed;
+        if (m_animationClock > 3600)
+            m_animationClock -= 3600;     // Keeps float precision over long sessions
 
         foreach (Flame flame in m_flames)
         {
             if (!flame.active)
                 continue;
 
-            flame.age += delta;
+            flame.age += flame.held ? delta : delta * animationSpeed;     // A held flame lasts as long as the sustain asks
             if (!playing || flame.age >= flame.life)
             {
                 flame.gameObject.SetActive(false);
@@ -272,7 +297,7 @@ public class NoteFlames : MonoBehaviour
 
         Color color = flame.color;
         color.a = brightness;
-        int frame = (int)(Time.time * FramesPerSecond + flame.seed) % FrameCount;
+        int frame = (int)(m_animationClock * FramesPerSecond + flame.seed) % FrameCount;
         m_properties.SetColor("_Color", color);
         m_properties.SetFloat("_Flash", flash);
         m_properties.SetVector("_MainTex_ST", new Vector4(1f / FrameCount, 1, frame / (float)FrameCount, 0));
@@ -345,6 +370,9 @@ public class NoteFlames : MonoBehaviour
             return 1;
         return Mathf.Abs(laneInfo.GetLanePosition(1, false) - laneInfo.GetLanePosition(0, false));
     }
+
+    float m_animationClock;
+    static float animationSpeed { get { return speedPercent / 100f; } }
 
     Camera m_camera;
     int m_layer = 0;
