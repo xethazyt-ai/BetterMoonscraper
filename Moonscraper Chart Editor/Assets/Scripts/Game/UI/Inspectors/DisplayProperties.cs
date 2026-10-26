@@ -309,17 +309,34 @@ public class DisplayProperties : UpdateableService
 
     void OnApplicationModeChanged(in ChartEditor.State editorState)
     {
-        bool interactable = (editorState != ChartEditor.State.Playing);
-        hyperspeedSlider.interactable = interactable;
-        gameSpeedSlider.interactable = interactable;
-        highwayLengthSlider.interactable = interactable;
+        // Moonscraper locked these while playing; they now change the preview as it plays
+        hyperspeedSlider.interactable = true;
+        gameSpeedSlider.interactable = true;
+        highwayLengthSlider.interactable = true;
     }
 
     public void SetHyperspeed(float value)
     {
+        float playTime = PlayTime();
         Globals.gameSettings.hyperspeed.value = value;
         UpdateHyperspeedText();
         editor.events.hyperspeedChangeEvent.Fire();
+        KeepPlayTime(playTime);
+    }
+
+    // While previewing, the song's place is kept as a height up the highway, which changes meaning when the note
+    // spacing does, so it's read before a change and put back after
+    float PlayTime()
+    {
+        if (editor.currentState != ChartEditor.State.Playing || !editor.movement)
+            return float.NaN;
+        return ChartEditor.WorldYPositionToTime(editor.movement.transform.position.y - editor.movement.initPos.y);
+    }
+
+    void KeepPlayTime(float playTime)
+    {
+        if (!float.IsNaN(playTime) && editor.currentState == ChartEditor.State.Playing && editor.movement)
+            editor.movement.SetTime(playTime);
     }
 
     void UpdateHyperspeedText()
@@ -345,10 +362,15 @@ public class DisplayProperties : UpdateableService
     public void SetGameSpeed(float value)
     {
         value = Mathf.Round(value / 5.0f) * 5;
+        float playTime = PlayTime();
+        bool changed = !Mathf.Approximately(Globals.gameSettings.gameSpeed, value / 100.0f);
         Globals.gameSettings.gameSpeed = value / 100.0f;
         UpdateGameSpeedText();
 
         editor.events.hyperspeedChangeEvent.Fire();
+        KeepPlayTime(playTime);
+        if (changed)
+            editor.RefreshPlayingAudio();   // The audio plays at the new speed straight away
     }
 
     void UpdateGameSpeedText()
@@ -388,8 +410,10 @@ public class DisplayProperties : UpdateableService
         });
         MakeSpeedToggle("Non-Spaced Notes for Slowdown:", y - 30, SpeedOptions.nonSpacedSlowdown, (on) =>
         {
+            float playTime = PlayTime();
             SpeedOptions.nonSpacedSlowdown = on;
             editor.events.hyperspeedChangeEvent.Fire();
+            KeepPlayTime(playTime);
         });
         MakeSpeedToggle("Note Flames:", y - 64, NoteFlames.isEnabled, (on) => NoteFlames.isEnabled = on);
         MakeSpeedToggle("Song Video:", y - 98, SongVideoBackground.isEnabled, (on) =>
