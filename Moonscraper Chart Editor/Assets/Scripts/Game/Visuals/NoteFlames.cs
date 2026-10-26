@@ -332,7 +332,12 @@ public class NoteFlames : MonoBehaviour
         renderer.sharedMaterial = m_material;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         renderer.receiveShadows = false;
-        renderer.sortingOrder = 1000;   // In front of the strikers and notes
+        // In front of the strikers, notes and sustains: on the last sorting layer (sustains have their own, after the
+        // default one, so an open sustain across the highway was drawn over the flames)
+        SortingLayer[] sortingLayers = SortingLayer.layers;
+        if (sortingLayers.Length > 0)
+            renderer.sortingLayerID = sortingLayers[sortingLayers.Length - 1].id;
+        renderer.sortingOrder = 1000;
         gameObject.SetActive(false);
 
         Flame created = new Flame { gameObject = gameObject, renderer = renderer };
