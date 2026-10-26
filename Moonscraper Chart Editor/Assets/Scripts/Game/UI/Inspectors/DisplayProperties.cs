@@ -371,7 +371,7 @@ public class DisplayProperties : UpdateableService
         editor.events.hyperspeedChangeEvent.Fire();
     }
 
-    // "Pitched Speedups", "Non-Spaced Notes for Slowdown" and "Note Flames", under the Gem Size and Highway Transparency sliders
+    // "Pitched Speedups", "Non-Spaced Notes for Slowdown", "Note Flames" and "Song Video", under the Gem Size and Highway Transparency sliders
     // (slidersHeight below the highway length slider), copied from the Clap row
     void AddSpeedToggles(float slidersHeight)
     {
@@ -388,8 +388,9 @@ public class DisplayProperties : UpdateableService
             editor.events.hyperspeedChangeEvent.Fire();
         });
         MakeSpeedToggle("Note Flames:", y - 64, NoteFlames.isEnabled, (on) => NoteFlames.isEnabled = on);
+        MakeSpeedToggle("Song Video:", y - 98, SongVideoBackground.isEnabled, (on) => SongVideoBackground.isEnabled = on);
 
-        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 119);
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 153);
     }
 
     // "Gem Size", right under Highway Length, copied from its label and slider. Returns how far down it went.
