@@ -35,6 +35,8 @@ public class SongPropertiesFormatBar : MonoBehaviour
         public Text overlay;            // Draws the formatted text over the field while it isn't being typed in
         public Color textColor;
         public string shown;
+        public float shownWidth;
+        public bool overflows;
     }
     readonly Dictionary<InputField, Formatted> m_formatted = new Dictionary<InputField, Formatted>();
 
@@ -163,6 +165,14 @@ public class SongPropertiesFormatBar : MonoBehaviour
         formatted.overlay.horizontalOverflow = HorizontalWrapMode.Overflow;
         formatted.overlay.verticalOverflow = VerticalWrapMode.Overflow;
         formatted.overlay.enabled = false;
+
+        // Shrunk from its left edge when the text is wider than the box, so a long name still shows in full
+        RectTransform rect = formatted.overlay.rectTransform;
+        Vector2 offsetMin = rect.offsetMin, offsetMax = rect.offsetMax;
+        rect.pivot = new Vector2(0, 0.5f);
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
+
         if (!field.GetComponent<RectMask2D>())
             field.gameObject.AddComponent<RectMask2D>();    // Long or big text stays inside the box
     }
@@ -173,14 +183,22 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (!m_formatted.TryGetValue(field, out formatted) || !formatted.overlay)
             return;
 
-        bool show = !field.isFocused && RichTextIni.HasTags(formatted.tagged);
-        if (show && formatted.shown != formatted.tagged)
+        RectTransform rect = formatted.overlay.rectTransform;
+        float width = rect.rect.width;
+        if (formatted.shown != formatted.tagged || formatted.shownWidth != width)
         {
             formatted.shown = formatted.tagged;
+            formatted.shownWidth = width;
             int size = formatted.overlay.fontSize;
             formatted.overlay.text = RichTextIni.ToPreview(formatted.tagged, size, size * 3 / 2);
+            float needed = formatted.overlay.preferredWidth;
+            formatted.overflows = width > 0 && needed > width;
+            float scale = formatted.overflows ? width / needed : 1;
+            rect.localScale = new Vector3(scale, scale, 1);
         }
 
+        // Plain text that fits is left to the field itself
+        bool show = !field.isFocused && (formatted.overflows || RichTextIni.HasTags(formatted.tagged));
         if (formatted.overlay.enabled != show)
         {
             formatted.overlay.enabled = show;

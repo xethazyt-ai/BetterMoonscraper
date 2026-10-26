@@ -78,7 +78,11 @@ public class DuetChat : MonoBehaviour
     void Update()
     {
         bool canUseKeys = isInSession && !m_writing && m_editor.currentState == ChartEditor.State.Editor && !Services.IsTyping;
-        if (canUseKeys && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetHideChat))
+
+        // Hiding works while previewing with Space too, like the Collab and Pattern Blueprints windows
+        bool canHide = isInSession && !m_writing && !Services.IsTyping
+            && (m_editor.currentState == ChartEditor.State.Editor || m_editor.currentState == ChartEditor.State.Playing);
+        if (canHide && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetHideChat))
             SetHidden(!m_hidden);
 
         // The chat key brings a hidden chat back, ready to write

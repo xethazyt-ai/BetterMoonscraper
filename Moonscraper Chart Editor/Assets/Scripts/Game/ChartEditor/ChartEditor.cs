@@ -941,6 +941,11 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     {
         isLoadingCollaborationSong = true;
 
+        // Someone previewing with Space when the host opens another chart: stop playing first, as opening a chart
+        // yourself would, rather than freeing the audio out from under the preview
+        if (currentState == State.Playing)
+            Stop();
+
         Song.Instrument instrument = MenuBar.currentInstrument;
         Song.Difficulty difficulty = MenuBar.currentDifficulty;
         uint tick = currentTickPos;
@@ -1326,6 +1331,9 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     public void ReloadAudio()
     {
         Debug.Log("Reloading audio");
+
+        if (currentState == State.Playing)
+            Stop();     // The audio being played is about to be freed
 
         LoadingTasksManager tasksManager = services.loadingTasksManager;
 

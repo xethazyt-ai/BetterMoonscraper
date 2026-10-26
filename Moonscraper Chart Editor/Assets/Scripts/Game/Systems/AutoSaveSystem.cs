@@ -20,9 +20,25 @@ public class AutoSaveSystem : SystemManagerState.System
     float chartAutosaveTimer = 0;
     bool chartAutosaving = false;     // Waiting for the save to finish, to say so
 
+    // Off for someone new. Anyone who already used a build with chart autosave on (it used to start at 2 minutes) keeps it.
+    static readonly string[] s_signsOfEarlierUse =
+    {
+        "Duet.Username", "Duet.Address", "Duet.UseRooms", "Display.GemSizePercent", "Speed.NonSpacedSlowdown",
+        "Export.SpeedSuffix", "Customize.CloneHeroFolder", "Customize.ColorProfile.Source", "Customize.Highway.Source",
+    };
+
     public static int chartAutosaveMinutes
     {
-        get { return Mathf.Max(0, PlayerPrefs.GetInt(PrefChartMinutes, 2)); }
+        get
+        {
+            if (!PlayerPrefs.HasKey(PrefChartMinutes))
+            {
+                bool usedBefore = System.Array.Exists(s_signsOfEarlierUse, PlayerPrefs.HasKey);
+                PlayerPrefs.SetInt(PrefChartMinutes, usedBefore ? 2 : 0);
+                PlayerPrefs.Save();
+            }
+            return Mathf.Max(0, PlayerPrefs.GetInt(PrefChartMinutes, 0));
+        }
         set { PlayerPrefs.SetInt(PrefChartMinutes, Mathf.Max(0, value)); PlayerPrefs.Save(); }
     }
 
