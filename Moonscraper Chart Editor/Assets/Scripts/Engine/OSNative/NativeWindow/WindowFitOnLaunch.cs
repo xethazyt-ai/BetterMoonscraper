@@ -53,6 +53,64 @@ public class WindowFitOnLaunch : MonoBehaviour
         GameObject runner = new GameObject("Window Fit On Launch");
         DontDestroyOnLoad(runner);
         runner.AddComponent<WindowFitOnLaunch>();
+        Application.quitting += RememberLaunchSize;
+    }
+
+    // Unity opens the window (and shows its splash screen) at the size it saved when it last closed, which is the whole
+    // screen after being maximised. Once BetterMoonscraper has closed and Unity has saved, a hidden PowerShell puts
+    // the 16:9 size in its place, so the next launch opens at that size straight away.
+    static void RememberLaunchSize()
+    {
+        try
+        {
+            int width, height;
+            IntPtr window = FindOwnWindow();
+            if (window == IntPtr.Zero || !GetLaunchSize(window, out width, out height))
+                return;
+
+            string key = @"HKCU:\Software\" + Application.companyName + @"\" + Application.productName;
+            string script = string.Format(
+                "Wait-Process -Id {0} -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 300; " +
+                "$k = '{1}'; if (Test-Path $k) {{ $p = Get-ItemProperty $k; foreach ($n in $p.PSObject.Properties.Name) {{ " +
+                "if ($n -like 'Screenmanager Resolution Width*') {{ Set-ItemProperty $k $n {2} -Type DWord }} " +
+                "elseif ($n -like 'Screenmanager Resolution Height*') {{ Set-ItemProperty $k $n {3} -Type DWord }} " +
+                "elseif ($n -like 'Screenmanager Resolution Use Native*') {{ Set-ItemProperty $k $n 0 -Type DWord }} " +
+                "elseif ($n -like 'Screenmanager Fullscreen mode*') {{ Set-ItemProperty $k $n 3 -Type DWord }} " +
+                "elseif ($n -like 'Screenmanager Is Fullscreen mode*') {{ Set-ItemProperty $k $n 0 -Type DWord }} }} }}",
+                System.Diagnostics.Process.GetCurrentProcess().Id, key.Replace("'", "''"), width, height);
+
+            System.Diagnostics.ProcessStartInfo info = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"" + script.Replace("\"", "\\\"") + "\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            System.Diagnostics.Process.Start(info);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Couldn't save the launch window size. " + e.Message);
+        }
+    }
+
+    // 16:9, three quarters of the free height of the screen the window is on
+    static bool GetLaunchSize(IntPtr window, out int width, out int height)
+    {
+        width = height = 0;
+        MONITORINFO monitor = new MONITORINFO();
+        monitor.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+        if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), ref monitor))
+            return false;
+
+        int workWidth = monitor.rcWork.right - monitor.rcWork.left, workHeight = monitor.rcWork.bottom - monitor.rcWork.top;
+        height = Mathf.RoundToInt(workHeight * LaunchHeightOfScreen);
+        width = Mathf.RoundToInt(height * 16f / 9f);
+        if (width > workWidth * 0.9f)
+        {
+            width = Mathf.RoundToInt(workWidth * 0.9f);
+            height = Mathf.RoundToInt(width * 9f / 16f);
+        }
+        return width > 0 && height > 0;
     }
 
     IEnumerator Start()
@@ -89,19 +147,9 @@ public class WindowFitOnLaunch : MonoBehaviour
             if (window == IntPtr.Zero || IsZoomed(window))
                 return false;
 
-            MONITORINFO monitor = new MONITORINFO();
-            monitor.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
-            if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), ref monitor))
+            int width, height;
+            if (!GetLaunchSize(window, out width, out height))
                 return false;
-
-            int workWidth = monitor.rcWork.right - monitor.rcWork.left, workHeight = monitor.rcWork.bottom - monitor.rcWork.top;
-            int height = Mathf.RoundToInt(workHeight * LaunchHeightOfScreen);
-            int width = Mathf.RoundToInt(height * 16f / 9f);
-            if (width > workWidth * 0.9f)
-            {
-                width = Mathf.RoundToInt(workWidth * 0.9f);
-                height = Mathf.RoundToInt(width * 9f / 16f);
-            }
 
             Debug.Log(string.Format("Window fit: launch size {0}x{1} (was {2}x{3})", width, height, Screen.width, Screen.height));
             if (Mathf.Abs(Screen.width - width) <= 2 && Mathf.Abs(Screen.height - height) <= 2)
