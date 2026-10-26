@@ -40,6 +40,7 @@ public class WindowFitOnLaunch : MonoBehaviour
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int count);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
@@ -72,8 +73,8 @@ public class WindowFitOnLaunch : MonoBehaviour
             string script = string.Format(
                 "Wait-Process -Id {0} -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 300; " +
                 "$k = '{1}'; if (Test-Path $k) {{ $p = Get-ItemProperty $k; foreach ($n in $p.PSObject.Properties.Name) {{ " +
-                "if ($n -like 'Screenmanager Resolution Width*') {{ Set-ItemProperty $k $n {2} -Type DWord }} " +
-                "elseif ($n -like 'Screenmanager Resolution Height*') {{ Set-ItemProperty $k $n {3} -Type DWord }} " +
+                "if ($n -like 'Screenmanager Resolution Width*' -or $n -like 'Screenmanager Resolution Window Width*') {{ Set-ItemProperty $k $n {2} -Type DWord }} " +
+                "elseif ($n -like 'Screenmanager Resolution Height*' -or $n -like 'Screenmanager Resolution Window Height*') {{ Set-ItemProperty $k $n {3} -Type DWord }} " +
                 "elseif ($n -like 'Screenmanager Resolution Use Native*') {{ Set-ItemProperty $k $n 0 -Type DWord }} " +
                 "elseif ($n -like 'Screenmanager Fullscreen mode*') {{ Set-ItemProperty $k $n 3 -Type DWord }} " +
                 "elseif ($n -like 'Screenmanager Is Fullscreen mode*') {{ Set-ItemProperty $k $n 0 -Type DWord }} }} }}",
@@ -130,7 +131,76 @@ public class WindowFitOnLaunch : MonoBehaviour
         yield return new WaitForSecondsRealtime(1.5f);
         TryFitWindow();
 
-        Destroy(gameObject);
+        // Keeps running, to catch the window coming back from maximised at nearly the whole screen's size
+        m_window = FindOwnWindow();
+        m_wasZoomed = m_window != IntPtr.Zero && IsZoomed(m_window);
+        m_watching = true;
+    }
+
+    IntPtr m_window;
+    bool m_watching, m_wasZoomed;
+    float m_nextCheck;
+
+    void Update()
+    {
+        if (!m_watching || m_window == IntPtr.Zero || Time.unscaledTime < m_nextCheck)
+            return;
+        m_nextCheck = Time.unscaledTime + 0.2f;
+
+        try
+        {
+            bool zoomed = IsZoomed(m_window);
+            if (m_wasZoomed && !zoomed && !Screen.fullScreen && IsNearlyWholeScreen(m_window))
+            {
+                Debug.Log("Window fit: back from maximised at the whole screen's size, so back to the launch size");
+                ResizeToLaunchSize(m_window);
+            }
+            m_wasZoomed = zoomed;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Couldn't watch the window size. " + e.Message);
+            m_watching = false;
+        }
+    }
+
+    static bool IsNearlyWholeScreen(IntPtr window)
+    {
+        RECT rect;
+        MONITORINFO monitor = new MONITORINFO();
+        monitor.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+        if (!GetWindowRect(window, out rect) || !GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), ref monitor))
+            return false;
+        RECT work = monitor.rcWork;
+        return rect.right - rect.left > (work.right - work.left) * 0.9f || rect.bottom - rect.top > (work.bottom - work.top) * 0.9f;
+    }
+
+    // Sizes the inside of the window to the launch size and centres it in the screen's free area, with Windows itself
+    // (Unity's Screen.SetResolution doesn't always resize a window that isn't fullscreen)
+    static bool ResizeToLaunchSize(IntPtr window)
+    {
+        int width, height;
+        RECT rect, client, visible;
+        MONITORINFO monitor = new MONITORINFO();
+        monitor.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+        if (!GetLaunchSize(window, out width, out height) || !GetWindowRect(window, out rect) || !GetClientRect(window, out client)
+            || !GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), ref monitor))
+            return false;
+        if (DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS, out visible, Marshal.SizeOf(typeof(RECT))) != 0)
+            visible = rect;
+
+        // The frame around the inside (title bar, borders), and the invisible resize border outside what's seen
+        int outerWidth = width + (rect.right - rect.left) - (client.right - client.left);
+        int outerHeight = height + (rect.bottom - rect.top) - (client.bottom - client.top);
+        int insetLeft = visible.left - rect.left, insetTop = visible.top - rect.top;
+        int insetRight = rect.right - visible.right, insetBottom = rect.bottom - visible.bottom;
+        int seenWidth = outerWidth - insetLeft - insetRight, seenHeight = outerHeight - insetTop - insetBottom;
+
+        RECT work = monitor.rcWork;
+        int x = work.left + (work.right - work.left - seenWidth) / 2 - insetLeft;
+        int y = work.top + Math.Max(0, (work.bottom - work.top - seenHeight) / 2) - insetTop;
+        Debug.Log(string.Format("Window fit: resizing to {0}x{1} inside, at {2},{3}", width, height, x, y));
+        return SetWindowPos(window, IntPtr.Zero, x, y, outerWidth, outerHeight, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     const float LaunchHeightOfScreen = 0.75f;
@@ -152,9 +222,7 @@ public class WindowFitOnLaunch : MonoBehaviour
                 return false;
 
             Debug.Log(string.Format("Window fit: launch size {0}x{1} (was {2}x{3})", width, height, Screen.width, Screen.height));
-            if (Mathf.Abs(Screen.width - width) <= 2 && Mathf.Abs(Screen.height - height) <= 2)
-                return true;   // Already that size, just centre it
-            Screen.SetResolution(width, height, FullScreenMode.Windowed);
+            ResizeToLaunchSize(window);
             return true;
         }
         catch (Exception e)
