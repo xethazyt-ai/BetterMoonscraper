@@ -20,6 +20,11 @@ public static class CustomNoteColors
     static readonly Dictionary<Chart.GameMode, Color[]> s_laneColors = new Dictionary<Chart.GameMode, Color[]>();
     static readonly List<Material> s_createdMaterials = new List<Material>();
 
+    // Star Power: notes and sustains inside a Star Power phrase, like Clone Hero's note_sp_phrase and sustain_sp_phrase
+    static readonly Dictionary<Chart.GameMode, Color[]> s_starPowerColors = new Dictionary<Chart.GameMode, Color[]>();     // 0 note, 1 cymbal
+    static readonly Dictionary<Chart.GameMode, Dictionary<Material, Material>> s_starPowerSwapsByMode = new Dictionary<Chart.GameMode, Dictionary<Material, Material>>();
+    static Material s_starPowerSustain;
+
     static Material[] s_originalSustains;
     static bool s_sustainsReplaced = false;
 
@@ -118,12 +123,89 @@ public static class CustomNoteColors
         });
 
         ApplySustains(profile);
+        ApplyStarPower(profile);
     }
+
+    static void ApplyStarPower(CloneHeroColorProfile profile)
+    {
+        AddStarPowerColors(Chart.GameMode.Guitar, profile, new[] { "guitar", "note_sp_phrase" }, null);
+        AddStarPowerColors(Chart.GameMode.Drums, profile, new[] { "drums", "tom_sp_phrase" }, new[] { "drums", "cym_sp_phrase" });
+        AddStarPowerColors(Chart.GameMode.GHLGuitar, profile, new[] { "sixfret", "sf_note_sp_phrase" }, null);
+
+        SustainResources sustainResources = FindAsset<SustainResources>();
+        Color color;
+        if (sustainResources && sustainResources.sustainColours.Length > 0 && sustainResources.sustainColours[0]
+            && TryGet(profile, new[] { "guitar", "sustain_sp_phrase" }, out color))
+        {
+            Material template = sustainResources.sustainColours[0];
+            s_starPowerSustain = new Material(template);
+            s_starPowerSustain.name = "Star Power sustain (color profile)";
+            color.a = template.GetColor("_Color").a;
+            s_starPowerSustain.SetColor("_Color", color);
+            s_createdMaterials.Add(s_starPowerSustain);
+        }
+    }
+
+    static void AddStarPowerColors(Chart.GameMode gameMode, CloneHeroColorProfile profile, string[] noteKey, string[] cymbalKey)
+    {
+        Color note;
+        if (!TryGet(profile, noteKey, out note))
+            return;
+
+        Color cymbal;
+        if (cymbalKey == null || !TryGet(profile, cymbalKey, out cymbal))
+            cymbal = note;
+
+        s_starPowerColors[gameMode] = new[] { note, cymbal };
+    }
+
+    /// <summary>
+    /// The color material for a note in a Star Power phrase: the note's own material in the profile's Star Power color,
+    /// or the material unchanged when the profile has none
+    /// </summary>
+    public static Material StarPower(Chart.GameMode gameMode, Material material, bool isCymbal)
+    {
+        Color[] colors;
+        if (!material || !s_starPowerColors.TryGetValue(gameMode, out colors))
+            return material;
+
+        Dictionary<Material, Material> swaps;
+        if (!s_starPowerSwapsByMode.TryGetValue(gameMode, out swaps))
+        {
+            swaps = new Dictionary<Material, Material>();
+            s_starPowerSwapsByMode[gameMode] = swaps;
+        }
+
+        Material recolored;
+        if (swaps.TryGetValue(material, out recolored) && recolored)
+            return recolored;
+
+        recolored = new Material(material);
+        recolored.name = material.name + " (Star Power)";
+        if (material.HasProperty("_Color"))
+        {
+            Color color = colors[isCymbal ? 1 : 0];
+            color.a = material.GetColor("_Color").a;     // Taps and cymbals stay see-through
+            recolored.SetColor("_Color", color);
+        }
+
+        s_createdMaterials.Add(recolored);
+        swaps[material] = recolored;
+        return recolored;
+    }
+
+    /// <summary>
+    /// The sustain material for a note in a Star Power phrase, or null to use the fret's own
+    /// </summary>
+    public static Material starPowerSustain { get { return s_starPowerSustain; } }
 
     public static void Clear()
     {
         s_swaps.Clear();
         s_laneColors.Clear();
+        s_starPowerColors.Clear();
+        s_starPowerSwapsByMode.Clear();
+        s_starPowerSustain = null;
 
         foreach (Material material in s_createdMaterials)
         {

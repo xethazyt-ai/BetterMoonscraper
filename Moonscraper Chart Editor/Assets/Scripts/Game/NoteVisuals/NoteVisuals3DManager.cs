@@ -85,6 +85,8 @@ public class NoteVisuals3DManager : NoteVisualsManager
                 }
 
                 materials[2] = CustomNoteColors.Swap(gameMode, resources.openMaterials[colourIndex]);
+                if (specialType == Note.SpecialType.StarPower && !isTool)
+                    materials[2] = CustomNoteColors.StarPower(gameMode, materials[2], false);
             }
             else
             {
@@ -140,6 +142,9 @@ public class NoteVisuals3DManager : NoteVisualsManager
                             }
                     }
                 }
+
+                if (specialType == Note.SpecialType.StarPower && !isTool)
+                    colorMat = CustomNoteColors.StarPower(gameMode, colorMat, visualNoteType == Note.NoteType.Cymbal);
 
                 materials = GetMaterials(colorMat, visualNoteType);
             }

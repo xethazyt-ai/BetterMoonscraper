@@ -126,6 +126,11 @@ public class SustainController : SelectableClick {
                 sustainRen.sharedMaterial = resources.ghlSustainColours[nCon.note.rawNote];
             }
 
+            else if (CustomNoteColors.starPowerSustain && nCon.note.chart != null && NoteVisualsManager.IsStarpower(nCon.note) == Note.SpecialType.StarPower)
+            {
+                sustainRen.sharedMaterial = CustomNoteColors.starPowerSustain;     // The color profile's Star Power sustain
+            }
+
             else if (nCon.note.rawNote < customSkin.sustain_mats.Length)
             {
                 if (customSkin.sustain_mats[(int)nCon.note.guitarFret])

@@ -7,7 +7,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// The Customize tab in Moonscraper's Settings: Clone Hero color profiles, highways and backgrounds, and note skins.
+/// The Customize tab in Moonscraper's Settings: Clone Hero color profiles, highways and backgrounds.
 /// The tab is built from copies of the existing Settings controls when the editor opens, so it matches the rest of
 /// the window without changes to the Settings prefab.
 /// </summary>
@@ -18,8 +18,6 @@ public class CustomizationSettingsTab : MonoBehaviour
 
     static readonly ExtensionFilter s_imageFilter = new ExtensionFilter("Images", "png", "jpg", "jpeg", "gif");
     static readonly ExtensionFilter s_profileFilter = new ExtensionFilter("Clone Hero color profiles", "ini");
-
-    const string NoteSkinRestartNote = "Note skins change the next time Moonscraper opens. Clone Hero notes are colored with your color profile.";
 
     class Choice
     {
@@ -122,7 +120,10 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddChoiceRow("Color profile", CustomizationPrefs.Kind.ColorProfile, BrowseColorProfile);
         AddChoiceRow("Highway", CustomizationPrefs.Kind.Highway, () => BrowseImage(CustomizationPrefs.Kind.Highway));
         AddChoiceRow("Background", CustomizationPrefs.Kind.Background, () => BrowseImage(CustomizationPrefs.Kind.Background));
-        AddChoiceRow("Note skin", CustomizationPrefs.Kind.NoteSkin, BrowseNoteSkin);
+
+        // Reads every picked file again, for after editing a color profile or image while Moonscraper is open
+        AddButton("Reload", ControlLeft, ReloadAll);
+        ++m_rows;
 
         float statusLeft = m_labelTemplate.rectTransform.anchoredPosition.x - m_labelTemplate.rectTransform.sizeDelta.x / 2;
         // Ends where the dropdowns do, so a long line wraps instead of running off the window
@@ -140,9 +141,6 @@ public class CustomizationSettingsTab : MonoBehaviour
 
         m_built = true;
         Refresh();
-
-        if (CustomizationPrefs.GetStored(CustomizationPrefs.Kind.NoteSkin) != null)
-            m_statusText.text = CloneHeroNoteSkin.lastResult;
     }
 
     // "Autosave chart" in the Editor tab, under New Song Resolution, copied from the BG swap time row above it
@@ -290,7 +288,6 @@ public class CustomizationSettingsTab : MonoBehaviour
         Populate(m_choices[CustomizationPrefs.Kind.ColorProfile], CloneHeroFolders.ListColorProfiles(folder), "Moonscraper colors");
         Populate(m_choices[CustomizationPrefs.Kind.Highway], CloneHeroFolders.ListHighways(folder), "Moonscraper highway");
         Populate(m_choices[CustomizationPrefs.Kind.Background], CloneHeroFolders.ListBackgrounds(folder), "Moonscraper background");
-        Populate(m_choices[CustomizationPrefs.Kind.NoteSkin], new List<CloneHeroFolders.Item>(), "Moonscraper notes");
     }
 
     void Populate(Choice choice, List<CloneHeroFolders.Item> items, string defaultName)
@@ -331,8 +328,7 @@ public class CustomizationSettingsTab : MonoBehaviour
 
     static string DisplayName(CustomizationPrefs.Kind kind, string source)
     {
-        string name = kind == CustomizationPrefs.Kind.NoteSkin ? Path.GetFileName(source.TrimEnd('/', '\\')) : Path.GetFileNameWithoutExtension(source);
-        return name + " (picked)";
+        return Path.GetFileNameWithoutExtension(source) + " (picked)";
     }
 
     static string SafeFullPath(string path)
@@ -403,12 +399,7 @@ public class CustomizationSettingsTab : MonoBehaviour
             }
         }
 
-        if (error != null)
-            m_statusText.text = error;
-        else if (kind == CustomizationPrefs.Kind.NoteSkin)
-            m_statusText.text = NoteSkinRestartNote;
-        else
-            m_statusText.text = string.Empty;
+        m_statusText.text = error ?? string.Empty;
 
         Refresh();
     }
@@ -445,28 +436,37 @@ public class CustomizationSettingsTab : MonoBehaviour
             Choose(kind, path);
     }
 
-    void BrowseNoteSkin()
+    void ReloadAll()
     {
-        string folder;
-        if (!FileExplorer.OpenFolderPanel(out folder))
-            return;
-
-        if (!Directory.Exists(folder) || !HasImages(folder))
+        List<string> problems = new List<string>();
+        foreach (CustomizationPrefs.Kind kind in new[] { CustomizationPrefs.Kind.ColorProfile, CustomizationPrefs.Kind.Highway, CustomizationPrefs.Kind.Background })
         {
-            m_statusText.text = "That folder has no PNG, JPG or DDS images in it. A note skin is a folder of images named like Moonscraper's Custom Resources (e.g. 0_reg_strum.png).";
-            return;
+            // Copy the original again when it's still there, so changes made to it since show up
+            string source = CustomizationPrefs.GetSource(kind);
+            if (!string.IsNullOrEmpty(source) && File.Exists(source))
+            {
+                try
+                {
+                    CustomizationPrefs.Store(kind, source);
+                }
+                catch (Exception e)
+                {
+                    problems.Add("Couldn't read " + Path.GetFileName(source) + " again (" + e.Message + "), so the copy from before is kept.");
+                }
+            }
         }
 
-        Choose(CustomizationPrefs.Kind.NoteSkin, folder);
-    }
-
-    static bool HasImages(string folder)
-    {
-        foreach (string extension in new[] { "*.png", "*.jpg", "*.jpeg", "*.dds" })
+        CustomizationManager manager = CustomizationManager.instance;
+        if (manager)
         {
-            if (Directory.GetFiles(folder, extension, SearchOption.AllDirectories).Length > 0)
-                return true;
+            foreach (string error in new[] { manager.ApplyColorProfile(), manager.ApplyHighway(), manager.ApplyBackground() })
+            {
+                if (error != null)
+                    problems.Add(error);
+            }
         }
-        return false;
+
+        Refresh();
+        m_statusText.text = problems.Count > 0 ? string.Join(" ", problems.ToArray()) : "Reloaded.";
     }
 }

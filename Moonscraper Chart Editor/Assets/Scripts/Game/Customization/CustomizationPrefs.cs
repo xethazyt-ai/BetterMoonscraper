@@ -19,13 +19,11 @@ public static class CustomizationPrefs
         ColorProfile,
         Highway,
         Background,
-        NoteSkin,
     }
 
     const string PrefPrefix = "Customize.";
     const string CloneHeroFolderKey = PrefPrefix + "CloneHeroFolder";
 
-    static readonly string[] s_noteSkinExtensions = { ".png", ".jpg", ".jpeg", ".dds" };
 
     public static string storageFolder
     {
@@ -60,7 +58,7 @@ public static class CustomizationPrefs
     }
 
     /// <summary>
-    /// Copies the chosen file (or note skin folder) into our storage and remembers it. Returns the copy's path.
+    /// Copies the chosen file into our storage and remembers it. Returns the copy's path.
     /// </summary>
     public static string Store(Kind kind, string source)
     {
@@ -70,17 +68,8 @@ public static class CustomizationPrefs
         DeleteFolder(tempFolder);
         Directory.CreateDirectory(tempFolder);
 
-        string name;
-        if (kind == Kind.NoteSkin)
-        {
-            name = "Skin";
-            CopyImages(source, Path.Combine(tempFolder, name));
-        }
-        else
-        {
-            name = Path.GetFileName(source);
-            File.Copy(source, Path.Combine(tempFolder, name), true);
-        }
+        string name = Path.GetFileName(source);
+        File.Copy(source, Path.Combine(tempFolder, name), true);
 
         // Only replace the old copy once the new one is complete
         DeleteFolder(kindFolder);
@@ -109,19 +98,23 @@ public static class CustomizationPrefs
         }
     }
 
-    // Note skins are only images, so leave anything else in the folder behind
-    static void CopyImages(string sourceFolder, string destFolder)
+    // Custom note skins were dropped. Anything left from a build that had them is removed, so it can't load again.
+    public static void RemoveOldNoteSkin()
     {
-        Directory.CreateDirectory(destFolder);
+        foreach (string key in new[] { PrefPrefix + "NoteSkin.Source", PrefPrefix + "NoteSkin.Stored", PrefPrefix + "NoteSkinResult" })
+            PlayerPrefs.DeleteKey(key);
 
-        foreach (string file in Directory.GetFiles(sourceFolder))
+        foreach (string folder in new[] { "NoteSkin", "NoteSkin.new", "NoteSkinBuilt" })
         {
-            if (Array.IndexOf(s_noteSkinExtensions, Path.GetExtension(file).ToLowerInvariant()) >= 0)
-                File.Copy(file, Path.Combine(destFolder, Path.GetFileName(file)), true);
+            try
+            {
+                DeleteFolder(Path.Combine(storageFolder, folder));
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Couldn't delete the old note skin copy. " + e.Message);
+            }
         }
-
-        foreach (string folder in Directory.GetDirectories(sourceFolder))
-            CopyImages(folder, Path.Combine(destFolder, Path.GetFileName(folder)));
     }
 
     static void DeleteFolder(string folder)

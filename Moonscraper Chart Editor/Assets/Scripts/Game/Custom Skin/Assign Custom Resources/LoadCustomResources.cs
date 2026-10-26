@@ -138,34 +138,14 @@ public class LoadCustomResources : MonoBehaviour {
 
         Debug.Log("Loading skin from directory " + skinDirectory);
 
-        // The note skin picked in Settings > Customize. Its files win over Custom Resources files with the same name.
-        string noteSkinDirectory = CustomizationPrefs.GetStored(CustomizationPrefs.Kind.NoteSkin);
-        if (noteSkinDirectory != null)
-        {
-            // Clone Hero's note textures are grey pieces, so put colored notes together from them first
-            string built = CloneHeroNoteSkin.BuildIfCloneHero(noteSkinDirectory);
-            if (built != null)
-                noteSkinDirectory = built;
+        CustomizationPrefs.RemoveOldNoteSkin();
 
-            Debug.Log("Loading note skin from directory " + noteSkinDirectory);
-        }
-
-        if (Directory.Exists(skinDirectory) || noteSkinDirectory != null)
+        if (Directory.Exists(skinDirectory))
         {
             SetupResourcesToLoad();
 
             // Collect all the files
-            List<string> allFiles = Directory.Exists(skinDirectory) ? GetAllFiles(skinDirectory) : new List<string>();
-            if (noteSkinDirectory != null)
-            {
-                List<string> noteSkinFiles = GetAllFiles(noteSkinDirectory);
-                HashSet<string> noteSkinKeys = new HashSet<string>();
-                foreach (string path in noteSkinFiles)
-                    noteSkinKeys.Add(Path.GetFileNameWithoutExtension(path));
-
-                allFiles.RemoveAll(path => noteSkinKeys.Contains(Path.GetFileNameWithoutExtension(path)));
-                allFiles.InsertRange(0, noteSkinFiles);
-            }
+            List<string> allFiles = GetAllFiles(skinDirectory);
             string[] filepaths = allFiles.ToArray();
             Dictionary<string, string> filepathsDictionary = new Dictionary<string, string>();
 
