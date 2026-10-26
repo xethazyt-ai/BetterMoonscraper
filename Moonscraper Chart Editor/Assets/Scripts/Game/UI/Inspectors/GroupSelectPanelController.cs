@@ -463,12 +463,27 @@ public class GroupSelectPanelController : MonoBehaviour
             }
         }
 
-        if (startTickMaybe.HasValue && endTickMaybe.HasValue)
+        if (startTickMaybe.HasValue && endTickMaybe.HasValue && totalNotes > 1)
         {
             uint startTick = startTickMaybe.Value;
             uint endTick = endTickMaybe.Value;
             uint tickDiff = endTick - startTick;
-            double offsetPerNote = tickDiff / (double)(totalNotes - 1);
+
+            // A real step instead of whatever the span divides into: the step in 8s (1/8, 1/16, 1/24, 1/32...) whose
+            // spacing makes the notes fill the span best. The first note stays put; the last one lands on the step.
+            double wholeNote = editor.currentSong.resolution * 4;
+            double offsetPerNote = wholeNote / 8;
+            double bestMiss = double.MaxValue;
+            for (int step = 8; wholeNote / step >= 1; step += 8)
+            {
+                double spacing = wholeNote / step;
+                double miss = System.Math.Abs(spacing * (totalNotes - 1) - tickDiff);
+                if (miss < bestMiss)
+                {
+                    bestMiss = miss;
+                    offsetPerNote = spacing;
+                }
+            }
 
             int index = -1;
             uint lastTickAdded = uint.MaxValue;
@@ -482,7 +497,7 @@ public class GroupSelectPanelController : MonoBehaviour
                         ++index;
                     }
 
-                    uint newTick = startTick + (uint)(offsetPerNote * index);
+                    uint newTick = startTick + (uint)System.Math.Round(offsetPerNote * index);
                     Note newNote = chartObject.CloneAs<Note>();
                     newNote.tick = newTick;
 

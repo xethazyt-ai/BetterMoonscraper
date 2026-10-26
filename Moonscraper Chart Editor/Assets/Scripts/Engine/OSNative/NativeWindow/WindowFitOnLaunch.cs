@@ -11,8 +11,8 @@ using UnityEngine;
 /// Unity opens the window at the screen's full resolution, or where it was last left, and it can hang off the side
 /// or under the taskbar. Once it's open, a window too big for the screen's free area is maximised, and one that fits
 /// but sticks out is moved back to the middle. A window that's already fully on screen is left as it is.
-/// Before that, a window that isn't maximised opens at a normal 16:9 size (three quarters of the screen's height),
-/// in the middle, rather than whatever odd size Unity remembered.
+/// Before that, the window always opens at 854x480 (16:9) in the middle, rather than whatever size Unity remembered,
+/// and coming back from maximised at nearly the whole screen's size goes back to that too.
 /// </summary>
 public class WindowFitOnLaunch : MonoBehaviour
 {
@@ -59,7 +59,7 @@ public class WindowFitOnLaunch : MonoBehaviour
 
     // Unity opens the window (and shows its splash screen) at the size it saved when it last closed, which is the whole
     // screen after being maximised. Once BetterMoonscraper has closed and Unity has saved, a hidden PowerShell puts
-    // the 16:9 size in its place, so the next launch opens at that size straight away.
+    // 854x480 in its place, so the next launch (and Unity's splash screen) opens at that size straight away.
     static void RememberLaunchSize()
     {
         try
@@ -94,22 +94,24 @@ public class WindowFitOnLaunch : MonoBehaviour
         }
     }
 
-    // 16:9, three quarters of the free height of the screen the window is on
+    // Always 854x480 inside (16:9), unless the screen is too small for that
+    public const int LaunchWidth = 854, LaunchHeight = 480;
+
     static bool GetLaunchSize(IntPtr window, out int width, out int height)
     {
-        width = height = 0;
+        width = LaunchWidth;
+        height = LaunchHeight;
         MONITORINFO monitor = new MONITORINFO();
         monitor.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
         if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), ref monitor))
-            return false;
+            return true;
 
         int workWidth = monitor.rcWork.right - monitor.rcWork.left, workHeight = monitor.rcWork.bottom - monitor.rcWork.top;
-        height = Mathf.RoundToInt(workHeight * LaunchHeightOfScreen);
-        width = Mathf.RoundToInt(height * 16f / 9f);
-        if (width > workWidth * 0.9f)
+        if (width > workWidth * 0.95f || height > workHeight * 0.9f)
         {
-            width = Mathf.RoundToInt(workWidth * 0.9f);
-            height = Mathf.RoundToInt(width * 9f / 16f);
+            float fit = Mathf.Min(workWidth * 0.95f / width, workHeight * 0.9f / height);
+            width = Mathf.RoundToInt(width * fit);
+            height = Mathf.RoundToInt(height * fit);
         }
         return width > 0 && height > 0;
     }
@@ -203,9 +205,7 @@ public class WindowFitOnLaunch : MonoBehaviour
         return SetWindowPos(window, IntPtr.Zero, x, y, outerWidth, outerHeight, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
-    const float LaunchHeightOfScreen = 0.75f;
-
-    // Sizes the inside of the window to 16:9, three quarters of the screen's free height; true if it was resized
+    // Sizes the inside of the window to the launch size and centres it; true if it was resized
     static bool TrySetLaunchSize()
     {
         try

@@ -51,6 +51,14 @@ public class CursorSelect : ToolObject
 
     protected override void Update()
     {
+        // The mouse was let go where this couldn't see it (a save prompt or file window opened mid-drag): drop the
+        // box, which would otherwise stay on the highway as a small red or yellow shape
+        if (userDraggingSelectArea && !Input.GetMouseButton(0) && !Input.GetMouseButtonUp(0))
+        {
+            SelfAreaDisable();
+            userDraggingSelectArea = false;
+        }
+
         if (!block)
         {
             UpdateSnappedPos();
