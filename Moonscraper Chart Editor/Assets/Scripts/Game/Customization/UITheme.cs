@@ -30,6 +30,7 @@ public static class UITheme
     static readonly HashSet<string> s_lightPanelSprites = new HashSet<string> { "panel1", "panel2", "panel3", "panel4" };     // White in the middle
 
     static readonly Dictionary<Graphic, Color> s_originalColors = new Dictionary<Graphic, Color>();
+    static readonly HashSet<Graphic> s_kept = new HashSet<Graphic>();
     static readonly Dictionary<Selectable, ColorBlock> s_originalBlocks = new Dictionary<Selectable, ColorBlock>();
     static Theme? s_theme;
     static Theme s_applied = Theme.Default;
@@ -99,6 +100,7 @@ public static class UITheme
         }
 
         // Forget anything that's gone, such as closed windows
+        s_kept.RemoveWhere(graphic => !graphic);
         RemoveDestroyed(s_originalColors);
         RemoveDestroyed(s_originalBlocks);
 
@@ -131,8 +133,25 @@ public static class UITheme
         }
     }
 
+    /// <summary>
+    /// Leaves a graphic's color exactly as set, in any theme and menu color, such as a color swatch.
+    /// </summary>
+    public static void KeepColor(Graphic graphic)
+    {
+        if (graphic)
+            s_kept.Add(graphic);
+    }
+
+    public static bool IsKept(Graphic graphic)
+    {
+        return s_kept.Contains(graphic);
+    }
+
     static Color DarkColor(Graphic graphic, Color original)
     {
+        if (s_kept.Contains(graphic))
+            return original;
+
         if (graphic is Text || graphic is TMPro.TMP_Text)
         {
             // Dark writing on the old white boxes becomes light writing on the dark ones; light writing stays

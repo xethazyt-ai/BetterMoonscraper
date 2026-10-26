@@ -41,16 +41,17 @@ public class DuetPresence
 
     public static readonly string[] ColorNames = { "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink" };
 
+    // The colors themselves, as their web names: #FF0000, #FFA500, #FFFF00, #00FF00, #00FFFF, #0000FF, #800080, #FFC0CB
     static readonly Color[] s_colors =
     {
-        new Color(0.94f, 0.27f, 0.27f),
-        new Color(0.98f, 0.57f, 0.18f),
-        new Color(0.98f, 0.85f, 0.20f),
-        new Color(0.33f, 0.85f, 0.35f),
-        new Color(0.25f, 0.85f, 0.90f),
-        new Color(0.30f, 0.50f, 0.98f),
-        new Color(0.66f, 0.40f, 0.95f),
-        new Color(0.97f, 0.45f, 0.75f),
+        new Color(1f, 0f, 0f),
+        new Color(1f, 165 / 255f, 0f),
+        new Color(1f, 1f, 0f),
+        new Color(0f, 1f, 0f),
+        new Color(0f, 1f, 1f),
+        new Color(0f, 0f, 1f),
+        new Color(128 / 255f, 0f, 128 / 255f),
+        new Color(1f, 192 / 255f, 203 / 255f),
     };
 
     public static int ColorCount { get { return s_colors.Length; } }

@@ -9,17 +9,17 @@ using UnityEngine;
 /// </summary>
 public static class DuetSkin
 {
-    static readonly Color Panel = new Color32(0, 7, 22, 245);
-    static readonly Color PanelBorder = new Color32(21, 90, 122, 255);
-    static readonly Color Button = new Color32(0, 44, 58, 255);
-    static readonly Color ButtonHover = new Color32(0, 74, 99, 255);
-    static readonly Color ButtonPressed = new Color32(21, 114, 148, 255);
-    static readonly Color ButtonOn = new Color32(17, 129, 220, 255);    // As the Tools button
+    static Color Panel { get { return MenuColor.Shift(new Color32(0, 7, 22, 245)); } }
+    static Color PanelBorder { get { return MenuColor.Shift(new Color32(21, 90, 122, 255)); } }
+    static Color Button { get { return MenuColor.Shift(new Color32(0, 44, 58, 255)); } }
+    static Color ButtonHover { get { return MenuColor.Shift(new Color32(0, 74, 99, 255)); } }
+    static Color ButtonPressed { get { return MenuColor.Shift(new Color32(21, 114, 148, 255)); } }
+    static Color ButtonOn { get { return MenuColor.Shift(new Color32(17, 129, 220, 255)); } }    // As the Tools button
     static readonly Color Field = new Color32(255, 255, 255, 255);
     static readonly Color FieldBorder = new Color32(120, 120, 120, 255);
     static readonly Color Track = new Color32(255, 255, 255, 255);
     static readonly Color Thumb = new Color32(185, 185, 185, 255);
-    static readonly Color ScrollTrack = new Color32(0, 24, 40, 255);
+    static Color ScrollTrack { get { return MenuColor.Shift(new Color32(0, 24, 40, 255)); } }
 
     public const int FontSize = 15;    // As the Settings panel
 
@@ -74,6 +74,13 @@ public static class DuetSkin
         }
     }
 
+    // Made again with the menu color picked in Settings > Customize
+    public static void Reset()
+    {
+        s_skin = null;
+        s_swatch = null;
+    }
+
     static GUISkin Make()
     {
         GUISkin made = Object.Instantiate(GUI.skin);
@@ -83,7 +90,7 @@ public static class DuetSkin
             made.font = textFont;
 
         GUIStyle window = made.window;
-        Texture2D panel = Resources.Load<Texture2D>(PanelResource);
+        Texture2D panel = MenuColor.Shift(Resources.Load<Texture2D>(PanelResource));
         if (panel != null)
         {
             window.normal.background = window.onNormal.background = panel;
@@ -134,7 +141,7 @@ public static class DuetSkin
             field.fontSize = FontSize;
         }
         made.settings.cursorColor = Color.black;
-        made.settings.selectionColor = new Color32(17, 129, 220, 120);
+        made.settings.selectionColor = MenuColor.Shift(new Color32(17, 129, 220, 120));
 
         made.horizontalSlider.normal.background = Solid(Track);
         made.horizontalSlider.border = new RectOffset(0, 0, 0, 0);

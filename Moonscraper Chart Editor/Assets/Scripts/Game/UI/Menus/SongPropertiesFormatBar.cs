@@ -17,14 +17,14 @@ public class SongPropertiesFormatBar : MonoBehaviour
     const float Right = 381.3f;
     const float RowHeight = 30;
 
-    static readonly string[] s_swatches = { "#FF4040", "#FF9900", "#FFE14D", "#40E040", "#40A0FF", "#B060FF", "#FFFFFF" };
+    static readonly string[] s_swatches = { "#FF0000", "#FFA500", "#FFFF00", "#00FF00", "#0000FF", "#800080", "#FFFFFF" };
 
     InputField[] m_fields;
     InputField m_target;
     int m_selectionStart, m_selectionEnd;
     InputField m_sizeField;
     InputField m_colorField;
-    ColorWheelPicker m_wheel;
+    RgbSliderPicker m_wheel;
     Text m_preview;
     string m_previewSource;
     Action m_onChanged;
@@ -69,7 +69,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         y -= RowHeight + 4;
 
         x = Left;
-        bar.m_colorField = MakeField(fieldTemplate, content, "#FF9900", x, y, 76);
+        bar.m_colorField = MakeField(fieldTemplate, content, "#FFA500", x, y, 76);
         bar.m_colorField.characterLimit = 9;
         x += 80;
         x = MakeButton(buttonTemplate, content, "Color", x, y, 56, bar.ApplyColor);
@@ -84,14 +84,16 @@ public class SongPropertiesFormatBar : MonoBehaviour
                 text.text = string.Empty;
             Color color;
             if (button.targetGraphic && ColorUtility.TryParseHtmlString(hex, out color))
+            {
                 button.targetGraphic.color = color;
+                UITheme.KeepColor(button.targetGraphic);    // Shows the color itself in any theme or menu color
+            }
             x += 26;
         }
         y -= RowHeight + 4;
 
-        // Any color: pick it on the wheel, then press Color
-        const float WheelSize = 100;
-        bar.m_wheel = ColorWheelPicker.Build(content, Left, y, WheelSize);
+        // Any color: pick it with the sliders (as in Collab Mode), then press Color
+        bar.m_wheel = RgbSliderPicker.Build(content, Left, y, Right - Left, labelTemplate.font, labelTemplate.color, null, false);
         bar.m_wheel.onPicked = picked => bar.m_colorField.text = "#" + ColorUtility.ToHtmlStringRGB(picked);
         bar.m_colorField.onValueChanged.AddListener(typed =>
         {
@@ -103,7 +105,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         Color start;
         if (ColorUtility.TryParseHtmlString(bar.m_colorField.text, out start))
             bar.m_wheel.SetColor(start);
-        y -= WheelSize + 20;
+        y -= bar.m_wheel.height + 16;
 
         bar.m_preview = Label(labelTemplate, content, string.Empty, Left, y, Right - Left);
         bar.m_preview.supportRichText = true;
@@ -143,7 +145,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format. For any color, pick it on the wheel (brightness on the bar) and press Color. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
+            m_preview.text = "Select text in a field above, then pick a format. For any color, set it with the sliders (or type it) and press Color. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
         }
     }
 
@@ -289,7 +291,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         string hex;
         if (!RichTextIni.TryParseColor(m_colorField.text, out hex))
         {
-            m_colorField.text = "#FF9900";
+            m_colorField.text = "#FFA500";
             return;
         }
 

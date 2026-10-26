@@ -121,6 +121,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddChoiceRow("Highway", CustomizationPrefs.Kind.Highway, () => BrowseImage(CustomizationPrefs.Kind.Highway));
         AddChoiceRow("Background", CustomizationPrefs.Kind.Background, () => BrowseImage(CustomizationPrefs.Kind.Background));
         AddThemeRow();
+        AddMenuColorRow();
 
         // Reads every picked file again, for after editing a color profile or image while Moonscraper is open
         AddButton("Reload", ControlLeft, ReloadAll);
@@ -221,6 +222,39 @@ public class CustomizationSettingsTab : MonoBehaviour
         dropdown.onValueChanged.AddListener((index) => UITheme.current = (UITheme.Theme)index);
         Place((RectTransform)dropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
         ++m_rows;
+    }
+
+    // The color used in place of Moonscraper's blue, with the Collab Mode color picker. Default goes back to the blue.
+    void AddMenuColorRow()
+    {
+        AddLabel("Menu color");
+
+        RgbSliderPicker picker = null;
+        AddButton("Default", ControlLeft, () =>
+        {
+            MenuColor.color = null;
+            if (picker)
+                picker.SetColor(MenuColor.DefaultColor);
+        });
+        ++m_rows;
+
+        RectTransform template = (RectTransform)m_dropdownTemplate.transform;
+        GameObject holderObject = new GameObject("Menu Color Picker", typeof(RectTransform));
+        RectTransform holder = (RectTransform)holderObject.transform;
+        holder.SetParent(m_group, false);
+        holder.anchorMin = template.anchorMin;
+        holder.anchorMax = template.anchorMax;
+        holder.pivot = new Vector2(0, 1);
+        float templateTop = template.anchoredPosition.y + template.sizeDelta.y * (1 - template.pivot.y);
+        holder.anchoredPosition = new Vector2(ControlLeft, templateTop - m_rows * RowHeight);
+        float width = ControlWidth + Gap + ButtonWidth;
+        holder.sizeDelta = new Vector2(width, 0);
+
+        picker = RgbSliderPicker.Build(holder, 0, 0, width, m_labelTemplate.font, m_labelTemplate.color, RgbSliderPicker.BasicColors, true);
+        picker.SetColor(MenuColor.color ?? MenuColor.DefaultColor);
+        picker.onPicked = picked => MenuColor.color = picked;
+        holder.sizeDelta = new Vector2(width, picker.height);
+        m_rows += Mathf.CeilToInt((picker.height + 6) / RowHeight);
     }
 
     void AddLabel(string label)
