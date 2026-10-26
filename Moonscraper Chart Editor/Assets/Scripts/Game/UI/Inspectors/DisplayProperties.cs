@@ -381,7 +381,11 @@ public class DisplayProperties : UpdateableService
             return;
 
         float y = lastRow.anchoredPosition.y - slidersHeight - 27;
-        MakeSpeedToggle("Pitched Speedups:", y, SpeedOptions.pitchedSpeedups, (on) => SpeedOptions.pitchedSpeedups = on);
+        MakeSpeedToggle("Pitched Speedups:", y, SpeedOptions.pitchedSpeedups, (on) =>
+        {
+            SpeedOptions.pitchedSpeedups = on;
+            editor.RefreshPlayingAudio();   // Straight away, even mid-preview
+        });
         MakeSpeedToggle("Non-Spaced Notes for Slowdown:", y - 30, SpeedOptions.nonSpacedSlowdown, (on) =>
         {
             SpeedOptions.nonSpacedSlowdown = on;
