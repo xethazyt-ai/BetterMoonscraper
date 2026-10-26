@@ -144,7 +144,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: UnityApplicationPatcher-1.0.6-Win
+          sparse-checkout: |
+            UnityApplicationPatcher-1.0.6-Win
+            Moonscraper Chart Editor/ProjectSettings
 
       - uses: actions/download-artifact@v4
         with:
@@ -188,3 +190,27 @@ jobs:
           gh release create $tag $env:ZIP_NAME --target $sha --prerelease --title "Windows build: $branch ($short)" --notes $notes
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
           "Download: ${{ github.server_url }}/${{ github.repository }}/releases/download/$tag/$env:ZIP_NAME" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      # The in-app updater (Help > Updates) only looks at full releases named after a version, such as v1.0.1.
+      # Raising bundleVersion in ProjectSettings and pushing to master makes one, once per version.
+      - name: Publish version release
+        if: github.ref_name == 'master'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $line = Select-String -Path "Moonscraper Chart Editor/ProjectSettings/ProjectSettings.asset" -Pattern '^\s*bundleVersion:\s*(\S+)' | Select-Object -First 1
+          if (-not $line) { throw "No bundleVersion in ProjectSettings.asset" }
+          $version = $line.Matches[0].Groups[1].Value
+          $tag = "v$version"
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { "$tag already released, nothing to do"; $global:LASTEXITCODE = 0; exit 0 }
+          $global:LASTEXITCODE = 0
+          $notes = @"
+          BetterMoonscraper $tag.
+
+          Download **$env:ZIP_NAME**, unzip it, and run ``BetterMoonscraper.exe`` inside the ``$env:APP_FOLDER`` folder. Already have it? Help > Updates installs this version for you.
+          "@
+          gh release create $tag $env:ZIP_NAME --target "${{ github.sha }}" --latest --title "BetterMoonscraper $tag" --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          "Version release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$tag" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
