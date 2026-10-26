@@ -70,6 +70,9 @@ public class CustomizationManager : MonoBehaviour
 
     Coroutine m_titleBarMatch;
 
+    Color? m_menuBarThemeColor;     // The menu bar's own color while it's matched to a Windows 10 title bar
+    Color m_menuBarWindowsColor;
+
     /// <summary>
     /// Colors the Windows title bar like the menu bar under it (Light and Dark themes), so the two match
     /// </summary>
@@ -94,9 +97,23 @@ public class CustomizationManager : MonoBehaviour
         UnityEngine.UI.Graphic barGraphic = menuBar ? menuBar.GetComponent<UnityEngine.UI.Graphic>() : null;
         if (barGraphic)
         {
+            if (barGraphic.color == m_menuBarWindowsColor && m_menuBarThemeColor.HasValue)
+                barGraphic.color = m_menuBarThemeColor.Value;     // Undo the Windows 10 match below before working it out again
+            m_menuBarThemeColor = null;
+
             Color bar = MenuColor.Shift(barGraphic.color);
             bar.a = 1;
-            DarkTitleBar.SetColor(bar);
+            if (!DarkTitleBar.SetColor(bar))
+            {
+                // Windows 10 can't color the title bar, so the menu bar takes the title bar's black or white instead
+                Color? windows = DarkTitleBar.WindowsTitleBarColor(UITheme.current == UITheme.Theme.Dark);
+                if (windows.HasValue)
+                {
+                    m_menuBarThemeColor = barGraphic.color;
+                    m_menuBarWindowsColor = windows.Value;
+                    barGraphic.color = windows.Value;
+                }
+            }
             m_titleBarMatch = null;
             yield break;
         }

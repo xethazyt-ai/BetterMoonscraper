@@ -18,7 +18,9 @@ public class SongVideoBackground : MonoBehaviour
     // In the order Clone Hero looks for them. Unity plays H.264 .mp4 and VP8 .webm; VP9/AV1 .webm won't play.
     static readonly string[] s_videoNames = { "video.mp4", "video.webm", "video.avi", "video.mpeg", "video.mpg", "video.mov", "video.m4v", "video.wmv", "video.ogv" };
 
-    const double ResyncSeconds = 0.12;      // Playing: how far the video may drift before it's put back
+    const double ResyncSeconds = 0.12;      // Playing: how far the video may drift before it's caught up
+    const double JumpSeconds = 1.0;         // Playing: further off than this (a jump) seeks, nearer catches up by speed
+    const float SeekTimeoutSeconds = 3;     // A seek that never reports back stops blocking the next one
     const double ScrubSeconds = 1.0 / 30;   // Scrolling: how far the chart has to move before showing another frame
     const float ScrubIntervalSeconds = 0.08f;
 
@@ -33,6 +35,13 @@ public class SongVideoBackground : MonoBehaviour
     bool m_shown;
     double m_lastScrubTarget = double.NaN;
     float m_lastScrubAt;
+
+    // One seek at a time: asking for another while the video is still finding a frame starts it over, so a far jump
+    // (which has to decode from the last keyframe) could keep restarting and leave the picture stuck for seconds
+    bool m_seeking;
+    float m_seekStartedAt;
+    float m_lastSeekDuration = 0.25f;
+    double m_queuedSeek = double.NaN;
 
     /// <summary>
     /// A line for Settings about the current song's video, such as why it isn't showing
@@ -72,6 +81,7 @@ public class SongVideoBackground : MonoBehaviour
         {
             m_player.prepareCompleted -= OnPrepared;
             m_player.errorReceived -= OnError;
+            m_player.seekCompleted -= OnSeekCompleted;
             m_player.Stop();
             m_player.targetTexture = null;
         }
@@ -128,6 +138,7 @@ public class SongVideoBackground : MonoBehaviour
         m_player.waitForFirstFrame = true;
         m_player.prepareCompleted += OnPrepared;
         m_player.errorReceived += OnError;
+        m_player.seekCompleted += OnSeekCompleted;
         m_player.Prepare();
     }
 
@@ -137,6 +148,7 @@ public class SongVideoBackground : MonoBehaviour
         {
             m_player.prepareCompleted -= OnPrepared;
             m_player.errorReceived -= OnError;
+            m_player.seekCompleted -= OnSeekCompleted;
             m_player.Stop();
             Destroy(m_player.gameObject);
         }
@@ -144,6 +156,8 @@ public class SongVideoBackground : MonoBehaviour
         m_prepared = false;
         m_path = null;
         m_lastScrubTarget = double.NaN;
+        m_seeking = false;
+        m_queuedSeek = double.NaN;
 
         if (m_shown)
         {
@@ -265,17 +279,29 @@ public class SongVideoBackground : MonoBehaviour
         if (editor.currentState == ChartEditor.State.Playing && inside)
         {
             float speed = Mathf.Max(0.01f, Globals.gameSettings.gameSpeed);
-            if (m_player.canSetPlaybackSpeed && Math.Abs(m_player.playbackSpeed - speed) > 0.001f)
-                m_player.playbackSpeed = speed;
 
+            // Aim where the song will be once the seek is done, rather than where it was when it started
+            double ahead = target + m_lastSeekDuration * speed;
             if (!m_player.isPlaying)
             {
-                Seek(target);
+                Seek(ahead);
                 m_player.Play();
             }
-            else if (Math.Abs(m_player.time - target) > ResyncSeconds * Math.Max(1, speed))
+            else if (!seekBusy)
             {
-                Seek(target);
+                double drift = target - m_player.time;
+                if (Math.Abs(drift) > JumpSeconds * Math.Max(1, speed))
+                    Seek(ahead);
+                else if (m_player.canSetPlaybackSpeed)
+                {
+                    // A little off: play a touch faster or slower until it lines up, instead of seeking
+                    float catchUp = Math.Abs(drift) > ResyncSeconds ? Mathf.Clamp((float)drift, -0.25f, 0.25f) : 0;
+                    float wanted = speed * (1 + catchUp);
+                    if (Math.Abs(m_player.playbackSpeed - wanted) > 0.001f)
+                        m_player.playbackSpeed = wanted;
+                }
+                else if (Math.Abs(drift) > ResyncSeconds * Math.Max(1, speed))
+                    Seek(ahead);
             }
             m_lastScrubTarget = double.NaN;
             return;
@@ -302,8 +328,38 @@ public class SongVideoBackground : MonoBehaviour
 
     void Seek(double seconds)
     {
-        if (m_player && m_player.canSetTime)
-            m_player.time = Math.Max(0, seconds);
+        if (!m_player || !m_player.canSetTime)
+            return;
+
+        if (seekBusy)
+        {
+            m_queuedSeek = seconds;     // Done once the current seek finishes; only the latest one counts
+            return;
+        }
+
+        m_seeking = true;
+        m_seekStartedAt = Time.unscaledTime;
+        m_queuedSeek = double.NaN;
+        m_player.time = Math.Max(0, seconds);
+    }
+
+    bool seekBusy { get { return m_seeking && Time.unscaledTime - m_seekStartedAt < SeekTimeoutSeconds; } }
+
+    void OnSeekCompleted(VideoPlayer player)
+    {
+        if (player != m_player)
+            return;
+
+        m_seeking = false;
+        m_lastSeekDuration = Mathf.Clamp(Time.unscaledTime - m_seekStartedAt, 0.05f, 1.5f);
+        if (!double.IsNaN(m_queuedSeek))
+        {
+            double queued = m_queuedSeek;
+            m_queuedSeek = double.NaN;
+            // Playing works out its own target each frame, so only a paused scroll needs the queued one
+            if (!IsPreviewPlaying())
+                Seek(queued);
+        }
     }
 
     // Where the video should be: the song's audio time (the chart's time plus its offset) plus video_start_time

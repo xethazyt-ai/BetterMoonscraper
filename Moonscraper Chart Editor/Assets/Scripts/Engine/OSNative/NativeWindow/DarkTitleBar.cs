@@ -36,18 +36,19 @@ public static class DarkTitleBar
     }
 
     /// <summary>
-    /// Colors the title bar itself (Windows 11 only), or puts Windows' own color back with null
+    /// Colors the title bar itself (Windows 11 only), or puts Windows' own color back with null. False when Windows
+    /// can't (Windows 10), so the title bar keeps Windows' own black or white.
     /// </summary>
-    public static void SetColor(UnityEngine.Color? color)
+    public static bool SetColor(UnityEngine.Color? color)
     {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         if (QuitState.isQuitting)
-            return;
+            return true;
         try
         {
             IntPtr window = WindowFitOnLaunch.FindOwnWindow();
             if (window == IntPtr.Zero)
-                return;
+                return true;
 
             int caption = DwmColorDefault, text = DwmColorDefault;
             if (color.HasValue)
@@ -58,14 +59,40 @@ public static class DarkTitleBar
                 float luminance = 0.2126f * color.Value.r + 0.7152f * color.Value.g + 0.0722f * color.Value.b;
                 text = luminance > 0.5f ? 0x101010 : 0xF0F0F0;
             }
-            DwmSetWindowAttribute(window, DwmCaptionColor, ref caption, sizeof(int));
+            bool colored = DwmSetWindowAttribute(window, DwmCaptionColor, ref caption, sizeof(int)) == 0;
             DwmSetWindowAttribute(window, DwmTextColor, ref text, sizeof(int));
+            return colored;
         }
         catch (Exception e)
         {
             UnityEngine.Debug.LogWarning("Couldn't color the title bar: " + e.Message);
+            return false;
+        }
+#else
+        return true;
+#endif
+    }
+
+    /// <summary>
+    /// The color Windows draws a title bar it can't recolor (Windows 10), or null when it uses the accent color
+    /// </summary>
+    public static UnityEngine.Color? WindowsTitleBarColor(bool dark)
+    {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        try
+        {
+            using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM"))
+            {
+                object prevalence = key != null ? key.GetValue("ColorPrevalence") : null;
+                if (prevalence is int && (int)prevalence != 0)
+                    return null;    // "Show accent color on title bars" is on
+            }
+        }
+        catch (Exception)
+        {
         }
 #endif
+        return dark ? UnityEngine.Color.black : UnityEngine.Color.white;
     }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
