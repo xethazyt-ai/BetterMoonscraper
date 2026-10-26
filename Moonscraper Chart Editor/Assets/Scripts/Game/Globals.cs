@@ -237,7 +237,7 @@ public class Globals : MonoBehaviour {
 
     public void Quit(bool deleteAutosave)
     {
-        Globals.gameSettings.targetFramerate.value = Application.targetFrameRate;
+        Globals.gameSettings.targetFramerate.value = BackgroundFrameRate.userFrameRate;     // Not the slower rate used while in the background
         Globals.gameSettings.Save(GetConfigPath(), GetInputBindingsPath());
 
         // Delete autosaved chart. If chart is not deleted then that means there may have been a problem like a crash and the autosave should be reloaded the next time the program is opened. 

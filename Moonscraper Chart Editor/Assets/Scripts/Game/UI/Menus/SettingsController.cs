@@ -142,7 +142,7 @@ public class SettingsController : TabMenu
 
         leftyFlipToggle.isOn = Globals.gameSettings.notePlacementMode == GameSettings.NotePlacementMode.LeftyFlip;
 
-        switch(Application.targetFrameRate)
+        switch(BackgroundFrameRate.userFrameRate)
         {
             case (60):
                 fpsSelectDropdown.value = 0;
