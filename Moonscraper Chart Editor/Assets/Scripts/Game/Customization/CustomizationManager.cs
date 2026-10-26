@@ -71,7 +71,7 @@ public class CustomizationManager : MonoBehaviour
     // Menus can build parts of themselves the first time they open, so theme whatever is new
     void OnEditorStateChanged(in ChartEditor.State state)
     {
-        if (UITheme.current != UITheme.Theme.Default)
+        if (UITheme.current != UITheme.Theme.Default && !QuitState.isQuitting)
             StartCoroutine(ThemeNewUINextFrame());
     }
 

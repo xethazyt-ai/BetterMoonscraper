@@ -12,6 +12,8 @@ public static class DarkTitleBar
     public static void Set(bool dark)
     {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        if (QuitState.isQuitting)
+            return;     // The window is going away
         try
         {
             IntPtr window = WindowFitOnLaunch.FindOwnWindow();

@@ -58,13 +58,29 @@ public class SongVideoBackground : MonoBehaviour
 
     void Start()
     {
+        Application.quitting += StopForQuit;
         ChartEditor.Instance.events.songLoadedEvent.Register(Reload);
         ChartEditor.Instance.events.saveEvent.Register(ReloadIfMoved);
         Reload();
     }
 
+    // Stops the video before Unity starts tearing things down, rather than while it's mid-frame
+    void StopForQuit()
+    {
+        Application.quitting -= StopForQuit;
+        if (m_player)
+        {
+            m_player.prepareCompleted -= OnPrepared;
+            m_player.errorReceived -= OnError;
+            m_player.Stop();
+            m_player.targetTexture = null;
+        }
+        m_prepared = false;
+    }
+
     void OnDestroy()
     {
+        Application.quitting -= StopForQuit;
         if (instance == this)
             instance = null;
         if (ChartEditor.InstanceExists)
@@ -137,7 +153,7 @@ public class SongVideoBackground : MonoBehaviour
         if (m_shown)
         {
             m_shown = false;
-            if (CustomizationManager.instance)
+            if (CustomizationManager.instance && !QuitState.isQuitting)
                 CustomizationManager.instance.ApplyBackground();    // Back to the picked or default background
         }
 
@@ -205,7 +221,7 @@ public class SongVideoBackground : MonoBehaviour
 
     void Update()
     {
-        if (!m_prepared || !m_player)
+        if (!m_prepared || !m_player || QuitState.isQuitting)
             return;
 
         ChartEditor editor = ChartEditor.Instance;
