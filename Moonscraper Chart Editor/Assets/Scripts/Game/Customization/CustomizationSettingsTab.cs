@@ -120,6 +120,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddChoiceRow("Color profile", CustomizationPrefs.Kind.ColorProfile, BrowseColorProfile);
         AddChoiceRow("Highway", CustomizationPrefs.Kind.Highway, () => BrowseImage(CustomizationPrefs.Kind.Highway));
         AddChoiceRow("Background", CustomizationPrefs.Kind.Background, () => BrowseImage(CustomizationPrefs.Kind.Background));
+        AddSongVideoRow();
 
         // Reads every picked file again, for after editing a color profile or image while Moonscraper is open
         AddButton("Reload", ControlLeft, ReloadAll);
@@ -202,6 +203,27 @@ public class CustomizationSettingsTab : MonoBehaviour
         m_choices[kind] = choice;
 
         AddButton("Browse", ControlLeft + ControlWidth + Gap, browse);
+        ++m_rows;
+    }
+
+    // Whether the song's own video plays as the background, when its folder has one
+    void AddSongVideoRow()
+    {
+        AddLabel("Song video");
+
+        Dropdown dropdown = Instantiate(m_dropdownTemplate, m_group);
+        dropdown.name = "Song Video Dropdown";
+        dropdown.onValueChanged = new Dropdown.DropdownEvent();
+        dropdown.ClearOptions();
+        dropdown.AddOptions(new List<string> { "Show when the song has one", "Off" });
+        dropdown.value = SongVideoBackground.isEnabled ? 0 : 1;
+        dropdown.RefreshShownValue();
+        dropdown.onValueChanged.AddListener((index) =>
+        {
+            SongVideoBackground.isEnabled = index == 0;
+            m_statusText.text = SongVideoBackground.status ?? string.Empty;
+        });
+        Place((RectTransform)dropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
         ++m_rows;
     }
 

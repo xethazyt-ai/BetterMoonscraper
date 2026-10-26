@@ -19,6 +19,7 @@ public class CustomizationManager : MonoBehaviour
 
     CustomImage m_highwayImage;
     CustomImage m_backgroundImage;
+    float m_videoAspect;        // Width over height of the song video showing as the background, or 0 when none is
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -37,6 +38,7 @@ public class CustomizationManager : MonoBehaviour
             return;     // Still on the loading screen
 
         editor.gameObject.AddComponent<CustomizationManager>();
+        editor.gameObject.AddComponent<SongVideoBackground>();
         NoteFlames.AttachTo(editor.gameObject);
         CustomizationSettingsTab.AttachToSettingsMenus();
     }
@@ -69,6 +71,47 @@ public class CustomizationManager : MonoBehaviour
             m_highwayImage.Tick(Time.unscaledDeltaTime);
         if (m_backgroundImage != null)
             m_backgroundImage.Tick(Time.unscaledDeltaTime);
+        if (m_videoAspect > 0)
+            FitVideo();
+    }
+
+    /// <summary>
+    /// Shows the song's video instead of the background, filling the screen without stretching it. ApplyBackground
+    /// goes back to the picked or default background.
+    /// </summary>
+    public void ShowVideoBackground(Texture video, float aspect)
+    {
+        m_videoAspect = aspect;
+        foreach (BackgroundBlending background in m_backgrounds)
+        {
+            if (background)
+                background.SetBackgroundOverride(video);
+        }
+        FitVideo();
+    }
+
+    float m_fittedScreenAspect;
+
+    void FitVideo()
+    {
+        float screenAspect = Screen.height > 0 ? Screen.width / (float)Screen.height : 1;
+        if (Mathf.Approximately(screenAspect, m_fittedScreenAspect))
+            return;
+        m_fittedScreenAspect = screenAspect;
+
+        // Crop whichever way the video is too wide or too tall for the window
+        Vector2 scale = Vector2.one;
+        if (m_videoAspect > screenAspect)
+            scale.x = screenAspect / m_videoAspect;
+        else
+            scale.y = m_videoAspect / screenAspect;
+        Vector2 offset = (Vector2.one - scale) / 2;
+
+        foreach (BackgroundBlending background in m_backgrounds)
+        {
+            if (background)
+                background.SetTextureCrop(scale, offset);
+        }
     }
 
     void OnDestroy()
@@ -146,6 +189,8 @@ public class CustomizationManager : MonoBehaviour
         string error = null;
         CustomImage old = m_backgroundImage;
         m_backgroundImage = null;
+        m_videoAspect = 0;
+        m_fittedScreenAspect = 0;
 
         string path = CustomizationPrefs.GetStored(CustomizationPrefs.Kind.Background);
         if (path != null)
@@ -157,6 +202,10 @@ public class CustomizationManager : MonoBehaviour
                 background.SetBackgroundOverride(m_backgroundImage != null ? m_backgroundImage.texture : null);
         }
         DisposeImage(ref old);
+
+        // The song's video stays in front of whatever background is picked
+        if (SongVideoBackground.instance)
+            SongVideoBackground.instance.ShowAgain();
 
         return error;
     }
