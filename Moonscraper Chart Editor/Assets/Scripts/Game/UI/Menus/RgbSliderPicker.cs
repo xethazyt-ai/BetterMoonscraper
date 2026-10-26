@@ -174,13 +174,14 @@ public class RgbSliderPicker : MonoBehaviour
         Stretch(track.rectTransform, 0, 0.5f, 1, 0.5f, new Vector2(0, 3));
         UITheme.KeepColor(track);
 
+        // The slider stretches the handle to the area's height, so the area is the handle's height
         GameObject areaObject = new GameObject("Handle Slide Area", typeof(RectTransform));
         areaObject.transform.SetParent(rect, false);
         RectTransform area = (RectTransform)areaObject.transform;
-        Stretch(area, 0, 0, 1, 1, new Vector2(-14, 0));
+        Stretch(area, 0, 0.5f, 1, 0.5f, new Vector2(-14, 10));
 
         Image handle = MakeImage(area, "Handle", 0, 0, 0, 0, new Color32(185, 185, 185, 255));
-        Stretch(handle.rectTransform, 0, 0.5f, 0, 0.5f, new Vector2(14, 10));
+        Stretch(handle.rectTransform, 0, 0, 0, 1, new Vector2(14, 0));
         UITheme.KeepColor(handle);
 
         Slider slider = made.AddComponent<Slider>();

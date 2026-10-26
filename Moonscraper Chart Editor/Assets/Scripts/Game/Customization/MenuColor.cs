@@ -1,5 +1,7 @@
 // See LICENSE in project root for license information.
 
+using System.Collections.Generic;
+using MoonscraperChartEditor.Song;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -22,6 +24,7 @@ public static class MenuColor
     static Material s_material;
     static bool s_applied;      // The material is on the UI
     static float s_nextSweep;
+    static readonly Dictionary<Graphic, Material> s_originalMaterials = new Dictionary<Graphic, Material>();
 
     /// <summary>The picked color, or null for Moonscraper's own blue.</summary>
     public static Color? color
@@ -54,7 +57,7 @@ public static class MenuColor
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        SceneManager.sceneLoaded += (scene, mode) => Apply();
+        SceneManager.sceneLoaded += (scene, mode) => { Apply(); RefreshStarPowerIcon(); };
         Apply();    // The loading screen, already open
 
         GameObject holder = new GameObject("Menu Color");
@@ -109,7 +112,12 @@ public static class MenuColor
 
     static void GetShift(out float hueShift, out float saturationScale, out float valueScale)
     {
-        Color picked = color ?? DefaultColor;
+        GetShift(color ?? DefaultColor, out hueShift, out saturationScale, out valueScale);
+    }
+
+    // How to turn Moonscraper's blue into this color
+    static void GetShift(Color picked, out float hueShift, out float saturationScale, out float valueScale)
+    {
         float hue, saturation, value;
         Color.RGBToHSV(picked, out hue, out saturation, out value);
         hueShift = hue - BaseHue;
@@ -131,21 +139,95 @@ public static class MenuColor
         s_applied = wanted;
     }
 
+    // The images that make up Moonscraper's look (panels, frames, buttons, sliders, boxes); anything else with its
+    // own picture, such as the tool icons, keeps its colors
+    static readonly HashSet<string> s_frameSprites = new HashSet<string>
+    {
+        "TestUISprite", "SliderBG", "settings_panel", "settings_panel_no_title", "settings_panel_resz", "panel1", "panel2",
+        "panel3", "panel4", "panel_bg", "UISprite", "Background", "InputFieldBackground", "white_1", "Knob",
+        "rect_knob_test", "1491902985_Checkbox Empty", "dropdown_arrow", "arrow", "handle_end", "UIMask", "dropshadow",
+        "logo_0",
+    };
+
+    static bool IsIcon(Graphic graphic)
+    {
+        Image image = graphic as Image;
+        return image && image.sprite && !s_frameSprites.Contains(image.sprite.name);
+    }
+
     static void ApplyTo(Graphic graphic, bool wanted)
     {
         if (graphic is TMPro.TMP_Text || UITheme.IsKept(graphic))
             return;     // Text Mesh Pro has its own shader; color swatches show the color itself
 
         Material current = graphic.material;
+        if (wanted && IsIcon(graphic))
+            wanted = false;     // Takes it off anything that had it before icons were left out
         if (wanted)
         {
-            if (current == graphic.defaultMaterial)
+            // Unity's own UI material, or Moonscraper's faster copy of it that most panels and outlines use
+            if (current == graphic.defaultMaterial || IsPlainUiMaterial(current))
+            {
+                if (current != graphic.defaultMaterial)
+                    s_originalMaterials[graphic] = current;
                 graphic.material = material;
+            }
         }
         else if (s_material && current == s_material)
         {
-            graphic.material = null;
+            Material original;
+            graphic.material = s_originalMaterials.TryGetValue(graphic, out original) ? original : null;
+            s_originalMaterials.Remove(graphic);
         }
+    }
+
+    const string StarPowerIconSprite = "sp_bulb_full_square_centered";
+    static Material s_starPowerIconMaterial;
+
+    /// <summary>
+    /// The Star Power tool's icon in the color profile's Star Power color, or its own blue when the profile has none.
+    /// </summary>
+    public static void RefreshStarPowerIcon()
+    {
+        Color starPower;
+        Chart.GameMode gameMode = ChartEditor.InstanceExists && ChartEditor.Instance.currentChart != null ? ChartEditor.Instance.currentChart.gameMode : Chart.GameMode.Guitar;
+        bool custom = CustomNoteColors.TryGetStarPowerColor(gameMode, out starPower)
+            || CustomNoteColors.TryGetStarPowerColor(Chart.GameMode.Guitar, out starPower);
+
+        if (custom)
+        {
+            Shader shader = Resources.Load<Shader>("Shaders/MenuColor");
+            if (!shader)
+                return;
+            if (!s_starPowerIconMaterial)
+            {
+                s_starPowerIconMaterial = new Material(shader);
+                s_starPowerIconMaterial.name = "Star Power icon";
+            }
+            float hueShift, saturationScale, valueScale;
+            GetShift(starPower, out hueShift, out saturationScale, out valueScale);
+            s_starPowerIconMaterial.SetFloat("_HueShift", hueShift);
+            s_starPowerIconMaterial.SetFloat("_SaturationScale", saturationScale);
+            s_starPowerIconMaterial.SetFloat("_ValueScale", Mathf.Clamp(valueScale, 0.35f, 1.3f));
+        }
+
+        foreach (Image image in Resources.FindObjectsOfTypeAll<Image>())
+        {
+            if (!image || !image.gameObject.scene.IsValid() || !image.sprite || image.sprite.name != StarPowerIconSprite)
+                continue;
+            if (custom)
+                image.material = s_starPowerIconMaterial;
+            else if (image.material == s_starPowerIconMaterial)
+                image.material = null;
+        }
+    }
+
+    static bool IsPlainUiMaterial(Material material)
+    {
+        if (!material || material == s_material || !material.shader)
+            return false;
+        string shader = material.shader.name;
+        return shader == "UI/Default" || shader == "UI/Fast-Default";
     }
 
     /// <summary>A color of Moonscraper's look in the menu color, for things drawn without the UI shader.</summary>

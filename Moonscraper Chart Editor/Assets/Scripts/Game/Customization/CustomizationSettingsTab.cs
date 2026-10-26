@@ -247,7 +247,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         holder.pivot = new Vector2(0, 1);
         float templateTop = template.anchoredPosition.y + template.sizeDelta.y * (1 - template.pivot.y);
         holder.anchoredPosition = new Vector2(ControlLeft, templateTop - m_rows * RowHeight);
-        float width = ControlWidth + Gap + ButtonWidth;
+        float width = ControlWidth;    // As wide as the dropdowns, clear of the scroll bar
         holder.sizeDelta = new Vector2(width, 0);
 
         picker = RgbSliderPicker.Build(holder, 0, 0, width, m_labelTemplate.font, m_labelTemplate.color, RgbSliderPicker.BasicColors, true);

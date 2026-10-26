@@ -126,6 +126,7 @@ public static class CustomNoteColors
 
         ApplySustains(profile);
         ApplyStarPower(profile);
+        MenuColor.RefreshStarPowerIcon();
     }
 
     static void ApplyStarPower(CloneHeroColorProfile profile)
@@ -239,6 +240,8 @@ public static class CustomNoteColors
                 sustains[i] = s_originalSustains[i];
             s_sustainsReplaced = false;
         }
+
+        MenuColor.RefreshStarPowerIcon();
     }
 
     static void AddPalettes(MeshNoteResources notes, Chart.GameMode gameMode, Dictionary<int, string[]> noteKeys, Dictionary<int, string[]> cymbalKeys, CloneHeroColorProfile profile)
