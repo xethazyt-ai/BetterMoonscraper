@@ -16,7 +16,7 @@ using UnityEngine;
 /// </summary>
 public class WindowFitOnLaunch : MonoBehaviour
 {
-    const int SW_MAXIMIZE = 3;
+    const int SW_MAXIMIZE = 3, SW_RESTORE = 9;
     const uint MONITOR_DEFAULTTONEAREST = 2;
     const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
     const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
@@ -122,6 +122,30 @@ public class WindowFitOnLaunch : MonoBehaviour
         for (int i = 0; i < 5; ++i)
             yield return null;
 
+        // However Unity remembered the last run (fullscreen, maximised), it opens as a plain window first
+        if (Screen.fullScreen)
+        {
+            Debug.Log(string.Format("Window fit: opened fullscreen ({0}), switching to a window", Screen.fullScreenMode));
+            Screen.SetResolution(LaunchWidth, LaunchHeight, FullScreenMode.Windowed);
+            for (int i = 0; i < 5; ++i)
+                yield return null;
+        }
+        try
+        {
+            IntPtr opened = FindOwnWindow();
+            if (opened != IntPtr.Zero && IsZoomed(opened))
+            {
+                Debug.Log("Window fit: opened maximised, restoring");
+                ShowWindow(opened, SW_RESTORE);
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Couldn't restore the window. " + e.Message);
+        }
+        for (int i = 0; i < 3; ++i)
+            yield return null;
+
         if (TrySetLaunchSize())
         {
             for (int i = 0; i < 3; ++i)
@@ -131,6 +155,17 @@ public class WindowFitOnLaunch : MonoBehaviour
         TryFitWindow();
 
         yield return new WaitForSecondsRealtime(1.5f);
+
+        // Unity sometimes puts its remembered size back while loading: size it again if so
+        int launchWidth, launchHeight;
+        IntPtr check = FindOwnWindow();
+        if (check != IntPtr.Zero && !Screen.fullScreen && !IsZoomed(check) && GetLaunchSize(check, out launchWidth, out launchHeight)
+            && (Mathf.Abs(Screen.width - launchWidth) > 4 || Mathf.Abs(Screen.height - launchHeight) > 4))
+        {
+            Debug.Log(string.Format("Window fit: still {0}x{1} after loading, sizing again", Screen.width, Screen.height));
+            ResizeToLaunchSize(check);
+            yield return null;
+        }
         TryFitWindow();
 
         // Keeps running, to catch the window coming back from maximised at nearly the whole screen's size
