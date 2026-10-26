@@ -11,7 +11,7 @@ using UnityEngine;
 /// Unity opens the window at the screen's full resolution, or where it was last left, and it can hang off the side
 /// or under the taskbar. Once it's open, a window too big for the screen's free area is maximised, and one that fits
 /// but sticks out is moved back to the middle. A window that's already fully on screen is left as it is.
-/// Before that, the window always opens at 854x480 (16:9) in the middle, rather than whatever size Unity remembered,
+/// Before that, the window always opens at 1280x720 (16:9) in the middle, rather than whatever size Unity remembered,
 /// and coming back from maximised at nearly the whole screen's size goes back to that too.
 /// </summary>
 public class WindowFitOnLaunch : MonoBehaviour
@@ -59,7 +59,7 @@ public class WindowFitOnLaunch : MonoBehaviour
 
     // Unity opens the window (and shows its splash screen) at the size it saved when it last closed, which is the whole
     // screen after being maximised. Once BetterMoonscraper has closed and Unity has saved, a hidden PowerShell puts
-    // 854x480 in its place, so the next launch (and Unity's splash screen) opens at that size straight away.
+    // 1280x720 in its place, so the next launch (and Unity's splash screen) opens at that size straight away.
     static void RememberLaunchSize()
     {
         try
@@ -94,8 +94,8 @@ public class WindowFitOnLaunch : MonoBehaviour
         }
     }
 
-    // Always 854x480 inside (16:9), unless the screen is too small for that
-    public const int LaunchWidth = 854, LaunchHeight = 480;
+    // Always 1280x720 inside (16:9), unless the screen is too small for that
+    public const int LaunchWidth = 1280, LaunchHeight = 720;
 
     static bool GetLaunchSize(IntPtr window, out int width, out int height)
     {
