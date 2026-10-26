@@ -18,6 +18,11 @@ public class NoteVisuals3DManager : NoteVisualsManager
     Material[] resourceSharedMatsCymbal;
     Material[] resourceSharedMatsSpCymbal;
 
+    // Star Power open notes with a color profile: the normal open note, outlined in the profile's Star Power color
+    MeshRenderer m_openOutline;
+    static Shader s_outlineShader;
+    static readonly System.Collections.Generic.Dictionary<Color, Material> s_outlineMaterials = new System.Collections.Generic.Dictionary<Color, Material>();
+
     // Use this for initialization
     protected override void Awake ()
     {
@@ -61,6 +66,7 @@ public class NoteVisuals3DManager : NoteVisualsManager
             Note.NoteType visualNoteType = noteType;
 
             Vector3 scale = new Vector3(1, 1, 1);
+            Color outlineColor = Color.clear;
 
             // Determine materials
             if (note.IsOpenNote())
@@ -69,8 +75,17 @@ public class NoteVisuals3DManager : NoteVisualsManager
 
                 int colourIndex = 0;
 
-                if (specialType == Note.SpecialType.StarPower)
+                if (specialType == Note.SpecialType.StarPower && !isTool && CustomNoteColors.TryGetStarPowerColor(gameMode, out outlineColor))
                 {
+                    // Keeps the open note's own color; the outline shows it's Star Power
+                    if (visualNoteType == Note.NoteType.Hopo || visualNoteType == Note.NoteType.Tap)
+                        colourIndex = 1;
+                    else
+                        colourIndex = 0;
+                }
+                else if (specialType == Note.SpecialType.StarPower)
+                {
+                    outlineColor = Color.clear;
                     if (visualNoteType == Note.NoteType.Hopo || visualNoteType == Note.NoteType.Tap)
                         colourIndex = 3;
                     else
@@ -85,8 +100,6 @@ public class NoteVisuals3DManager : NoteVisualsManager
                 }
 
                 materials[2] = CustomNoteColors.Swap(gameMode, resources.openMaterials[colourIndex]);
-                if (specialType == Note.SpecialType.StarPower && !isTool)
-                    materials[2] = CustomNoteColors.StarPower(gameMode, materials[2], false);
             }
             else
             {
@@ -160,9 +173,50 @@ public class NoteVisuals3DManager : NoteVisualsManager
 
             SetVisualScale(scale);
             noteRenderer.sharedMaterials = materials;
+            UpdateOpenOutline(outlineColor);
         }
 
         UpdateTextDisplay(note);
+    }
+
+    void UpdateOpenOutline(Color color)
+    {
+        if (color.a <= 0)
+        {
+            if (m_openOutline)
+                m_openOutline.enabled = false;
+            return;
+        }
+
+        if (!s_outlineShader)
+            s_outlineShader = Resources.Load<Shader>("Shaders/NoteOutline");
+        if (!s_outlineShader)
+            return;
+
+        if (!m_openOutline)
+        {
+            GameObject outline = new GameObject("Star Power Outline");
+            outline.layer = gameObject.layer;
+            outline.transform.SetParent(transform, false);
+            outline.AddComponent<MeshFilter>();
+            m_openOutline = outline.AddComponent<MeshRenderer>();
+            m_openOutline.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            m_openOutline.receiveShadows = false;
+        }
+
+        Material material;
+        if (!s_outlineMaterials.TryGetValue(color, out material) || !material)
+        {
+            material = new Material(s_outlineShader);
+            material.name = "Star Power outline";
+            material.SetColor("_Color", color);
+            s_outlineMaterials[color] = material;
+        }
+
+        m_openOutline.GetComponent<MeshFilter>().sharedMesh = meshFilter.sharedMesh;
+        m_openOutline.sharedMaterial = material;
+        m_openOutline.sortingOrder = noteRenderer.sortingOrder;
+        m_openOutline.enabled = noteRenderer.enabled;
     }
 
     Material[] GetMaterials(Material colorMat, Note.NoteType visualNoteType)

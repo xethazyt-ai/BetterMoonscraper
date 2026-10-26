@@ -162,6 +162,21 @@ public static class CustomNoteColors
     }
 
     /// <summary>
+    /// The color profile's Star Power color for this game mode, when it has one
+    /// </summary>
+    public static bool TryGetStarPowerColor(Chart.GameMode gameMode, out Color color)
+    {
+        Color[] colors;
+        if (s_starPowerColors.TryGetValue(gameMode, out colors))
+        {
+            color = colors[0];
+            return true;
+        }
+        color = Color.white;
+        return false;
+    }
+
+    /// <summary>
     /// The color material for a note in a Star Power phrase: the note's own material in the profile's Star Power color,
     /// or the material unchanged when the profile has none
     /// </summary>
