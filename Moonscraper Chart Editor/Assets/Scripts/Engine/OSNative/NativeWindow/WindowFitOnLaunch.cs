@@ -11,6 +11,8 @@ using UnityEngine;
 /// Unity opens the window at the screen's full resolution, or where it was last left, and it can hang off the side
 /// or under the taskbar. Once it's open, a window too big for the screen's free area is maximised, and one that fits
 /// but sticks out is moved back to the middle. A window that's already fully on screen is left as it is.
+/// Before that, a window that isn't maximised opens at a normal 16:9 size (three quarters of the screen's height),
+/// in the middle, rather than whatever odd size Unity remembered.
 /// </summary>
 public class WindowFitOnLaunch : MonoBehaviour
 {
@@ -58,6 +60,13 @@ public class WindowFitOnLaunch : MonoBehaviour
         // Give Unity a moment to finish sizing the window itself, and check again once loading has settled
         for (int i = 0; i < 5; ++i)
             yield return null;
+
+        if (TrySetLaunchSize())
+        {
+            for (int i = 0; i < 3; ++i)
+                yield return null;
+            TryFitWindow(true);
+        }
         TryFitWindow();
 
         yield return new WaitForSecondsRealtime(1.5f);
@@ -66,12 +75,53 @@ public class WindowFitOnLaunch : MonoBehaviour
         Destroy(gameObject);
     }
 
-    static void TryFitWindow()
+    const float LaunchHeightOfScreen = 0.75f;
+
+    // Sizes the inside of the window to 16:9, three quarters of the screen's free height; true if it was resized
+    static bool TrySetLaunchSize()
+    {
+        try
+        {
+            if (Screen.fullScreen)
+                return false;
+
+            IntPtr window = FindOwnWindow();
+            if (window == IntPtr.Zero || IsZoomed(window))
+                return false;
+
+            MONITORINFO monitor = new MONITORINFO();
+            monitor.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+            if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), ref monitor))
+                return false;
+
+            int workWidth = monitor.rcWork.right - monitor.rcWork.left, workHeight = monitor.rcWork.bottom - monitor.rcWork.top;
+            int height = Mathf.RoundToInt(workHeight * LaunchHeightOfScreen);
+            int width = Mathf.RoundToInt(height * 16f / 9f);
+            if (width > workWidth * 0.9f)
+            {
+                width = Mathf.RoundToInt(workWidth * 0.9f);
+                height = Mathf.RoundToInt(width * 9f / 16f);
+            }
+
+            Debug.Log(string.Format("Window fit: launch size {0}x{1} (was {2}x{3})", width, height, Screen.width, Screen.height));
+            if (Mathf.Abs(Screen.width - width) <= 2 && Mathf.Abs(Screen.height - height) <= 2)
+                return true;   // Already that size, just centre it
+            Screen.SetResolution(width, height, FullScreenMode.Windowed);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Couldn't size the window. " + e.Message);
+            return false;
+        }
+    }
+
+    static void TryFitWindow(bool centre = false)
     {
         try
         {
             if (!Screen.fullScreen)
-                FitWindow();
+                FitWindow(centre);
         }
         catch (Exception e)
         {
@@ -79,7 +129,7 @@ public class WindowFitOnLaunch : MonoBehaviour
         }
     }
 
-    static void FitWindow()
+    static void FitWindow(bool centre)
     {
         IntPtr window = FindOwnWindow();
         if (window == IntPtr.Zero)
@@ -115,7 +165,7 @@ public class WindowFitOnLaunch : MonoBehaviour
 
         bool onScreen = visible.left >= work.left - Slack && visible.top >= work.top - Slack
             && visible.right <= work.right + Slack && visible.bottom <= work.bottom + Slack;
-        if (!onScreen)
+        if (!onScreen || centre)
         {
             // Centre it in the free area, keeping its size
             int moveX = work.left + (workWidth - width) / 2 - visible.left;

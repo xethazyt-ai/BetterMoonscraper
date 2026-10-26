@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace MoonscraperEngine.Input
 {
@@ -146,6 +147,23 @@ namespace MoonscraperEngine.Input
                     inputMaps.jsMaps.Add(map.Clone() as JoystickMap);
                 }
             }
+        }
+
+        /// <summary>
+        /// Swaps one key for another where it's bound on its own with no modifiers, for moving an old default binding.
+        /// </summary>
+        public bool ReplaceKey(KeyCode from, KeyCode to)
+        {
+            bool changed = false;
+            foreach (KeyboardMap map in inputMaps.kbMaps)
+            {
+                if (map.modifiers == KeyboardDevice.ModifierKeys.None && map.keys.Count == 1 && map.keys[0] == from)
+                {
+                    map.keys[0] = to;
+                    changed = true;
+                }
+            }
+            return changed;
         }
 
         public void Add(IInputMap map)

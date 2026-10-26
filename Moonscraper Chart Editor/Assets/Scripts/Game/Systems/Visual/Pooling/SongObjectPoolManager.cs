@@ -92,6 +92,19 @@ public class SongObjectPoolManager : SystemManagerState.MonoBehaviourSystem
         editor.events.playbackStoppedEvent.Register(OnPlaybackStopped);
     }
 
+    /// <summary>
+    /// Shows or hides everything on the highway that isn't a note: BPMs, time signatures, sections, events and the star
+    /// power bars. Used by Preview Mode. Their objects stay assigned while hidden, so they come back where they were.
+    /// </summary>
+    public void SetMarkersVisible(bool visible)
+    {
+        foreach (GameObject parent in new[] { starpowerParent, bpmParent, timesignatureParent, sectionParent, songEventParent, chartEventParent })
+        {
+            if (parent)
+                parent.SetActive(visible);
+        }
+    }
+
     // Update is called once per frame
     void LateUpdate ()
     {

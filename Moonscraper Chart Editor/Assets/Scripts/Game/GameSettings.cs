@@ -416,12 +416,28 @@ public class GameSettings
                 Debug.Log("Loading input settings");
                 string controlsJson = File.ReadAllText(controllerBindingsFilepath);
                 controls.LoadFromSaveData(JsonUtility.FromJson<MSChartEditorInput.MSChartEditorActionContainer>(controlsJson));
+                MoveOldFunctionKeys();
             }
+            PlayerPrefs.SetInt(PrefFunctionKeysMoved, 1);
         }
         catch (Exception e)
         {
             Debug.LogError("Unable to load saved controls. " + e.Message);
         }
+    }
+
+    const string PrefFunctionKeysMoved = "Controls.FunctionKeysMoved";
+
+    // F11 became Preview Mode, so Pattern Blueprints (F9), the Collab window (F10) and Hide Chat (F11) moved to F5,
+    // F6 and F7. Saved controls still on the old keys move over once; anything rebound by hand is left alone.
+    void MoveOldFunctionKeys()
+    {
+        if (PlayerPrefs.GetInt(PrefFunctionKeysMoved, 0) != 0)
+            return;
+
+        controls.GetActionConfig(MSChartEditorInputActions.PatternBlueprints).ReplaceKey(KeyCode.F9, KeyCode.F5);
+        controls.GetActionConfig(MSChartEditorInputActions.DuetToggleWindow).ReplaceKey(KeyCode.F10, KeyCode.F6);
+        controls.GetActionConfig(MSChartEditorInputActions.DuetHideChat).ReplaceKey(KeyCode.F11, KeyCode.F7);
     }
 
     public void Save(string configFilepath, string controllerBindingsFilepath)

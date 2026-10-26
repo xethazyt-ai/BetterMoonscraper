@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using UnityEngine;
 
 /// <summary>
-/// The Duet Mode window. Press F10 (rebindable in Controls) to show or hide it. Drawn on top of the editor, so the editor's own UI is unchanged.
+/// The Duet Mode window. Press F6 (rebindable in Controls) to show or hide it. Drawn on top of the editor, so the editor's own UI is unchanged.
 /// </summary>
 public class DuetPanel : MonoBehaviour
 {
@@ -88,10 +88,11 @@ public class DuetPanel : MonoBehaviour
     public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
     public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
 
-    // True while a Moonscraper menu such as Settings is open and the Duet windows, cursors and markers should get out of the way
+    // True while a Moonscraper menu such as Settings is open, or in Preview Mode, and the Duet windows, cursors and
+    // markers should get out of the way
     public static bool isHudHidden
     {
-        get { return s_instance != null && s_instance.m_editor != null && s_instance.m_editor.currentState == ChartEditor.State.Menu; }
+        get { return PreviewMode.isActive || (s_instance != null && s_instance.m_editor != null && s_instance.m_editor.currentState == ChartEditor.State.Menu); }
     }
 
     public static bool IsPointerOverPanel()
@@ -107,10 +108,11 @@ public class DuetPanel : MonoBehaviour
         return s_instance.m_window.rect.Contains(pointer) && !DuetMenuCover.Covers(s_instance.m_window.rect, scale);
     }
 
-    // IMGUI draws in screen pixels, so scale it up on screens taller than 1080 pixels to keep text readable
+    // IMGUI draws in screen pixels, so everything is scaled with the window's height (as it looks at 1080 pixels
+    // tall), so the windows grow and shrink with Moonscraper's window. Not below half size, to stay readable.
     public static float GuiScale
     {
-        get { return Mathf.Max(1f, Screen.height / 1080f); }
+        get { return Mathf.Clamp(Screen.height / 1080f, 0.5f, 4f); }
     }
 
     ChartEditor m_editor;

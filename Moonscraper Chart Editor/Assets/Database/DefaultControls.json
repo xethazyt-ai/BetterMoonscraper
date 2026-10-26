@@ -2310,7 +2310,7 @@
                     {
                         "modifiers": 0,
                         "keys": [
-                            291
+                            287
                         ]
                     },
                     {
@@ -2360,7 +2360,7 @@
                     {
                         "modifiers": 0,
                         "keys": [
-                            292
+                            288
                         ]
                     },
                     {
@@ -2384,7 +2384,7 @@
                     {
                         "modifiers": 0,
                         "keys": [
-                            290
+                            286
                         ]
                     },
                     {
@@ -2409,6 +2409,30 @@
                         "modifiers": 2,
                         "keys": [
                             98
+                        ]
+                    },
+                    {
+                        "modifiers": 0,
+                        "keys": []
+                    }
+                ],
+                "gpButtonMaps": [
+                    {
+                        "buttons": [],
+                        "axes": []
+                    }
+                ],
+                "jsMaps": []
+            }
+        },
+        {
+            "action": "PreviewMode",
+            "input": {
+                "kbMaps": [
+                    {
+                        "modifiers": 0,
+                        "keys": [
+                            292
                         ]
                     },
                     {

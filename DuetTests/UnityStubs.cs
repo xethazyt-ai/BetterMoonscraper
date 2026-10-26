@@ -157,6 +157,7 @@ public class SelectedObjectsManager
 }
 
 public class SongObjectPoolManager { public void SetAllPoolsDirty() { } }
+public static class PreviewMode { public static bool isActive { get { return false; } } }
 public class LoadingTasksManager { public bool isRunningTask; }
 public class DropdownNotification { public void PushNotification(string message, float displayTime = 3, bool cancelable = false) { } }
 public class Services { public LoadingTasksManager loadingTasksManager = new LoadingTasksManager(); public DropdownNotification notificationBar = new DropdownNotification(); }

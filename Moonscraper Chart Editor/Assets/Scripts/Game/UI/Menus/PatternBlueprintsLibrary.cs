@@ -104,7 +104,7 @@ public partial class PatternBlueprints
         }
 
         if (m_file.blueprints.Count == 0)
-            GUILayout.Label("No patterns saved yet. Select some notes, then Save selection in Pattern Blueprints (F9).");
+            GUILayout.Label("No patterns saved yet. Select some notes, then Save selection in Pattern Blueprints (F5).");
         else if (shown == 0)
             GUILayout.Label("No pattern names match \"" + m_librarySearch.Trim() + "\".");
         GUILayout.EndScrollView();

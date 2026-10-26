@@ -106,6 +106,15 @@ public class DuetOverlay : MonoBehaviour
             session.SetLocalSelection(ReadLocalSelection());
         }
 
+        if (PreviewMode.isActive)
+        {
+            // Preview Mode shows only the chart: others' cursors and selections are hidden, but still sent and kept
+            if (m_ghostNotes != null)
+                m_ghostNotes.HideAll();
+            m_highlights.HideAll();
+            return;
+        }
+
         ShowGhostNotes(session);
         ShowHighlights(session);
     }
@@ -212,7 +221,7 @@ public class DuetOverlay : MonoBehaviour
 
         if (m_tagStyle == null)
             m_tagStyle = MakeTagStyle();
-        m_tagStyle.fontSize = Mathf.RoundToInt(13 * Mathf.Max(1f, Screen.height / 1080f));
+        m_tagStyle.fontSize = Mathf.RoundToInt(13 * DuetPanel.GuiScale);
 
         Camera camera = Camera.main;
         foreach (KeyValuePair<int, DuetPresence> pair in session.presences)
@@ -245,7 +254,7 @@ public class DuetOverlay : MonoBehaviour
         if (!HighwayToGui(camera, presence.pointerX, presence.pointerTick, out tip))
             return;
 
-        float scale = Mathf.Max(1f, Screen.height / 1080f);
+        float scale = DuetPanel.GuiScale;
         Color color = DuetPresence.GetColor(presence.color);
 
         GUIContent content = new GUIContent(label);
@@ -277,7 +286,7 @@ public class DuetOverlay : MonoBehaviour
         Vector3 bottomRight = RectTransformUtility.WorldToScreenPoint(uiCamera, corners[3]);
         Vector3 topRight = RectTransformUtility.WorldToScreenPoint(uiCamera, corners[2]);
 
-        float scale = Mathf.Max(1f, Screen.height / 1080f);
+        float scale = DuetPanel.GuiScale;
         float size = MarkerSize * scale;
         Vector2 mouse = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
         string hovered = null;

@@ -22,7 +22,7 @@ public class DuetChat : MonoBehaviour
 
     ChartEditor m_editor;
     readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Chat", new Rect(0, 0, Width, Height), new Vector2(220, 150), true, false);
-    bool m_hidden = false;     // Put away with the hide chat key (F11 unless rebound in Controls)
+    bool m_hidden = false;     // Put away with the hide chat key (F7 unless rebound in Controls)
     Vector2 m_scroll;
     int m_seenChatCount = -1;
     string m_text = string.Empty;

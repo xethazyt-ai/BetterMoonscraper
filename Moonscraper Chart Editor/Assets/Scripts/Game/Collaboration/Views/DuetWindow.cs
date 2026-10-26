@@ -4,7 +4,8 @@ using UnityEngine;
 
 /// <summary>
 /// An IMGUI window that can be dragged by its title and resized by dragging any of its corners, like a Windows
-/// window. Its size and position are remembered between runs (and across Moonscraper versions).
+/// window. Its size and position are remembered between runs (and across Moonscraper versions). When the Moonscraper
+/// window changes size the window keeps its place on screen, in proportion (GUI units already scale with the height).
 /// </summary>
 public class DuetWindow
 {
@@ -25,6 +26,7 @@ public class DuetWindow
     float m_scale = 1;
     bool m_placed = false;
     Vector2 m_savedPosition;
+    Vector2 m_screenSize;           // The screen in GUI units when the position was last kept, to move with it
 
     // scrollWhenSized: once someone picks a height, scroll the contents if they don't fit
     public DuetWindow(int id, string prefKey, Rect initial, Vector2 minSize, bool fixedHeight, bool scrollWhenSized)
@@ -58,6 +60,7 @@ public class DuetWindow
 
         rect.x = PlayerPrefs.GetFloat(m_prefKey + ".X", fallback.x);
         rect.y = PlayerPrefs.GetFloat(m_prefKey + ".Y", fallback.y);
+        m_screenSize = new Vector2(PlayerPrefs.GetFloat(m_prefKey + ".ScreenWidth", 0), PlayerPrefs.GetFloat(m_prefKey + ".ScreenHeight", 0));
         m_savedPosition = rect.position;
         m_placed = true;
     }
@@ -67,6 +70,15 @@ public class DuetWindow
         m_scale = scale;
         if (m_corner >= 0)
             UpdateResize();
+
+        // The Moonscraper window was resized (or maximised): keep the same spot, as a share of the screen
+        Vector2 screen = new Vector2(Screen.width / scale, Screen.height / scale);
+        if (m_placed && m_screenSize.x > 0 && m_screenSize.y > 0 && (Mathf.Abs(screen.x - m_screenSize.x) > 0.5f || Mathf.Abs(screen.y - m_screenSize.y) > 0.5f))
+        {
+            Vector2 centre = rect.center;
+            rect.center = new Vector2(centre.x * screen.x / m_screenSize.x, centre.y * screen.y / m_screenSize.y);
+        }
+        m_screenSize = screen;
 
         m_content = content;
         rect = DuetMenuCover.KeepOnScreen(rect, scale);
@@ -88,6 +100,8 @@ public class DuetWindow
             m_savedPosition = rect.position;
             PlayerPrefs.SetFloat(m_prefKey + ".X", rect.x);
             PlayerPrefs.SetFloat(m_prefKey + ".Y", rect.y);
+            PlayerPrefs.SetFloat(m_prefKey + ".ScreenWidth", m_screenSize.x);
+            PlayerPrefs.SetFloat(m_prefKey + ".ScreenHeight", m_screenSize.y);
             PlayerPrefs.Save();
         }
     }

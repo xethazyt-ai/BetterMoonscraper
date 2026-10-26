@@ -154,6 +154,8 @@ public enum MSChartEditorInputActions
 
     PatternBlueprints,
     PatternBlueprintPaste,
+
+    PreviewMode,
 }
 
 public static class MSChartEditorInput
