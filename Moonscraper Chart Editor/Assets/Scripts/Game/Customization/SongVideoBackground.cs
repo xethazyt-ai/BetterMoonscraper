@@ -182,13 +182,14 @@ public class SongVideoBackground : MonoBehaviour
 
         if (visible)
         {
-            Seek(TargetSeconds());
+            if (!m_player.isPlaying)
+                Seek(TargetSeconds());  // While a preview plays it kept playing hidden, so it's already at the right frame
             m_lastScrubTarget = double.NaN;
             ShowAgain();
             return;
         }
 
-        if (m_player.isPlaying)
+        if (m_player.isPlaying && !IsPreviewPlaying())
             m_player.Pause();
         if (m_shown)
         {
@@ -247,12 +248,14 @@ public class SongVideoBackground : MonoBehaviour
         if (!m_prepared || !m_player || QuitState.isQuitting)
             return;
 
-        if (!isEnabled)
+        if (!isEnabled && !IsPreviewPlaying())
         {
             if (m_player.isPlaying)
                 m_player.Pause();   // Hidden: don't spend time decoding it
             return;
         }
+        // Hidden while a preview plays, it keeps playing out of sight, so ticking the box again shows it at once
+        // instead of waiting for the video to seek and start again
 
         ChartEditor editor = ChartEditor.Instance;
         double target = TargetSeconds();
@@ -290,6 +293,11 @@ public class SongVideoBackground : MonoBehaviour
             m_lastScrubTarget = clamped;
             m_lastScrubAt = Time.unscaledTime;
         }
+    }
+
+    static bool IsPreviewPlaying()
+    {
+        return ChartEditor.InstanceExists && ChartEditor.Instance.currentState == ChartEditor.State.Playing;
     }
 
     void Seek(double seconds)
