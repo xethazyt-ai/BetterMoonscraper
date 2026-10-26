@@ -246,26 +246,72 @@ public class SongVideoBackground : MonoBehaviour
         return editor.currentVisibleTime + editor.currentSong.offset + m_startSeconds;
     }
 
+    static readonly string[] s_videoExtensions = { ".mp4", ".webm", ".avi", ".mpeg", ".mpg", ".mov", ".m4v", ".wmv", ".ogv", ".mkv" };
+
+    // The chart's folder, or for a .mid chart, a joiner or a song not saved yet, the folder its audio is in. video.*
+    // first, as Clone Hero names it, else any one video file there.
     static string FindVideo()
     {
-        if (!ChartEditor.InstanceExists)
+        if (!ChartEditor.InstanceExists || ChartEditor.Instance.currentSong == null)
             return null;
 
-        string chartFile = ChartEditor.Instance.currentChartFile;
-        if (string.IsNullOrEmpty(chartFile))
-            return null;
-
-        string folder = Path.GetDirectoryName(chartFile);
-        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
-            return null;
-
-        foreach (string name in s_videoNames)
+        foreach (string folder in SongFolders())
         {
-            string path = Path.Combine(folder, name);
-            if (File.Exists(path))
-                return path;
+            foreach (string name in s_videoNames)
+            {
+                string path = Path.Combine(folder, name);
+                if (File.Exists(path))
+                    return path;
+            }
+        }
+
+        foreach (string folder in SongFolders())
+        {
+            try
+            {
+                string[] files = Directory.GetFiles(folder);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                foreach (string file in files)
+                {
+                    if (Array.IndexOf(s_videoExtensions, Path.GetExtension(file).ToLowerInvariant()) >= 0)
+                        return file;
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Couldn't look for a video in " + folder + ": " + e.Message);
+            }
         }
         return null;
+    }
+
+    static System.Collections.Generic.List<string> SongFolders()
+    {
+        System.Collections.Generic.List<string> folders = new System.Collections.Generic.List<string>();
+        ChartEditor editor = ChartEditor.Instance;
+
+        AddFolder(folders, editor.currentChartFile);
+        foreach (MoonscraperChartEditor.Song.Song.AudioInstrument audio in Enum.GetValues(typeof(MoonscraperChartEditor.Song.Song.AudioInstrument)))
+        {
+            string location = null;
+            try { location = editor.currentSong.GetAudioLocation(audio); }
+            catch (Exception) { }
+            AddFolder(folders, location);
+        }
+        return folders;
+    }
+
+    static void AddFolder(System.Collections.Generic.List<string> folders, string file)
+    {
+        if (string.IsNullOrEmpty(file))
+            return;
+        try
+        {
+            string folder = Path.GetDirectoryName(Path.GetFullPath(file));
+            if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder) && !folders.Contains(folder))
+                folders.Add(folder);
+        }
+        catch (Exception) { }   // Not a path
     }
 
     static double ReadStartSeconds()

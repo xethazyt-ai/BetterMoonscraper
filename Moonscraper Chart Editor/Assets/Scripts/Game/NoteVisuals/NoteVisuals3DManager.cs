@@ -143,10 +143,19 @@ public class NoteVisuals3DManager : NoteVisualsManager
                     }
                 }
 
-                if (specialType == Note.SpecialType.StarPower && !isTool)
-                    colorMat = CustomNoteColors.StarPower(gameMode, colorMat, visualNoteType == Note.NoteType.Cymbal);
-
                 materials = GetMaterials(colorMat, visualNoteType);
+
+                // Star Power keeps the fret color and only the star's outline takes the color profile's note_sp_phrase
+                if (specialType == Note.SpecialType.StarPower)
+                {
+                    const int SP_OUTLINE_MAT_POS = 2;
+                    Material outline = isTool ? null : CustomNoteColors.StarPower(gameMode, materials[SP_OUTLINE_MAT_POS], false);
+                    if (outline && outline != materials[SP_OUTLINE_MAT_POS] && materials[SP_OUTLINE_MAT_POS].name.StartsWith("sp_blue"))
+                    {
+                        materials = (Material[])materials.Clone();
+                        materials[SP_OUTLINE_MAT_POS] = outline;
+                    }
+                }
             }
 
             SetVisualScale(scale);

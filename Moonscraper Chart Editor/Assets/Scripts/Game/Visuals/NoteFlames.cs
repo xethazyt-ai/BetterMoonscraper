@@ -21,6 +21,7 @@ public class NoteFlames : MonoBehaviour
     const float BurstSeconds = 0.3f;
     const float HoldSeconds = 0.08f;    // A held flame goes out this long after the sustain stops asking for it
     const int MaxFlames = 48;
+    const float LiftLanes = 0.75f;      // In lane widths: the striker heads sit about this far up the screen from the strikeline
     const int TextureWidth = 64, TextureHeight = 128;
 
     class Flame
@@ -30,6 +31,7 @@ public class NoteFlames : MonoBehaviour
         public Vector3 basePosition;
         public Color color;
         public float width;
+        public float lift;          // How far above the strikeline it starts, so it rises from the striker head in front of the note
         public float age;
         public float life;
         public bool held;
@@ -151,6 +153,7 @@ public class NoteFlames : MonoBehaviour
         flame.basePosition = position;
         flame.color = FlameColor(editor, note);
         flame.width = laneSpacing * (open ? 3.6f : 0.95f) * (held ? 0.7f : 1);
+        flame.lift = laneSpacing * LiftLanes;
         flame.age = 0;
         flame.life = held ? HoldSeconds : BurstSeconds;
         flame.held = held;
@@ -214,7 +217,7 @@ public class NoteFlames : MonoBehaviour
         transform.rotation = camera.transform.rotation;
         Vector3 size = new Vector3(flame.width * width, flame.width * height, 1);
         transform.localScale = size;
-        transform.position = flame.basePosition + camera.transform.up * (size.y * 0.42f);
+        transform.position = flame.basePosition + camera.transform.up * (flame.lift + size.y * 0.42f);
 
         Color color = flame.color;
         color.a = brightness;
@@ -250,6 +253,7 @@ public class NoteFlames : MonoBehaviour
         renderer.sharedMaterial = m_material;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         renderer.receiveShadows = false;
+        renderer.sortingOrder = 1000;   // In front of the strikers and notes
         gameObject.SetActive(false);
 
         Flame created = new Flame { gameObject = gameObject, renderer = renderer };
