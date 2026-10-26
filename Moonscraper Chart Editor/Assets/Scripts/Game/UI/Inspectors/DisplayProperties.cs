@@ -388,7 +388,12 @@ public class DisplayProperties : UpdateableService
             editor.events.hyperspeedChangeEvent.Fire();
         });
         MakeSpeedToggle("Note Flames:", y - 64, NoteFlames.isEnabled, (on) => NoteFlames.isEnabled = on);
-        MakeSpeedToggle("Song Video:", y - 98, SongVideoBackground.isEnabled, (on) => SongVideoBackground.isEnabled = on);
+        MakeSpeedToggle("Song Video:", y - 98, SongVideoBackground.isEnabled, (on) =>
+        {
+            SongVideoBackground.isEnabled = on;
+            if (on && !string.IsNullOrEmpty(SongVideoBackground.status) && !SongVideoBackground.status.StartsWith("Loading"))
+                editor.services.notificationBar.PushNotification(SongVideoBackground.status.TrimEnd('.').ToUpperInvariant(), 3, true);
+        });
 
         content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 153);
     }

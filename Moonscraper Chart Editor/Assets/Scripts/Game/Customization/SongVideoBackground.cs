@@ -188,6 +188,8 @@ public class SongVideoBackground : MonoBehaviour
         string name = m_path != null ? Path.GetFileName(m_path) : "the video";
         Close();
         status = "Couldn't play " + name + ". BetterMoonscraper plays H.264 .mp4 and VP8 .webm videos; VP9 or AV1 .webm needs converting.";
+        if (ChartEditor.InstanceExists)
+            ChartEditor.Instance.services.notificationBar.PushNotification("COULDN'T PLAY " + name.ToUpperInvariant() + " (H.264 MP4 OR VP8 WEBM ONLY)", 5, true);
     }
 
     void Update()
