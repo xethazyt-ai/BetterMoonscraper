@@ -19,13 +19,15 @@ public static class UITheme
     static readonly Color DarkField = new Color(0.15f, 0.17f, 0.21f);
     static readonly Color DarkControl = new Color(0.33f, 0.36f, 0.42f);
     static readonly Color DarkPanelTint = new Color(0.62f, 0.62f, 0.66f);
+    static readonly Color DarkLightPanelTint = new Color(0.24f, 0.25f, 0.31f);    // The white panels, such as Tools
     static readonly Color LightText = new Color(0.9f, 0.92f, 0.95f);
     static readonly Color DarkPlaceholder = new Color(0.62f, 0.65f, 0.7f);
 
     // Sprites by name: white backgrounds for fields and buttons, small controls, and the panel frames
     static readonly HashSet<string> s_fieldSprites = new HashSet<string> { "InputFieldBackground", "UISprite", "Background", "TestUISprite", "white_1" };
     static readonly HashSet<string> s_controlSprites = new HashSet<string> { "SliderBG", "1491902985_Checkbox Empty", "Knob", "rect_knob_test" };
-    static readonly HashSet<string> s_panelSprites = new HashSet<string> { "settings_panel", "settings_panel_resz", "settings_panel_no_title", "panel1", "panel_bg" };
+    static readonly HashSet<string> s_panelSprites = new HashSet<string> { "settings_panel", "settings_panel_resz", "settings_panel_no_title", "panel_bg" };
+    static readonly HashSet<string> s_lightPanelSprites = new HashSet<string> { "panel1", "panel2", "panel3", "panel4" };     // White in the middle
 
     static readonly Dictionary<Graphic, Color> s_originalColors = new Dictionary<Graphic, Color>();
     static readonly Dictionary<Selectable, ColorBlock> s_originalBlocks = new Dictionary<Selectable, ColorBlock>();
@@ -56,6 +58,8 @@ public static class UITheme
     {
         Theme theme = current;
         DarkTitleBar.Set(theme == Theme.Dark);
+        if (CustomizationManager.instance)
+            CustomizationManager.instance.MatchTitleBarToMenuBar(theme == Theme.Dark);
         if (theme == Theme.Default && s_applied == Theme.Default)
             return;     // Nothing has been changed, so there's nothing to put back
 
@@ -146,6 +150,8 @@ public static class UITheme
         string sprite = image.sprite ? image.sprite.name : string.Empty;
         if (s_panelSprites.Contains(sprite))
             return Multiply(original, DarkPanelTint);
+        if (s_lightPanelSprites.Contains(sprite))
+            return Multiply(original, DarkLightPanelTint);
 
         if ((s_fieldSprites.Contains(sprite) || sprite == string.Empty) && Luminance(original) > 0.6f && !IsColored(original))
             return WithAlpha(DarkField, original.a);

@@ -79,9 +79,9 @@ public class DisplayProperties : UpdateableService
 
     // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
     // Moonscraper's old maximum, so the new top of the highway slider reads 200%.
-    const float MaxHyperspeed = 40;
+    const float MaxHyperspeed = 50;
     const float FullHighwayLength = 6;
-    const float MaxHighwayLength = 12;
+    const float MaxHighwayLengthPercent = 300;
 
     // The highway visuals (fretboard and rails) and the camera's far plane, as the scene set them, so a longer
     // highway can stretch them to reach the new end
@@ -102,7 +102,7 @@ public class DisplayProperties : UpdateableService
     {
         editor = ChartEditor.Instance;
         hyperspeedSlider.maxValue = MaxHyperspeed;
-        highwayLengthSlider.maxValue = MaxHighwayLength;
+        highwayLengthSlider.maxValue = highwayLengthSlider.minValue + (FullHighwayLength - highwayLengthSlider.minValue) * MaxHighwayLengthPercent / 100;
         hyperspeedSlider.value = Globals.gameSettings.hyperspeed;
         highwayLengthSlider.value = Globals.gameSettings.highwayLength;
 

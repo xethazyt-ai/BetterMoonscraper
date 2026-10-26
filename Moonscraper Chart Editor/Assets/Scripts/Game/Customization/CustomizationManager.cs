@@ -68,6 +68,56 @@ public class CustomizationManager : MonoBehaviour
         ChartEditor.Instance.events.editorStateChangedEvent.Register(OnEditorStateChanged);
     }
 
+    Coroutine m_titleBarMatch;
+
+    /// <summary>
+    /// In the Dark theme, colors the Windows title bar like the menu bar under it, read off the screen so it matches
+    /// whatever the menu bar ends up looking like
+    /// </summary>
+    public void MatchTitleBarToMenuBar(bool dark)
+    {
+        if (m_titleBarMatch != null)
+            StopCoroutine(m_titleBarMatch);
+        m_titleBarMatch = null;
+
+        if (!dark)
+        {
+            DarkTitleBar.SetColor(null);
+            return;
+        }
+        if (isActiveAndEnabled)
+            m_titleBarMatch = StartCoroutine(MatchTitleBarNextFrame());
+    }
+
+    IEnumerator MatchTitleBarNextFrame()
+    {
+        yield return null;  // Let the recolored menu bar draw first
+        yield return new WaitForEndOfFrame();
+
+        // A few spots along the menu bar's empty right-hand side, a little below the window's top edge
+        Texture2D pixel = new Texture2D(1, 1, TextureFormat.RGB24, false);
+        System.Collections.Generic.List<Color> samples = new System.Collections.Generic.List<Color>();
+        try
+        {
+            for (int i = 0; i < 5; ++i)
+            {
+                int x = Mathf.Clamp((int)(Screen.width * (0.72f + i * 0.05f)), 0, Screen.width - 1);
+                int y = Mathf.Clamp(Screen.height - 6, 0, Screen.height - 1);
+                pixel.ReadPixels(new Rect(x, y, 1, 1), 0, 0, false);
+                samples.Add(pixel.GetPixel(0, 0));
+            }
+        }
+        finally
+        {
+            Destroy(pixel);
+        }
+
+        // The middle one by brightness, so a stray letter or icon doesn't count
+        samples.Sort((a, b) => (a.r + a.g + a.b).CompareTo(b.r + b.g + b.b));
+        DarkTitleBar.SetColor(samples[samples.Count / 2]);
+        m_titleBarMatch = null;
+    }
+
     // Menus can build parts of themselves the first time they open, so theme whatever is new
     void OnEditorStateChanged(in ChartEditor.State state)
     {

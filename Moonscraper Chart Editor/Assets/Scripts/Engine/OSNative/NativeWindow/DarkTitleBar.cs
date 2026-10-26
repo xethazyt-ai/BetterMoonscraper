@@ -35,7 +35,40 @@ public static class DarkTitleBar
 #endif
     }
 
+    /// <summary>
+    /// Colors the title bar itself (Windows 11 only), or puts Windows' own color back with null
+    /// </summary>
+    public static void SetColor(UnityEngine.Color? color)
+    {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        if (QuitState.isQuitting)
+            return;
+        try
+        {
+            IntPtr window = WindowFitOnLaunch.FindOwnWindow();
+            if (window == IntPtr.Zero)
+                return;
+
+            int caption = DwmColorDefault, text = DwmColorDefault;
+            if (color.HasValue)
+            {
+                UnityEngine.Color32 c = color.Value;
+                caption = c.r | (c.g << 8) | (c.b << 16);    // COLORREF is 0x00BBGGRR
+                text = 0xF0F0F0;
+            }
+            DwmSetWindowAttribute(window, DwmCaptionColor, ref caption, sizeof(int));
+            DwmSetWindowAttribute(window, DwmTextColor, ref text, sizeof(int));
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogWarning("Couldn't color the title bar: " + e.Message);
+        }
+#endif
+    }
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+    const int DwmCaptionColor = 35, DwmTextColor = 36;
+    const int DwmColorDefault = unchecked((int)0xFFFFFFFF);
     const int DwmUseImmersiveDarkMode = 20, DwmUseImmersiveDarkModeOld = 19;
     const uint SwpNoSize = 0x1, SwpNoMove = 0x2, SwpNoZOrder = 0x4, SwpNoActivate = 0x10, SwpFrameChanged = 0x20;
 

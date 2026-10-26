@@ -23,6 +23,7 @@ public class NoteFlames : MonoBehaviour
     const float BurstSeconds = 0.3f;
     const float HoldSeconds = 0.08f;    // A held flame goes out this long after the sustain stops asking for it
     const int MaxFlames = 48;
+    const float LiftLanes = 0.25f;      // Starts just up the highway from the strikeline, in front of the strikers
     const float OpenScale = 0.7f;       // Open notes and kicks: a smaller flame on every lane
     const int FrameWidth = 64, FrameHeight = 128, FrameCount = 16;
     const int NoisePeriod = 4;
@@ -153,8 +154,8 @@ public class NoteFlames : MonoBehaviour
         ChartEditor editor = ChartEditor.Instance;
         float laneSpacing = LaneSpacing(editor);
         Vector3 position = note.controller.transform.position;
-        position.y = editor.visibleStrikeline.position.y;
-        position.z = editor.visibleStrikeline.position.z;
+        position.y = editor.visibleStrikeline.position.y + laneSpacing * LiftLanes;
+        // z stays the note's own: the strikeline object sits nearer the camera, which put the flames below the strikers
         Color color = FlameColor(editor, note);
 
         if (!note.IsOpenNote())
