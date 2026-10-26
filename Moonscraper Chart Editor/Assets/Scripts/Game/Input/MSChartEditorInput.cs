@@ -156,6 +156,7 @@ public enum MSChartEditorInputActions
     PatternBlueprintPaste,
 
     PreviewMode,
+    ResetMenuPositions,
 }
 
 public static class MSChartEditorInput

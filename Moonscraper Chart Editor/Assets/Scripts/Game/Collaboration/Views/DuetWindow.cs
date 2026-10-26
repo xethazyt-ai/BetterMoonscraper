@@ -1,5 +1,6 @@
 // See LICENSE in project root for license information.
 
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -27,6 +28,32 @@ public class DuetWindow
     bool m_placed = false;
     Vector2 m_savedPosition;
     Vector2 m_screenSize;           // The screen in GUI units when the position was last kept, to move with it
+    readonly Rect m_initial;
+    readonly bool m_initialFixedHeight;
+
+    static readonly List<DuetWindow> s_all = new List<DuetWindow>();
+
+    /// <summary>
+    /// Every window back to its first size and place (the Reset Menu Positions key). Older chat keys go too.
+    /// </summary>
+    public static void ResetAll()
+    {
+        foreach (DuetWindow window in s_all)
+            window.Reset();
+        PlayerPrefs.DeleteKey("Duet.ChatX");
+        PlayerPrefs.DeleteKey("Duet.ChatY");
+        PlayerPrefs.Save();
+    }
+
+    void Reset()
+    {
+        foreach (string key in new[] { ".X", ".Y", ".Width", ".Height", ".ScreenWidth", ".ScreenHeight" })
+            PlayerPrefs.DeleteKey(m_prefKey + key);
+        rect = m_initial;
+        m_fixedHeight = m_initialFixedHeight;
+        m_corner = -1;
+        m_placed = false;      // Its owner places it at its usual spot on the next draw
+    }
 
     // scrollWhenSized: once someone picks a height, scroll the contents if they don't fit
     public DuetWindow(int id, string prefKey, Rect initial, Vector2 minSize, bool fixedHeight, bool scrollWhenSized)
@@ -37,6 +64,9 @@ public class DuetWindow
         m_scrollWhenSized = scrollWhenSized;
         rect = initial;
         m_fixedHeight = fixedHeight;
+        m_initial = initial;
+        m_initialFixedHeight = fixedHeight;
+        s_all.Add(this);
 
         float width = PlayerPrefs.GetFloat(prefKey + ".Width", 0);
         float height = PlayerPrefs.GetFloat(prefKey + ".Height", 0);

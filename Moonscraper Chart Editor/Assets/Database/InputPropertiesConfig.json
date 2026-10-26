@@ -1176,6 +1176,17 @@
                 "category": 0,
                 "allowSameFrameMultiInput": false
             }
+        },
+        {
+            "mSChartEditorInputAction": "ResetMenuPositions",
+            "properties": {
+                "displayName": "Reset Menu Positions",
+                "rebindable": true,
+                "hiddenInLists": false,
+                "anyDirectionAxis": false,
+                "category": 0,
+                "allowSameFrameMultiInput": false
+            }
         }
     ]
 }

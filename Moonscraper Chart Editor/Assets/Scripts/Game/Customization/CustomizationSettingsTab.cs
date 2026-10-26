@@ -123,6 +123,10 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddThemeRow();
         AddMenuColorRow();
 
+        // Moonscraper's drop-down lists put the tick right against the text, so it overlaps wider letters
+        foreach (Dropdown dropdown in settings.GetComponentsInChildren<Dropdown>(true))
+            MakeRoomForTick(dropdown);
+
         // Reads every picked file again, for after editing a color profile or image while Moonscraper is open
         AddButton("Reload", ControlLeft, ReloadAll);
         ++m_rows;
@@ -146,6 +150,24 @@ public class CustomizationSettingsTab : MonoBehaviour
     }
 
     // "Autosave chart" in the Editor tab, under New Song Resolution, copied from the BG swap time row above it
+    // Pitched Speedups in the left panel sets the pitch for slowdowns and speedups alike, so Moonscraper's own
+    // Slowdown Pitch Correction checkbox goes, and the rows under it move up into its place
+    static void RemovePitchCorrectionRow(RectTransform editorGroup)
+    {
+        RectTransform row = editorGroup.Find("Slowdown Pitch Correction Enabled") as RectTransform;
+        if (!row || !row.gameObject.activeSelf)
+            return;
+
+        row.gameObject.SetActive(false);
+        const float RowGap = 28;
+        foreach (Transform child in editorGroup)
+        {
+            RectTransform rect = child as RectTransform;
+            if (rect && rect != row && rect.anchoredPosition.y < row.anchoredPosition.y - 5)
+                rect.anchoredPosition += new Vector2(0, RowGap);
+        }
+    }
+
     static void AddAutosaveRow(RectTransform editorGroup)
     {
         Text labelTemplate = FindComponent<Text>(editorGroup, "BG Swap Time Text");
@@ -158,6 +180,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         }
 
         const float RowStep = 32;
+        RemovePitchCorrectionRow(editorGroup);
         float labelY = lastRow.anchoredPosition.y - RowStep;
 
         Text label = Instantiate(labelTemplate, editorGroup);
@@ -207,7 +230,14 @@ public class CustomizationSettingsTab : MonoBehaviour
         ++m_rows;
     }
 
-    // Default or Dark look for the menus and panels
+    static void MakeRoomForTick(Dropdown dropdown)
+    {
+        RectTransform label = dropdown.transform.Find("Template/Viewport/Content/Item/Item Label") as RectTransform;
+        if (label && label.offsetMin.x < 26)
+            label.offsetMin = new Vector2(26, label.offsetMin.y);
+    }
+
+    // Light (Moonscraper's own look) or Dark for the menus and panels
     void AddThemeRow()
     {
         AddLabel("Theme");
@@ -216,7 +246,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         dropdown.name = "Theme Dropdown";
         dropdown.onValueChanged = new Dropdown.DropdownEvent();
         dropdown.ClearOptions();
-        dropdown.AddOptions(new List<string> { "Default", "Dark" });
+        dropdown.AddOptions(new List<string> { "Light", "Dark" });
         dropdown.value = (int)UITheme.current;
         dropdown.RefreshShownValue();
         dropdown.onValueChanged.AddListener((index) => UITheme.current = (UITheme.Theme)index);
