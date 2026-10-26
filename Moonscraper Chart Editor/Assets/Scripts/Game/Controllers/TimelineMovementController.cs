@@ -48,8 +48,31 @@ public class TimelineMovementController : MovementController
     int sectionHighlightRealOriginIndex = 0;
     int sectionHighlightOffset { get { return  sectionHighlightCurrentIndex - sectionHighlightRealOriginIndex; } }
 
+    // Going fullscreen, back, or resizing re-lays out the timeline over a few frames, and reading the chart position back
+    // from its handle meanwhile moved the chart (by seconds on a long song), so the position is held until it settles
+    const int ResizeHoldFrames = 15;
+    int resizeHoldFrames = 0;
+    int lastScreenWidth, lastScreenHeight;
+
+    void HoldOrFollowTimelineHandle()
+    {
+        if (resizeHoldFrames > 0 || PreviewMode.isActive || Time.frameCount - PreviewMode.lastToggleFrame < ResizeHoldFrames)
+            UpdateTimelineHandleBasedPos();
+        else
+            UpdatePosBasedTimelineHandle();
+    }
+
     void Update()
     {
+        if (Screen.width != lastScreenWidth || Screen.height != lastScreenHeight)
+        {
+            lastScreenWidth = Screen.width;
+            lastScreenHeight = Screen.height;
+            resizeHoldFrames = ResizeHoldFrames;
+        }
+        else if (resizeHoldFrames > 0)
+            --resizeHoldFrames;
+
         if (Input.GetMouseButtonDown(2))
         {
             middleClickDownScreenPos = Input.mousePosition;
@@ -245,13 +268,13 @@ public class TimelineMovementController : MovementController
                 }
                 else
                 {
-                    UpdatePosBasedTimelineHandle();
+                    HoldOrFollowTimelineHandle();
                 }
             }
             // Scroll bar value changes position
             else
             {
-                UpdatePosBasedTimelineHandle();
+                HoldOrFollowTimelineHandle();
             }
         }
         else if(editor.currentState == ChartEditor.State.Playing)

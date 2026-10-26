@@ -95,10 +95,84 @@ public static class DarkTitleBar
 #endif
         if (!dark)
             return UnityEngine.Color.white;
-        return focused ? UnityEngine.Color.black : new UnityEngine.Color32(43, 43, 43, 255);
+        return focused ? UnityEngine.Color.black : new UnityEngine.Color(43 / 255f, 43 / 255f, 43 / 255f);
+    }
+
+    /// <summary>True once the title bar always looks focused (see KeepFocusedLook).</summary>
+    public static bool keepsFocusedLook { get; private set; }
+
+    /// <summary>
+    /// Windows 10 greys a title bar out while another window (such as one on a second monitor) has focus, which it
+    /// can't be told not to do with a color. This tells Windows the window is always active as far as drawing the title
+    /// bar goes, so it stays the same color as the menu bar under it. Focus itself works as usual.
+    /// </summary>
+    public static void KeepFocusedLook()
+    {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        if (keepsFocusedLook || QuitState.isQuitting)
+            return;
+        try
+        {
+            IntPtr window = WindowFitOnLaunch.FindOwnWindow();
+            if (window == IntPtr.Zero)
+                return;
+
+            s_window = window;
+            s_newProc = TitleBarWindowProc;     // Kept in a field so it isn't garbage collected while Windows calls it
+            s_oldProc = SetWindowLongPtr(window, GwlWndProc, Marshal.GetFunctionPointerForDelegate(s_newProc));
+            if (s_oldProc == IntPtr.Zero)
+                return;
+            keepsFocusedLook = true;
+            UnityEngine.Application.quitting += StopKeepingFocusedLook;
+
+            // Redraw the title bar as focused now
+            SendMessage(window, WmNcActivate, (IntPtr)1, IntPtr.Zero);
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogWarning("Couldn't keep the title bar's color: " + e.Message);
+        }
+#endif
     }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+    delegate IntPtr WindowProc(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    static IntPtr s_window;
+    static IntPtr s_oldProc;
+    static WindowProc s_newProc;
+
+    const int GwlWndProc = -4;
+    const uint WmNcActivate = 0x0086;
+
+    [AOT.MonoPInvokeCallback(typeof(WindowProc))]
+    static IntPtr TitleBarWindowProc(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam)
+    {
+        if (message == WmNcActivate)
+            wParam = (IntPtr)1;     // Draw the title bar as focused either way
+        return CallWindowProc(s_oldProc, hWnd, message, wParam, lParam);
+    }
+
+    // Puts Unity's own window procedure back before the scripting side shuts down
+    static void StopKeepingFocusedLook()
+    {
+        UnityEngine.Application.quitting -= StopKeepingFocusedLook;
+        if (!keepsFocusedLook)
+            return;
+        try
+        {
+            SetWindowLongPtr(s_window, GwlWndProc, s_oldProc);
+        }
+        catch (Exception)
+        {
+        }
+        keepsFocusedLook = false;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value);
+    [DllImport("user32.dll", EntryPoint = "CallWindowProcW")] static extern IntPtr CallWindowProc(IntPtr previous, IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")] static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+
     const int DwmCaptionColor = 35, DwmTextColor = 36;
     const int DwmColorDefault = unchecked((int)0xFFFFFFFF);
     const int DwmUseImmersiveDarkMode = 20, DwmUseImmersiveDarkModeOld = 19;

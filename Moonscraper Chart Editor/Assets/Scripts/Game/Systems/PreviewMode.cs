@@ -16,6 +16,7 @@ using UnityEngine.SceneManagement;
 public class PreviewMode : MonoBehaviour
 {
     public static bool isActive { get; private set; }
+    public static int lastToggleFrame { get; private set; }    // The frame Preview Mode last went on or off
 
     static PreviewMode s_instance;
     ChartEditor m_editor;
@@ -108,6 +109,7 @@ public class PreviewMode : MonoBehaviour
     void Enter()
     {
         isActive = true;
+        lastToggleFrame = Time.frameCount;
 
         m_savedTool = m_editor.toolManager.currentToolId;
         if (m_savedTool == EditorObjectToolManager.ToolID.None)
@@ -117,8 +119,8 @@ public class PreviewMode : MonoBehaviour
         HideCanvases();
         if (m_editor.songObjectPoolManager)
             m_editor.songObjectPoolManager.SetMarkersVisible(false);
-        // The editing tools (note cursor, select boxes) and the selection highlights
-        foreach (string name in new[] { "Hover Highlights", "Selected Highlight Pool", "Tools", "Group Select Area" })
+        // The editing tools (note cursor, select boxes, the red paste arrow) and the selection highlights
+        foreach (string name in new[] { "Hover Highlights", "Selected Highlight Pool", "Tools", "Group Select Area", "Clipboard" })
         {
             GameObject found = GameObject.Find(name);
             if (found)
@@ -146,6 +148,7 @@ public class PreviewMode : MonoBehaviour
     void Exit()
     {
         isActive = false;
+        lastToggleFrame = Time.frameCount;
 
         foreach (Canvas canvas in m_hiddenCanvases)
         {

@@ -78,7 +78,8 @@ public class CustomizationManager : MonoBehaviour
     // menu bar follows it straight away
     void OnApplicationFocus(bool focused)
     {
-        if (!m_menuBarThemeColor.HasValue || !m_menuBarGraphic || m_menuBarGraphic.color != m_menuBarWindowsColor)
+        if (!m_menuBarThemeColor.HasValue || !m_menuBarGraphic || m_menuBarGraphic.color != m_menuBarWindowsColor
+            || DarkTitleBar.keepsFocusedLook)
             return;
         Color? windows = DarkTitleBar.WindowsTitleBarColor(UITheme.current == UITheme.Theme.Dark, focused);
         if (windows.HasValue)
@@ -120,8 +121,11 @@ public class CustomizationManager : MonoBehaviour
             bar.a = 1;
             if (!DarkTitleBar.SetColor(bar))
             {
-                // Windows 10 can't color the title bar, so the menu bar takes the title bar's black or white instead
-                Color? windows = DarkTitleBar.WindowsTitleBarColor(UITheme.current == UITheme.Theme.Dark, Application.isFocused);
+                // Windows 10 can't color the title bar, so the menu bar takes the title bar's black or white instead,
+                // and the title bar is kept from greying out when another window has focus
+                DarkTitleBar.KeepFocusedLook();
+                Color? windows = DarkTitleBar.WindowsTitleBarColor(UITheme.current == UITheme.Theme.Dark,
+                    DarkTitleBar.keepsFocusedLook || Application.isFocused);
                 if (windows.HasValue)
                 {
                     m_menuBarGraphic = barGraphic;
