@@ -269,7 +269,7 @@ public class NoteFlames : MonoBehaviour
         float height, brightness, width, flash;
         if (flame.held)
         {
-            height = 1.6f;
+            height = 1.2f;
             width = 1;
             brightness = 0.85f;
             flash = 0.3f;
@@ -277,7 +277,7 @@ public class NoteFlames : MonoBehaviour
         else
         {
             // A hit bursts up, then dies down
-            height = Mathf.Lerp(1.3f, 2.1f, Mathf.Sqrt(t));
+            height = Mathf.Lerp(1.0f, 1.6f, Mathf.Sqrt(t));
             width = Mathf.Lerp(1.15f, 0.8f, t);
             brightness = 1 - t * t;
             flash = (1 - t) * (1 - t);
