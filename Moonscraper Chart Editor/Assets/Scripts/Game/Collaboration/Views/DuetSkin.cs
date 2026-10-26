@@ -35,8 +35,8 @@ public static class DuetSkin
     const string BoxResource = "Collab/Collab Box";
     static readonly RectOffset PanelBorderSlices = new RectOffset(8, 9, 9, 8);
     static readonly RectOffset TitleBorderSlices = new RectOffset(6, 5, 6, 7);
-    const int TitleBarHeight = 28;
-    public const float TitleHeight = 20;
+    const int TitleBarHeight = 34;
+    public const float TitleHeight = 22;
 
     static GUISkin s_skin;
     static GUIStyle s_swatch;
@@ -93,9 +93,8 @@ public static class DuetSkin
                 s_title.normal.background = tab != null ? Tinted(tab, Title) : Rounded(Title, Title, 0, 8);
                 s_title.border = TitleBorderSlices;
                 s_title.normal.textColor = Color.white;
-                if (font != null)
-                    s_title.font = font;
-                s_title.fontSize = FontSize - 2;
+                s_title.font = skin.font;      // Yuri, as the Settings panel's "< Settings >" tab
+                s_title.fontSize = FontSize;
                 s_title.alignment = TextAnchor.MiddleCenter;
                 s_title.wordWrap = false;
                 s_title.padding = new RectOffset(14, 14, 1, 1);
@@ -112,7 +111,7 @@ public static class DuetSkin
             return;
         GUIContent content = new GUIContent(text);
         float width = Mathf.Min(title.CalcSize(content).x, windowWidth - 16);
-        title.Draw(new Rect((windowWidth - width) / 2, (TitleBarHeight - TitleHeight) / 2 + 2, width, TitleHeight), content, false, false, false, false);
+        title.Draw(new Rect((windowWidth - width) / 2, (TitleBarHeight - TitleHeight) / 2 + 3, width, TitleHeight), content, false, false, false, false);
     }
 
     // Made again with the menu color or theme picked in Settings > Customize

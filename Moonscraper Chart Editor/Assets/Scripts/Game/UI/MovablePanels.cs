@@ -307,20 +307,20 @@ public class MovablePanel : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         rect.SetParent(m_rect, false);
         rect.anchorMin = rect.anchorMax = new Vector2(1, 0);
         rect.pivot = new Vector2(1, 0);
-        rect.anchoredPosition = new Vector2(-2, 2);
+        rect.anchoredPosition = Vector2.zero;
         rect.sizeDelta = new Vector2(GripSize, GripSize);
         rect.SetAsLastSibling();
 
         UnityEngine.UI.Image image = made.AddComponent<UnityEngine.UI.Image>();
         image.sprite = GripSprite();
-        image.color = new Color(1, 1, 1, 0.6f);
+        image.color = new Color(1, 1, 1, 0.45f);    // As the Collab Mode windows' corner
         UITheme.KeepColor(image);
         made.AddComponent<MovablePanelGrip>().panel = this;
     }
 
     static Sprite s_gripSprite;
 
-    // Three diagonal lines in the corner, like a window's resize grip
+    // The dots in the corner, as on the Collab Mode windows
     static Sprite GripSprite()
     {
         if (s_gripSprite)
@@ -335,8 +335,10 @@ public class MovablePanel : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         {
             for (int x = 0; x < Size; ++x)
             {
-                int line = x - y;
-                bool on = line >= 3 && line % 4 != 1 && line % 4 != 2;
+                // Six dots in a triangle, drawn like the Collab Mode windows' corner: 2 pixels each, 4 apart
+                int fromRight = Size - 1 - x, fromBottom = y;
+                bool on = fromRight >= 3 && fromBottom >= 3 && (fromRight - 3) % 4 < 2 && (fromBottom - 3) % 4 < 2
+                    && (fromRight - 3) / 4 + (fromBottom - 3) / 4 <= 2;
                 pixels[y * Size + x] = on ? Color.white : new Color(1, 1, 1, 0);
             }
         }
