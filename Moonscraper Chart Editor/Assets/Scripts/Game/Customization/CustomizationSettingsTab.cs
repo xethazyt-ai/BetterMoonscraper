@@ -121,6 +121,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddChoiceRow("Highway", CustomizationPrefs.Kind.Highway, () => BrowseImage(CustomizationPrefs.Kind.Highway));
         AddChoiceRow("Background", CustomizationPrefs.Kind.Background, () => BrowseImage(CustomizationPrefs.Kind.Background));
         AddSongVideoRow();
+        AddThemeRow();
 
         // Reads every picked file again, for after editing a color profile or image while Moonscraper is open
         AddButton("Reload", ControlLeft, ReloadAll);
@@ -223,6 +224,23 @@ public class CustomizationSettingsTab : MonoBehaviour
             SongVideoBackground.isEnabled = index == 0;
             m_statusText.text = SongVideoBackground.status ?? string.Empty;
         });
+        Place((RectTransform)dropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+        ++m_rows;
+    }
+
+    // Default or Dark look for the menus and panels
+    void AddThemeRow()
+    {
+        AddLabel("Theme");
+
+        Dropdown dropdown = Instantiate(m_dropdownTemplate, m_group);
+        dropdown.name = "Theme Dropdown";
+        dropdown.onValueChanged = new Dropdown.DropdownEvent();
+        dropdown.ClearOptions();
+        dropdown.AddOptions(new List<string> { "Default", "Dark" });
+        dropdown.value = (int)UITheme.current;
+        dropdown.RefreshShownValue();
+        dropdown.onValueChanged.AddListener((index) => UITheme.current = (UITheme.Theme)index);
         Place((RectTransform)dropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
         ++m_rows;
     }

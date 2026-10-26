@@ -63,6 +63,23 @@ public class CustomizationManager : MonoBehaviour
         ApplyColorProfile();
         ApplyHighway();
         ApplyBackground();
+
+        UITheme.Apply();
+        ChartEditor.Instance.events.editorStateChangedEvent.Register(OnEditorStateChanged);
+    }
+
+    // Menus can build parts of themselves the first time they open, so theme whatever is new
+    void OnEditorStateChanged(in ChartEditor.State state)
+    {
+        if (UITheme.current != UITheme.Theme.Default)
+            StartCoroutine(ThemeNewUINextFrame());
+    }
+
+    IEnumerator ThemeNewUINextFrame()
+    {
+        yield return null;
+        if (ChartEditor.InstanceExists)
+            UITheme.ApplyToNew(ChartEditor.Instance.uiServices.gameObject);
     }
 
     void Update()
@@ -118,6 +135,8 @@ public class CustomizationManager : MonoBehaviour
     {
         if (instance == this)
             instance = null;
+        if (ChartEditor.InstanceExists)
+            ChartEditor.Instance.events.editorStateChangedEvent.Deregister(OnEditorStateChanged);
 
         // The highway material is a shared asset, so put it back (it would otherwise stick in the Unity editor)
         if (m_highway)
