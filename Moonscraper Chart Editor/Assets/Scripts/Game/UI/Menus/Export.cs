@@ -38,10 +38,10 @@ public class Export : DisplayMenu {
     const string FILE_EXT_MIDI = ".mid";
     readonly string[] COPY_IF_EXTENTION = { ".opus" };
 
-    string chartInfoText = "Exports into the .chart format.";
+    string chartInfoText = "Exports into the .chart format, as notes.chart inside a folder named after the song.";
     string chPackageText = "Will export and organise all chart and audio files into the selected folder to be compatible with Clone Hero's naming structure.\n" +
         "This will also automatically re-encode audio into the .ogg format as needed.";
-    string midInfoText = "Exports into the .mid format. \n\n" +
+    string midInfoText = "Exports into the .mid format, as notes.mid inside a folder named after the song. \n\n" +
         "Notes: \n" +
         "\t-Audio will disconnect from file.\n" +
         "\t-Starpower, tap notes, open notes, solo markers and cymbal toggle events will be defined by Midi Settings: Instrument Events.\n" +
@@ -286,8 +286,36 @@ public class Export : DisplayMenu {
         else
             throw new Exception("Invalid file extension");
 
-        if (aquiredFilePath)
-            StartCoroutine(_ExportSong(saveLocation));
+        if (!aquiredFilePath)
+            return;
+
+        // Everything goes in a folder named after what was typed (the song's name unless changed), with the chart
+        // named notes.chart (or notes.mid) as Clone Hero expects
+        string folderName = FileExplorer.StripIllegalChars(Path.GetFileNameWithoutExtension(saveLocation)).Trim();
+        if (folderName == string.Empty)
+            folderName = "Untitled";
+        string folder = Path.Combine(Path.GetDirectoryName(saveLocation), folderName);
+        string notesFile = Path.Combine(folder, "notes" + (exportOptions.format == ExportOptions.Format.Midi ? FILE_EXT_MIDI : FILE_EXT_CHART));
+
+        if (File.Exists(notesFile))
+        {
+            NativeWindow window = ChartEditor.Instance.windowHandleManager.nativeWindow;
+            NativeMessageBox.Result overwrite = NativeMessageBox.Show("\"" + folderName + "\" already has a " + Path.GetFileName(notesFile) + ". Overwrite it?", "Warning", NativeMessageBox.Type.YesNo, window);
+            if (overwrite != NativeMessageBox.Result.Yes)
+                return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(folder);
+        }
+        catch (Exception e)
+        {
+            ChartEditor.Instance.errorManager.QueueErrorMessage("Couldn't make the folder " + folder + ": " + e.Message);
+            return;
+        }
+
+        StartCoroutine(_ExportSong(notesFile));
     }
 
     public void ExportCHPackage()
