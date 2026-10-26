@@ -16,7 +16,7 @@ using UnityEngine;
 /// </summary>
 public class WindowFitOnLaunch : MonoBehaviour
 {
-    const int SW_MAXIMIZE = 3, SW_RESTORE = 9;
+    const int SW_HIDE = 0, SW_MAXIMIZE = 3, SW_RESTORE = 9;
     const uint MONITOR_DEFAULTTONEAREST = 2;
     const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
     const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
@@ -64,9 +64,9 @@ public class WindowFitOnLaunch : MonoBehaviour
     {
         try
         {
-            int width, height;
-            IntPtr window = FindOwnWindow();
-            if (window == IntPtr.Zero || !GetLaunchSize(window, out width, out height))
+            int width = LaunchWidth, height = LaunchHeight;
+            IntPtr window = FindOwnWindow();     // Not found once hidden for closing: the launch size as it is then
+            if (window != IntPtr.Zero && !GetLaunchSize(window, out width, out height))
                 return;
 
             string key = @"HKCU:\Software\" + Application.companyName + @"\" + Application.productName;
@@ -92,6 +92,42 @@ public class WindowFitOnLaunch : MonoBehaviour
         {
             Debug.LogWarning("Couldn't save the launch window size. " + e.Message);
         }
+    }
+
+    static int s_quitStartedFrame = -1;
+
+    /// <summary>
+    /// Called once quitting has been agreed to. Unity saves the window's size when it closes and opens at that size
+    /// next time (its splash screen comes before any of BetterMoonscraper's own code), so the window is hidden and put
+    /// back to the launch size first. False until that's done, a few frames later; quitting is simply asked again.
+    /// </summary>
+    public static bool ReadyToQuit()
+    {
+        if (s_quitStartedFrame >= 0)
+            return Time.frameCount - s_quitStartedFrame >= 3;
+
+        s_quitStartedFrame = Time.frameCount;
+        try
+        {
+            IntPtr window = FindOwnWindow();
+            int width = LaunchWidth, height = LaunchHeight;
+            if (window != IntPtr.Zero)
+            {
+                GetLaunchSize(window, out width, out height);
+                if (IsZoomed(window))
+                    ShowWindow(window, SW_RESTORE);
+                ShowWindow(window, SW_HIDE);
+            }
+            Screen.SetResolution(width, height, FullScreenMode.Windowed);
+            if (window != IntPtr.Zero)
+                ResizeToLaunchSize(window);
+            Debug.Log(string.Format("Window fit: back to {0}x{1} before closing, so the next launch opens at that size", width, height));
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Couldn't size the window before closing. " + e.Message);
+        }
+        return false;
     }
 
     // Always 1280x720 inside (16:9), unless the screen is too small for that

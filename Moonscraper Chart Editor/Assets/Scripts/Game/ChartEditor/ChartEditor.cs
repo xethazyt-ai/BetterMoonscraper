@@ -401,7 +401,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         }
 
         if (quittingCheckPassed)
-            return true;
+            return ReadyToQuit();
 
         // Ask inside the editor rather than with a Windows pop-up, which freezes Moonscraper and drops a Duet session
         if (DuetPanel.RequestQuitConfirmation())
@@ -420,7 +420,17 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         }
 
         haltThreadForQuit = false;
-        return result;
+        return result && ReadyToQuit();
+    }
+
+    // The window goes back to its launch size before closing, which takes a few frames; Update asks to quit again
+    static bool ReadyToQuit()
+    {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        return WindowFitOnLaunch.ReadyToQuit();
+#else
+        return true;
+#endif
     }
 
     public void EnableMenu(DisplayMenu menu)
