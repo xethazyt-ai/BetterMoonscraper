@@ -12,8 +12,10 @@ public class ApplicationUpdateManager
 #else
     readonly string productHeader = "MoonscraperChartEditor";
 #endif
-    readonly string respositoryOwner = "FireFox2000000";
-    readonly string repositoryName = "Moonscraper-Chart-Editor";
+    // This fork's own releases, never the original Moonscraper's. Only releases tagged with a version number (such as
+    // v1.0.0) count; the test builds (latest-build, build-<branch>) are skipped.
+    readonly string respositoryOwner = "xethazyt-ai";
+    readonly string repositoryName = "Moonscraper-Chart-Editor-Online";
 
     public string currentVersion { get; private set; }
     public bool UpdateCheckInProgress { get; private set; }
@@ -51,7 +53,7 @@ public class ApplicationUpdateManager
                     
                     foreach(var release in releases)
                     {
-                        if (!release.Prerelease || allowPreleases)
+                        if ((!release.Prerelease || allowPreleases) && ParseVersion(release.TagName) != null)
                         {
                             latest = release;
                             break;
@@ -90,10 +92,20 @@ public class ApplicationUpdateManager
 
     static bool IsLatestVersionNewer(string currentVersion, string latest)
     {
-        var version1 = new Version(currentVersion);
-        var version2 = new Version(latest);
+        var version1 = ParseVersion(currentVersion);
+        var version2 = ParseVersion(latest);
 
-        return version1.CompareTo(version2) < 0;
+        return version1 != null && version2 != null && version1.CompareTo(version2) < 0;
+    }
+
+    // "1.2.3" or "v1.2.3", or null for a tag that isn't a version
+    static Version ParseVersion(string tag)
+    {
+        if (string.IsNullOrEmpty(tag))
+            return null;
+
+        Version version;
+        return Version.TryParse(tag.TrimStart('v', 'V'), out version) ? version : null;
     }
 
     static void UnitTest()
@@ -104,5 +116,7 @@ public class ApplicationUpdateManager
         Debug.Assert(IsLatestVersionNewer("1.3.9", "1.4.9"));
         Debug.Assert(IsLatestVersionNewer("1.4.9", "1.4.10"));
         Debug.Assert(IsLatestVersionNewer("1.4.10", "1.5.0"));
+        Debug.Assert(IsLatestVersionNewer("1.4.10", "v1.5.0"));
+        Debug.Assert(!IsLatestVersionNewer("1.4.10", "latest-build"));
     }
 }
