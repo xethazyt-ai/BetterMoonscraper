@@ -48495,7 +48495,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5c0ab58318aecc4eaa4dcc58b4050ba, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  productName: Moonscraper Chart Editor
+  productName: BetterMoonscraper
 --- !u!114 &2052858830
 MonoBehaviour:
   m_ObjectHideFlags: 0

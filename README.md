@@ -1,14 +1,13 @@
+# BetterMoonscraper
+
 > **⚠️ NOTE: THIS IS NOT THE APPLICATION PROGRAM, THESE ARE THE SOURCE FILES. ⚠️**
 >
-> If you are looking to download Moonscraper Chart Editor please see the
-> [releases page](https://github.com/FireFox2000000/Moonscraper-Chart-Editor/releases) or visit the [official website](https://moonscrapercharteditor.com/).
->
-> The releases page and moonscrapercharteditor.com are the only official sources for distribution. Any alternative sources should NOT be trusted. 
+> To download BetterMoonscraper, see this repository's [releases page](https://github.com/xethazyt-ai/Moonscraper-Chart-Editor-Online/releases).
 
 ## About
-Visit the [About page](https://firefox2000000.github.io/Moonscraper-Chart-Editor/) for more information and download links.
+BetterMoonscraper is a chart editor for Clone Hero built on [Moonscraper Chart Editor](https://github.com/FireFox2000000/Moonscraper-Chart-Editor) by Alexander "FireFox" Ong. It adds Collab Mode (charting a song together live, with room codes), Clone Hero color profiles, highways and backgrounds, song video backgrounds, note flames, Pattern Blueprints and more.
 
-*Note that as Moonscraper Chart Editor 2 is currently in development this repository will no longer receive any major updates.
+It checks this repository's releases for updates and can install them itself (Help > Check for updates).
 
 ## Compiling from source 
 Follow the instructions below for your desired platform to build and run from source.

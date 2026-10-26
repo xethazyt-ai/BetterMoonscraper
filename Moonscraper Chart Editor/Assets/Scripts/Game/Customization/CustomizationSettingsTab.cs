@@ -325,9 +325,9 @@ public class CustomizationSettingsTab : MonoBehaviour
         string folder = cloneHeroFolder;
         m_folderText.text = folder ?? "Not found. Use Browse to pick it.";
 
-        Populate(m_choices[CustomizationPrefs.Kind.ColorProfile], CloneHeroFolders.ListColorProfiles(folder), "Moonscraper colors");
-        Populate(m_choices[CustomizationPrefs.Kind.Highway], CloneHeroFolders.ListHighways(folder), "Moonscraper highway");
-        Populate(m_choices[CustomizationPrefs.Kind.Background], CloneHeroFolders.ListBackgrounds(folder), "Moonscraper background");
+        Populate(m_choices[CustomizationPrefs.Kind.ColorProfile], CloneHeroFolders.ListColorProfiles(folder), "Default colors");
+        Populate(m_choices[CustomizationPrefs.Kind.Highway], CloneHeroFolders.ListHighways(folder), "Default highway");
+        Populate(m_choices[CustomizationPrefs.Kind.Background], CloneHeroFolders.ListBackgrounds(folder), "Default background");
     }
 
     void Populate(Choice choice, List<CloneHeroFolders.Item> items, string defaultName)

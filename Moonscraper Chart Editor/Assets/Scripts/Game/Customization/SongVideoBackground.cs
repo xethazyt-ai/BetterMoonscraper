@@ -187,7 +187,7 @@ public class SongVideoBackground : MonoBehaviour
         Debug.LogWarning("Couldn't play the song's video " + m_path + ": " + message);
         string name = m_path != null ? Path.GetFileName(m_path) : "the video";
         Close();
-        status = "Couldn't play " + name + ". Moonscraper plays H.264 .mp4 and VP8 .webm videos; VP9 or AV1 .webm needs converting.";
+        status = "Couldn't play " + name + ". BetterMoonscraper plays H.264 .mp4 and VP8 .webm videos; VP9 or AV1 .webm needs converting.";
     }
 
     void Update()

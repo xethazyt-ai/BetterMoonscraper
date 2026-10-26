@@ -446,7 +446,7 @@ public class DuetPanel : MonoBehaviour
         GUI.skin = DuetSkin.skin;
         m_quitPromptHeight = QuitPromptHeight();
         Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - m_quitPromptHeight) / 2, QuitPromptWidth, m_quitPromptHeight);
-        GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit Moonscraper?");
+        GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit BetterMoonscraper?");
         GUI.skin = oldSkin;
     }
 

@@ -38,15 +38,15 @@ public class DuetLogKeeper : MonoBehaviour
         {
             Directory.CreateDirectory(folder);
 
-            // Oldest first by name, since names start with the date and time
-            string[] old = Directory.GetFiles(folder, "Moonscraper *.txt");
-            Array.Sort(old, StringComparer.Ordinal);
+            // Oldest first, including logs named from before the rename to BetterMoonscraper
+            string[] old = Directory.GetFiles(folder, "*Moonscraper *.txt");
+            Array.Sort(old, (a, b) => File.GetLastWriteTimeUtc(a).CompareTo(File.GetLastWriteTimeUtc(b)));
             for (int i = 0; i < old.Length - (RunsKept - 1); ++i)
                 File.Delete(old[i]);
 
-            string path = Path.Combine(folder, "Moonscraper " + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".txt");
+            string path = Path.Combine(folder, "BetterMoonscraper " + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".txt");
             s_writer = new StreamWriter(path, false, new UTF8Encoding(false)) { AutoFlush = true };
-            Write("Moonscraper " + Application.version + " on " + SystemInfo.operatingSystem);
+            Write(Application.productName + " " + Application.version + " on " + SystemInfo.operatingSystem);
         }
         catch (Exception e)
         {

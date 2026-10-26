@@ -245,7 +245,7 @@ public partial class PatternBlueprints : MonoBehaviour
         if (m_showHelp)
         {
             GUILayout.Label("1. Select the notes of a pattern (drag a box with the cursor tool).");
-            GUILayout.Label("2. Type a name and press Save selection. It's kept on this computer for every Moonscraper version.");
+            GUILayout.Label("2. Type a name and press Save selection. It's kept on this computer for every BetterMoonscraper version.");
             GUILayout.Label("3. Pick the pattern, point the mouse where it should start on the highway and press Ctrl+B (works with this window closed too). Or press Paste pattern to put it at the strikeline. Ctrl+Z undoes it.");
             GUILayout.Label("Fit to step: type a step (8, 12, 16, 24, 32...) and press Fit. The same notes are re-spaced at that step, so 32nds fitted to 16 take twice the beat lines.");
             GUILayout.Label("Library: every saved pattern drawn as a small chart, to scroll through, search, pick and paste.");

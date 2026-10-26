@@ -299,7 +299,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
     {
         if (type == LogType.Exception && !_ignoreExceptions)
         {
-            string message = string.Format("Moonscraper Chart Editor has encounted an unexpected error:\n\n{0}\n{1}\nPlease report \"AppData\\LocalLow\\FireFox Dev\\Moonscraper Chart Editor\\output_log.txt\" to your local Moonscraper developer at your earliest convienance.\n\nAttempt to continue?", condition, stackTrace);
+            string message = string.Format("BetterMoonscraper has encountered an unexpected error:\n\n{0}\n{1}\nPlease send \"AppData\\LocalLow\\BetterMoonscraper\\BetterMoonscraper\\output_log.txt\" and the newest file in its Collab Logs folder to the BetterMoonscraper developer.\n\nAttempt to continue?", condition, stackTrace);
             NativeMessageBox.Result result;
             using (DuetKeepAlive.WhileBlocked())     // Keeps a Collab room connected while the box is open
                 result = NativeMessageBox.Show(message, "Oops", NativeMessageBox.Type.YesNo, windowHandleManager.nativeWindow);

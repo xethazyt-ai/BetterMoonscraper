@@ -15,7 +15,7 @@ public class ProgramInformationPopulate : MonoBehaviour {
 	void Start () {
         programInfoText = GetComponent<Text>();
 
-        programInfoText.text = string.Format("{0} v{1} {2} \nBy Alexander \"FireFox\" Ong.\n\nBuilt using Unity {3}.\n\nLinux build functionality provided by {4}", 
+        programInfoText.text = string.Format("{0} v{1} {2} \nBy Xethaz, built on Moonscraper Chart Editor by Alexander \"FireFox\" Ong.\n\nBuilt using Unity {3}.\n\nLinux build functionality provided by {4}", 
             Application.productName, 
             Application.version, 
             Globals.applicationBranchName, 

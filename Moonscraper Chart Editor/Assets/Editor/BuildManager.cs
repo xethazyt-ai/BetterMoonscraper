@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Text;
 
 public class BuildManager  {
-    const string applicationName = "Moonscraper Chart Editor";
+    const string applicationName = "BetterMoonscraper";
 
     // 7-Zip.exe location
     static readonly string CompressionProgramPath = System.Environment.GetEnvironmentVariable("7-Zip");

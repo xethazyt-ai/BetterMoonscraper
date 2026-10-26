@@ -1,4 +1,4 @@
-# Builds a Windows x64 copy of Moonscraper and publishes it as a GitHub release,
+# Builds a Windows x64 copy of BetterMoonscraper and publishes it as a GitHub release,
 # so testers can download it without installing Unity.
 #
 # master        -> release "latest-build"
@@ -19,7 +19,7 @@ concurrency:
 
 env:
   PROJECT_PATH: Moonscraper Chart Editor
-  ZIP_NAME: Moonscraper-Chart-Editor-Windows-x64.zip
+  ZIP_NAME: BetterMoonscraper-Windows-x64.zip
 
 jobs:
   build:
@@ -166,7 +166,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Moonscraper-Windows-x64
+          name: BetterMoonscraper-Windows-x64
           path: ${{ env.ZIP_NAME }}
 
       - name: Publish release
@@ -181,7 +181,7 @@ jobs:
           $notes = @"
           Automatic Windows build of ``$branch`` at $short (run #${{ github.run_number }}).
 
-          Download **$env:ZIP_NAME**, unzip it, and run ``Moonscraper Chart Editor.exe`` inside the ``$env:APP_FOLDER`` folder. No Unity install needed.
+          Download **$env:ZIP_NAME**, unzip it, and run ``BetterMoonscraper.exe`` inside the ``$env:APP_FOLDER`` folder. No Unity install needed.
           "@
           gh release delete $tag --yes --cleanup-tag 2>$null
           $global:LASTEXITCODE = 0
