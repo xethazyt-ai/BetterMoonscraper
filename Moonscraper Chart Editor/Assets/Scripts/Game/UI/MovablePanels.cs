@@ -79,7 +79,13 @@ public class MovablePanels : MonoBehaviour
         {
             RectTransform panel = canvas.transform.Find(s_panels[i, 0]) as RectTransform;
             if (panel)
+            {
+                // Moonscraper's Settings panel starts with about 26 units of empty panel off the left edge of the
+                // screen. Once it can be moved that shows as a wide gap, so it's trimmed (nothing moves on screen).
+                if (s_panels[i, 0] == "Properties")
+                    MovablePanel.TrimLeft(panel, 26);
                 m_panels.Add(MovablePanel.Make(panel, s_panels[i, 1]));
+            }
             else
                 Debug.LogWarning("Couldn't find the " + s_panels[i, 1] + " panel, so it can't be moved");
         }
@@ -117,6 +123,23 @@ public class MovablePanel : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     float m_scale = 1;
     bool m_dragging;
     Vector2 m_screenSize;
+
+    /// <summary>
+    /// Moves the panel's left edge in by this much, keeping everything inside it where it was.
+    /// </summary>
+    public static void TrimLeft(RectTransform panel, float amount)
+    {
+        panel.offsetMin += new Vector2(amount, 0);
+        foreach (Transform child in panel)
+        {
+            RectTransform rect = child as RectTransform;
+            if (!rect)
+                continue;
+            // A point at anchor a across the panel moves right by amount * (1 - a) as the panel narrows from the left
+            rect.offsetMin -= new Vector2(amount * (1 - rect.anchorMin.x), 0);
+            rect.offsetMax -= new Vector2(amount * (1 - rect.anchorMax.x), 0);
+        }
+    }
 
     public static MovablePanel Make(RectTransform panel, string name)
     {
