@@ -37,6 +37,7 @@ public class CustomizationManager : MonoBehaviour
             return;     // Still on the loading screen
 
         editor.gameObject.AddComponent<CustomizationManager>();
+        NoteFlames.AttachTo(editor.gameObject);
         CustomizationSettingsTab.AttachToSettingsMenus();
     }
 

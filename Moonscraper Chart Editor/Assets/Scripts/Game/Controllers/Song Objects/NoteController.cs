@@ -305,6 +305,7 @@ public class NoteController : SongObjectController {
             sustain.transform.localScale = new Vector3(sustain.transform.localScale.x, yScale - (2 * OFFSET), sustain.transform.localScale.z);
 
             PlayIndicatorAnim();
+            NoteFlames.Hold(note);
         }
         else
             sustainBroken = true;

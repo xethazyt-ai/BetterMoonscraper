@@ -24,6 +24,7 @@ public static class CustomNoteColors
     static readonly Dictionary<Chart.GameMode, Color[]> s_starPowerColors = new Dictionary<Chart.GameMode, Color[]>();     // 0 note, 1 cymbal
     static readonly Dictionary<Chart.GameMode, Dictionary<Material, Material>> s_starPowerSwapsByMode = new Dictionary<Chart.GameMode, Dictionary<Material, Material>>();
     static Material s_starPowerSustain;
+    static CloneHeroColorProfile s_profile;
 
     static Material[] s_originalSustains;
     static bool s_sustainsReplaced = false;
@@ -61,6 +62,7 @@ public static class CustomNoteColors
     public static void Apply(CloneHeroColorProfile profile)
     {
         Clear();
+        s_profile = profile;
 
         MeshNoteResources notes = FindAsset<MeshNoteResources>();
         if (notes)
@@ -206,6 +208,7 @@ public static class CustomNoteColors
         s_starPowerColors.Clear();
         s_starPowerSwapsByMode.Clear();
         s_starPowerSustain = null;
+        s_profile = null;
 
         foreach (Material material in s_createdMaterials)
         {
@@ -296,6 +299,20 @@ public static class CustomNoteColors
             s_createdMaterials.Add(material);
             sustains[i] = material;
         }
+    }
+
+    /// <summary>
+    /// Any color from the picked color profile, such as [other] striker_hit_flame. False when none is picked or it
+    /// doesn't have that key.
+    /// </summary>
+    public static bool TryGetProfileColor(string section, string key, out Color color)
+    {
+        if (s_profile == null)
+        {
+            color = Color.white;
+            return false;
+        }
+        return TryGet(s_profile, new[] { section, key }, out color);
     }
 
     static Material Palette(Material[] palette, int index)

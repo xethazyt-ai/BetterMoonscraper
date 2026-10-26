@@ -92,6 +92,7 @@ public class BaseGameplayRulestate {
         {
             note.controller.hit = true;
             note.controller.PlayIndicatorAnim();
+            NoteFlames.Hit(note);
         }
     }
 
