@@ -71,8 +71,7 @@ public class CustomizationManager : MonoBehaviour
     Coroutine m_titleBarMatch;
 
     /// <summary>
-    /// In the Dark theme, colors the Windows title bar like the menu bar under it, read off the screen so it matches
-    /// whatever the menu bar ends up looking like
+    /// Colors the Windows title bar like the menu bar under it (Light and Dark themes), so the two match
     /// </summary>
     public void MatchTitleBarToMenuBar(bool dark)
     {
@@ -80,11 +79,7 @@ public class CustomizationManager : MonoBehaviour
             StopCoroutine(m_titleBarMatch);
         m_titleBarMatch = null;
 
-        if (!dark)
-        {
-            DarkTitleBar.SetColor(null);
-            return;
-        }
+        // Both themes: Windows' own title bar never matched Moonscraper's light grey menu bar either
         if (isActiveAndEnabled)
             m_titleBarMatch = StartCoroutine(MatchTitleBarNextFrame());
     }

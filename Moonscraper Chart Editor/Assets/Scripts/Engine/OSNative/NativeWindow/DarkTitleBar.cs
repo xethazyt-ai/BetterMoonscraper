@@ -54,7 +54,9 @@ public static class DarkTitleBar
             {
                 UnityEngine.Color32 c = color.Value;
                 caption = c.r | (c.g << 8) | (c.b << 16);    // COLORREF is 0x00BBGGRR
-                text = 0xF0F0F0;
+                // Dark writing on a light bar (the Light theme), light writing on a dark one
+                float luminance = 0.2126f * color.Value.r + 0.7152f * color.Value.g + 0.0722f * color.Value.b;
+                text = luminance > 0.5f ? 0x101010 : 0xF0F0F0;
             }
             DwmSetWindowAttribute(window, DwmCaptionColor, ref caption, sizeof(int));
             DwmSetWindowAttribute(window, DwmTextColor, ref text, sizeof(int));

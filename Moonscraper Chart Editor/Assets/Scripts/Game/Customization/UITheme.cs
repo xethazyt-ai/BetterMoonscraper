@@ -86,7 +86,7 @@ public static class UITheme
         foreach (Selectable selectable in Resources.FindObjectsOfTypeAll<Selectable>())
         {
             if (!selectable || !selectable.gameObject.scene.IsValid() || selectable.transition != Selectable.Transition.ColorTint
-                || (!s_originalBlocks.ContainsKey(selectable) && !HasDarkenedBackground(selectable)))
+                || MenuColor.OwnsTints(selectable) || (!s_originalBlocks.ContainsKey(selectable) && !HasDarkenedBackground(selectable)))
                 continue;
 
             ColorBlock original;
@@ -128,7 +128,7 @@ public static class UITheme
 
         foreach (Selectable selectable in root.GetComponentsInChildren<Selectable>(true))
         {
-            if (selectable.transition != Selectable.Transition.ColorTint || s_originalBlocks.ContainsKey(selectable) || !HasDarkenedBackground(selectable))
+            if (selectable.transition != Selectable.Transition.ColorTint || MenuColor.OwnsTints(selectable) || s_originalBlocks.ContainsKey(selectable) || !HasDarkenedBackground(selectable))
                 continue;
             s_originalBlocks[selectable] = selectable.colors;
             selectable.colors = DarkBlock(selectable.colors);

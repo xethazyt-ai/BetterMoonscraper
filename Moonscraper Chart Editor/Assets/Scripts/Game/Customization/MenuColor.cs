@@ -50,9 +50,11 @@ public static class MenuColor
             UpdateMaterial();
             if (wantedOnUi != s_applied)
                 Apply();
+            else
+                ApplyToButtons(Resources.FindObjectsOfTypeAll<Selectable>());
             DuetSkin.Reset();
-            // The Dark theme's title bar is matched to the menu bar's color
-            if (darkNeutral && CustomizationManager.instance)
+            // The title bar is matched to the menu bar's color
+            if (CustomizationManager.instance)
                 CustomizationManager.instance.MatchTitleBarToMenuBar(true);
         }
     }
@@ -147,6 +149,7 @@ public static class MenuColor
     /// </summary>
     public static void Apply()
     {
+        ApplyToButtons(Resources.FindObjectsOfTypeAll<Selectable>());
         bool wanted = wantedOnUi && material;
         foreach (Graphic graphic in Resources.FindObjectsOfTypeAll<Graphic>())
         {
@@ -168,8 +171,88 @@ public static class MenuColor
         "undo", "redo", "undo_grey", "redo_grey", "play", "play_highlight", "play_pressed", "pause", "pause_pressed",
     };
 
+    // Buttons drawn as a plain box in their tint colors (no picture), such as the Settings tab buttons and the
+    // Customize tab's Default: the tints themselves are turned to the menu color, as the shader can miss them
+    static readonly Dictionary<Selectable, ColorBlock> s_originalBlocks = new Dictionary<Selectable, ColorBlock>();
+    static readonly Dictionary<Selectable, ColorBlock> s_shiftedBlocks = new Dictionary<Selectable, ColorBlock>();
+    static readonly HashSet<Graphic> s_tintedButtons = new HashSet<Graphic>();
+
+    static void ApplyToButtons(Selectable[] selectables)
+    {
+        foreach (Selectable selectable in selectables)
+        {
+            if (!selectable || !selectable.gameObject.scene.IsValid() || selectable.transition != Selectable.Transition.ColorTint)
+                continue;
+            Image image = selectable.targetGraphic as Image;
+            if (!image || image.sprite || UITheme.IsKept(image))
+                continue;
+
+            // Anything that set its own tints since (such as the Dark theme) counts as the original
+            ColorBlock original, shifted;
+            if (!s_originalBlocks.TryGetValue(selectable, out original)
+                || !s_shiftedBlocks.TryGetValue(selectable, out shifted) || !SameBlock(shifted, selectable.colors))
+            {
+                original = selectable.colors;
+                if (!s_originalBlocks.ContainsKey(selectable) && !HasBlueTint(original))
+                    continue;   // White or grey tints, which the theme looks after
+                s_originalBlocks[selectable] = original;
+            }
+
+            shifted = original;
+            shifted.normalColor = Shift(original.normalColor);
+            shifted.highlightedColor = Shift(original.highlightedColor);
+            shifted.pressedColor = Shift(original.pressedColor);
+            shifted.disabledColor = Shift(original.disabledColor);
+            s_shiftedBlocks[selectable] = shifted;
+            selectable.colors = shifted;
+            s_tintedButtons.Add(image);
+        }
+
+        RemoveDestroyed(s_originalBlocks);
+        RemoveDestroyed(s_shiftedBlocks);
+        s_tintedButtons.RemoveWhere(graphic => !graphic);
+    }
+
+    /// <summary>A button whose tints the menu color looks after, so the theme leaves them alone.</summary>
+    public static bool OwnsTints(Selectable selectable)
+    {
+        return s_originalBlocks.ContainsKey(selectable);
+    }
+
+    static bool HasBlueTint(ColorBlock block)
+    {
+        return IsBlue(block.normalColor) || IsBlue(block.highlightedColor) || IsBlue(block.pressedColor);
+    }
+
+    static bool IsBlue(Color color)
+    {
+        float hue, saturation, value;
+        Color.RGBToHSV(color, out hue, out saturation, out value);
+        return saturation > 0.18f && hue > 0.40f && hue < 0.77f;
+    }
+
+    static bool SameBlock(ColorBlock a, ColorBlock b)
+    {
+        return a.normalColor == b.normalColor && a.highlightedColor == b.highlightedColor
+            && a.pressedColor == b.pressedColor && a.disabledColor == b.disabledColor;
+    }
+
+    static void RemoveDestroyed(Dictionary<Selectable, ColorBlock> map)
+    {
+        List<Selectable> gone = new List<Selectable>();
+        foreach (Selectable key in map.Keys)
+        {
+            if (!key)
+                gone.Add(key);
+        }
+        foreach (Selectable key in gone)
+            map.Remove(key);
+    }
+
     static bool IsIcon(Graphic graphic)
     {
+        if (s_tintedButtons.Contains(graphic))
+            return true;    // Already in the menu color through its tints
         Image image = graphic as Image;
         return image && image.sprite && !s_frameSprites.Contains(image.sprite.name);
     }
