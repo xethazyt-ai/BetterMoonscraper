@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 /// Preview Mode (F11 unless rebound in Controls): BetterMoonscraper goes fullscreen and shows only the highway, the
 /// notes and the background, like watching the chart in Clone Hero. Every menu, panel and window is hidden, along
 /// with BPMs, time signatures, sections, events, star power bars, the note cursor and selection boxes. Space still
-/// plays and stops. Press the key again (or open a menu with Escape) to go back to editing as before.
+/// plays and stops. Press the key again or Escape to go back to editing as before.
 /// </summary>
 public class PreviewMode : MonoBehaviour
 {
@@ -72,6 +72,12 @@ public class PreviewMode : MonoBehaviour
             return;
         }
 
+        if (isActive && Input.GetKeyDown(KeyCode.Escape))
+        {
+            Exit();
+            return;
+        }
+
         if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PreviewMode))
         {
             if (isActive)
@@ -111,7 +117,8 @@ public class PreviewMode : MonoBehaviour
         HideCanvases();
         if (m_editor.songObjectPoolManager)
             m_editor.songObjectPoolManager.SetMarkersVisible(false);
-        foreach (string name in new[] { "Hover Highlights", "Selected Highlight Pool" })
+        // The editing tools (note cursor, select boxes) and the selection highlights
+        foreach (string name in new[] { "Hover Highlights", "Selected Highlight Pool", "Tools", "Group Select Area" })
         {
             GameObject found = GameObject.Find(name);
             if (found)
