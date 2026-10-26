@@ -15,7 +15,7 @@ using MoonscraperChartEditor.Song;
 /// in a file that every Moonscraper version reads. Opened with F9; Ctrl+B pastes the picked pattern where the mouse
 /// points on the highway (or at the strikeline), even with the window closed. Both are rebindable in Controls.
 /// </summary>
-public class PatternBlueprints : MonoBehaviour
+public partial class PatternBlueprints : MonoBehaviour
 {
     const int WindowId = 0x4250;
     const string FileName = "Pattern Blueprints.json";
@@ -73,12 +73,13 @@ public class PatternBlueprints : MonoBehaviour
 
     public static bool IsPointerOver()
     {
-        if (s_instance == null || !s_instance.m_visible || DuetPanel.isHudHidden)
+        if (s_instance == null || (!s_instance.m_visible && !s_instance.m_libraryVisible) || DuetPanel.isHudHidden)
             return false;
 
         float scale = DuetPanel.GuiScale;
         Vector2 pointer = new Vector2(Input.mousePosition.x / scale, (Screen.height - Input.mousePosition.y) / scale);
-        return s_instance.m_window.rect.Contains(pointer) && !DuetMenuCover.Covers(s_instance.m_window.rect, scale);
+        bool overMain = s_instance.m_visible && s_instance.m_window.rect.Contains(pointer) && !DuetMenuCover.Covers(s_instance.m_window.rect, scale);
+        return overMain || s_instance.IsPointerOverLibrary(pointer, scale);
     }
 
     static string filePath { get { return Path.Combine(Application.persistentDataPath, FileName); } }
@@ -210,7 +211,7 @@ public class PatternBlueprints : MonoBehaviour
 
     void OnGUI()
     {
-        if (!m_visible || m_editor == null || DuetPanel.isHudHidden)
+        if ((!m_visible && !m_libraryVisible) || m_editor == null || DuetPanel.isHudHidden)
         {
             if (isTyping)
                 StopTyping();
@@ -223,26 +224,31 @@ public class PatternBlueprints : MonoBehaviour
         if (!m_window.isPlaced)
             m_window.PlaceOnce(new Vector2(Screen.width / scale - m_window.rect.width - 400, 60));
 
-        // Clicking outside the window gives the keyboard back to the editor
-        if (UnityEngine.Event.current.type == EventType.MouseDown && !m_window.rect.Contains(UnityEngine.Event.current.mousePosition))
+        // Clicking outside the windows gives the keyboard back to the editor
+        Vector2 mouse = UnityEngine.Event.current.mousePosition;
+        if (UnityEngine.Event.current.type == EventType.MouseDown && !(m_visible && m_window.rect.Contains(mouse))
+            && !(m_libraryVisible && m_libraryWindow.rect.Contains(mouse)))
             GUIUtility.keyboardControl = 0;
 
-        if (DuetMenuCover.Covers(m_window.rect, scale))
-            return;
-
-        m_window.Draw("Pattern Blueprints", DrawWindow, scale);
-        isTyping = GUIUtility.keyboardControl != 0;     // The name or step box has the keyboard
+        if (m_visible && !DuetMenuCover.Covers(m_window.rect, scale))
+            m_window.Draw("Pattern Blueprints", DrawWindow, scale);
+        DrawLibrary(scale);
+        isTyping = GUIUtility.keyboardControl != 0;     // The name, step or search box has the keyboard
     }
 
     void DrawWindow(int id)
     {
+        GUILayout.BeginHorizontal();
         m_showHelp = GUILayout.Toggle(m_showHelp, m_showHelp ? "Hide how it works" : "How it works", "button");
+        m_libraryVisible = GUILayout.Toggle(m_libraryVisible, "Library", "button", GUILayout.Width(80));
+        GUILayout.EndHorizontal();
         if (m_showHelp)
         {
             GUILayout.Label("1. Select the notes of a pattern (drag a box with the cursor tool).");
             GUILayout.Label("2. Type a name and press Save selection. It's kept on this computer for every Moonscraper version.");
             GUILayout.Label("3. Pick the pattern, point the mouse where it should start on the highway and press Ctrl+B (works with this window closed too). Or press Paste pattern to put it at the strikeline. Ctrl+Z undoes it.");
             GUILayout.Label("Fit to step: type a step (8, 12, 16, 24, 32...) and press Fit. The same notes are re-spaced at that step, so 32nds fitted to 16 take twice the beat lines.");
+            GUILayout.Label("Library: every saved pattern drawn as a small chart, to scroll through, search, pick and paste.");
             GUILayout.Label("Speed: above 1x the pattern repeats faster in the same beat lines (2x of four 16ths is eight 32nds), always finishing the last repeat. Below 1x it spreads out over more beat lines (0.5x takes twice as many).");
         }
 
