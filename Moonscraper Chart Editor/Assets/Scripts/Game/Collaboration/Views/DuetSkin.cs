@@ -3,9 +3,9 @@
 using UnityEngine;
 
 /// <summary>
-/// The look of the Collab Mode windows, made from Moonscraper's own panels such as the Note inspector: its panel image
-/// with the blue title bar, the title in unispace, other text in Yuri like the Settings panel, Moonscraper's white
-/// input boxes, and dark teal buttons.
+/// The look of the Collab Mode and Pattern Blueprints windows, made from Moonscraper's own Settings and Tools panels:
+/// the same panel image, the title in a teal tab like "< Settings >", text in Yuri, Moonscraper's input boxes and
+/// dark teal buttons. Follows the Light or Dark theme and the menu color picked in Settings > Customize.
 /// </summary>
 public static class DuetSkin
 {
@@ -15,6 +15,8 @@ public static class DuetSkin
     static Color ButtonHover { get { return MenuColor.Shift(new Color32(0, 74, 99, 255)); } }
     static Color ButtonPressed { get { return MenuColor.Shift(new Color32(21, 114, 148, 255)); } }
     static Color ButtonOn { get { return MenuColor.Shift(new Color32(17, 129, 220, 255)); } }    // As the Tools button
+    static Color Title { get { return MenuColor.Shift(new Color32(0, 62, 82, 255)); } }    // As the Settings tab
+    static bool dark { get { return UITheme.current == UITheme.Theme.Dark; } }
     static readonly Color Field = new Color32(255, 255, 255, 255);
     static readonly Color FieldBorder = new Color32(120, 120, 120, 255);
     static readonly Color Track = new Color32(255, 255, 255, 255);
@@ -27,13 +29,18 @@ public static class DuetSkin
     // scale, so the copy is imported as a dynamic font. The panel and box images keep Moonscraper's slicing.
     const string FontResource = "Collab/Collab Font";
     const string TextFontResource = "Collab/Collab Text Font";
-    const string PanelResource = "Collab/Collab Panel";
+    // The Settings panel and its tab's image, at the size they show in Moonscraper (its sprites are drawn at half size)
+    const string PanelResource = "Collab/Collab Settings Panel";
+    const string TitleResource = "Collab/Collab Title";
     const string BoxResource = "Collab/Collab Box";
-    static readonly RectOffset PanelBorderSlices = new RectOffset(3, 4, 28, 4);    // As its sprite: title bar on top
+    static readonly RectOffset PanelBorderSlices = new RectOffset(8, 9, 9, 8);
+    static readonly RectOffset TitleBorderSlices = new RectOffset(6, 5, 6, 7);
     const int TitleBarHeight = 28;
+    public const float TitleHeight = 20;
 
     static GUISkin s_skin;
     static GUIStyle s_swatch;
+    static GUIStyle s_title;
     static Font s_font;
 
     public static GUISkin skin
@@ -74,11 +81,53 @@ public static class DuetSkin
         }
     }
 
-    // Made again with the menu color picked in Settings > Customize
+    // The window's title in a tab at the top middle, like the Settings panel's
+    public static GUIStyle title
+    {
+        get
+        {
+            if (s_title == null)
+            {
+                s_title = new GUIStyle(skin.label);
+                Texture2D tab = Resources.Load<Texture2D>(TitleResource);
+                s_title.normal.background = tab != null ? Tinted(tab, Title) : Rounded(Title, Title, 0, 8);
+                s_title.border = TitleBorderSlices;
+                s_title.normal.textColor = Color.white;
+                if (font != null)
+                    s_title.font = font;
+                s_title.fontSize = FontSize - 2;
+                s_title.alignment = TextAnchor.MiddleCenter;
+                s_title.wordWrap = false;
+                s_title.padding = new RectOffset(14, 14, 1, 1);
+                s_title.margin = new RectOffset(0, 0, 0, 0);
+            }
+            return s_title;
+        }
+    }
+
+    /// <summary>Draws the title tab centred at the top of a window this wide, in the window's own coordinates.</summary>
+    public static void DrawTitle(string text, float windowWidth)
+    {
+        if (string.IsNullOrEmpty(text) || UnityEngine.Event.current.type != EventType.Repaint)
+            return;
+        GUIContent content = new GUIContent(text);
+        float width = Mathf.Min(title.CalcSize(content).x, windowWidth - 16);
+        title.Draw(new Rect((windowWidth - width) / 2, (TitleBarHeight - TitleHeight) / 2 + 2, width, TitleHeight), content, false, false, false, false);
+    }
+
+    // Made again with the menu color or theme picked in Settings > Customize
     public static void Reset()
     {
         s_skin = null;
         s_swatch = null;
+        s_title = null;
+    }
+
+    // A white image in a color, keeping its alpha
+    static Texture2D Tinted(Texture2D white, Color color)
+    {
+        Texture2D copy = MenuColor.Shift(white, new Color(color.r, color.g, color.b, 1));
+        return copy;
     }
 
     static GUISkin Make()
@@ -90,7 +139,7 @@ public static class DuetSkin
             made.font = textFont;
 
         GUIStyle window = made.window;
-        Texture2D panel = MenuColor.Shift(Resources.Load<Texture2D>(PanelResource));
+        Texture2D panel = MenuColor.Shift(Resources.Load<Texture2D>(PanelResource), dark ? UITheme.DarkPanelTint : Color.white);
         if (panel != null)
         {
             window.normal.background = window.onNormal.background = panel;
@@ -101,15 +150,11 @@ public static class DuetSkin
             window.normal.background = window.onNormal.background = Rounded(Panel, PanelBorder, 3, 7);
             window.border = new RectOffset(10, 10, 10, 10);
         }
-        window.normal.textColor = window.onNormal.textColor = Color.white;
-        window.padding = new RectOffset(8, 8, TitleBarHeight + 6, 8);
-        if (font != null)
-            window.font = font;
-        window.fontSize = FontSize + 1;
-        window.fontStyle = FontStyle.Normal;
-        window.alignment = TextAnchor.UpperCenter;
-        // The title is placed from the top of the contents, so this lifts it into the middle of the title bar
-        window.contentOffset = new Vector2(0, -(TitleBarHeight + 6) + (TitleBarHeight - (FontSize + 5)) / 2);
+        // The title is drawn as a tab by DrawTitle, so the window draws none of its own
+        window.normal.textColor = window.onNormal.textColor = new Color(0, 0, 0, 0);
+        window.padding = new RectOffset(10, 10, TitleBarHeight + 6, 10);
+        window.fontSize = 1;
+        window.contentOffset = Vector2.zero;
 
         foreach (GUIStyle text in new[] { made.label, made.toggle })
         {
@@ -131,16 +176,20 @@ public static class DuetSkin
         button.fontSize = FontSize;
         button.wordWrap = true;     // A long name goes onto two lines rather than past the window's edge
 
+        // White boxes, or dark ones with light writing in the Dark theme, as Moonscraper's own
         Texture2D box = Resources.Load<Texture2D>(BoxResource);
+        if (box != null && dark)
+            box = MenuColor.Shift(box, UITheme.DarkField);
+        Color fieldText = dark ? UITheme.LightText : Color.black;
         foreach (GUIStyle field in new[] { made.textField, made.textArea })
         {
-            field.normal.background = field.hover.background = field.focused.background = field.active.background = box != null ? box : Rounded(Field, FieldBorder, 1, 2);
-            field.normal.textColor = field.hover.textColor = field.focused.textColor = field.active.textColor = Color.black;
+            field.normal.background = field.hover.background = field.focused.background = field.active.background = box != null ? box : Rounded(dark ? UITheme.DarkField : Field, FieldBorder, 1, 2);
+            field.normal.textColor = field.hover.textColor = field.focused.textColor = field.active.textColor = fieldText;
             field.border = box != null ? new RectOffset(7, 7, 7, 7) : new RectOffset(3, 3, 3, 3);
             field.padding = new RectOffset(6, 6, 5, 5);
             field.fontSize = FontSize;
         }
-        made.settings.cursorColor = Color.black;
+        made.settings.cursorColor = fieldText;
         made.settings.selectionColor = MenuColor.Shift(new Color32(17, 129, 220, 120));
 
         made.horizontalSlider.normal.background = Solid(Track);

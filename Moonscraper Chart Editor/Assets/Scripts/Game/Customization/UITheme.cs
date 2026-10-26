@@ -16,11 +16,11 @@ public static class UITheme
     const string PrefTheme = "Customize.Theme";
 
     // Dark colors: boxes you type in or pick from, smaller controls such as checkboxes and slider tracks, and text
-    static readonly Color DarkField = new Color(0.15f, 0.17f, 0.21f);
+    public static readonly Color DarkField = new Color(0.15f, 0.17f, 0.21f);
     static readonly Color DarkControl = new Color(0.33f, 0.36f, 0.42f);
-    static readonly Color DarkPanelTint = new Color(0.62f, 0.62f, 0.66f);
+    public static readonly Color DarkPanelTint = new Color(0.62f, 0.62f, 0.66f);
     static readonly Color DarkLightPanelTint = new Color(0.24f, 0.25f, 0.31f);    // The white panels, such as Tools
-    static readonly Color LightText = new Color(0.9f, 0.92f, 0.95f);
+    public static readonly Color LightText = new Color(0.9f, 0.92f, 0.95f);
     static readonly Color DarkPlaceholder = new Color(0.62f, 0.65f, 0.7f);
 
     // Sprites by name: white backgrounds for fields and buttons, small controls, and the panel frames
@@ -49,6 +49,7 @@ public static class UITheme
             PlayerPrefs.SetInt(PrefTheme, (int)value);
             PlayerPrefs.Save();
             Apply();
+            DuetSkin.Reset();     // The Collab Mode and Pattern Blueprints windows
         }
     }
 

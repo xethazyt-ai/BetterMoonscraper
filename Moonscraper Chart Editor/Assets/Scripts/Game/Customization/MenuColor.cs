@@ -255,7 +255,13 @@ public static class MenuColor
     /// <summary>A copy of a texture in the menu color (the same texture back for the default).</summary>
     public static Texture2D Shift(Texture2D original)
     {
-        if (!color.HasValue || !original)
+        return Shift(original, Color.white);
+    }
+
+    /// <summary>A copy of a texture in the menu color, multiplied by tint (such as the Dark theme's).</summary>
+    public static Texture2D Shift(Texture2D original, Color tint)
+    {
+        if ((!color.HasValue && tint == Color.white) || !original)
             return original;
 
         // The texture may not be readable, so read it back from the GPU
@@ -270,7 +276,10 @@ public static class MenuColor
 
         Color[] pixels = copy.GetPixels();
         for (int i = 0; i < pixels.Length; ++i)
-            pixels[i] = Shift(pixels[i]);
+        {
+            Color shifted = Shift(pixels[i]);
+            pixels[i] = new Color(shifted.r * tint.r, shifted.g * tint.g, shifted.b * tint.b, shifted.a);
+        }
         copy.SetPixels(pixels);
         copy.wrapMode = original.wrapMode;
         copy.filterMode = original.filterMode;

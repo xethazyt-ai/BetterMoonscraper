@@ -448,7 +448,7 @@ public class DuetPanel : MonoBehaviour
         GUI.skin = DuetSkin.skin;
         m_quitPromptHeight = QuitPromptHeight();
         Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - m_quitPromptHeight) / 2, QuitPromptWidth, m_quitPromptHeight);
-        GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, "Quit BetterMoonscraper?");
+        GUI.ModalWindow(QuitPromptId, rect, DrawQuitPromptWindow, string.Empty);
         GUI.skin = oldSkin;
     }
 
@@ -477,6 +477,7 @@ public class DuetPanel : MonoBehaviour
     void DrawQuitPromptWindow(int id)
     {
         bool askToSave = !isGuest && ChartEditor.isDirty;
+        DuetSkin.DrawTitle("Quit BetterMoonscraper?", QuitPromptWidth);
 
         // A plain modal window doesn't lay out its contents, so keep them clear of the title and edges
         GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, m_quitPromptHeight - 34));

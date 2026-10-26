@@ -220,7 +220,7 @@ public static class DuetChat
 }
 
 public static class DuetInputBlocker { public static void Block(int id, UnityEngine.Rect guiRect, float scale) { } }
-public static class DuetSkin { public static UnityEngine.GUISkin skin = new UnityEngine.GUISkin(); public static UnityEngine.GUIStyle swatch = new UnityEngine.GUIStyle(); }
+public static class DuetSkin { public static UnityEngine.GUISkin skin = new UnityEngine.GUISkin(); public static UnityEngine.GUIStyle swatch = new UnityEngine.GUIStyle(); public static void DrawTitle(string text, float windowWidth) { } }
 public static class DuetHostLostNotice { public static void Draw(double waitedSeconds, float scale) { } }
 
 public static class DuetMenuCover
