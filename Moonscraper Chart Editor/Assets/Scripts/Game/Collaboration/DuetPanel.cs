@@ -21,6 +21,7 @@ public class DuetPanel : MonoBehaviour
     const string PrefColor = "Duet.Color";
     const string PrefShowGhosts = "Duet.ShowGhostNotes";
     const string PrefRainbowSpeed = "Duet.RainbowSpeed";
+    const string PrefWelcomeDone = "Welcome.Done";     // The first-launch name and color box has been answered
 
     static DuetPanel s_instance;
 
@@ -169,6 +170,16 @@ public class DuetPanel : MonoBehaviour
 
         m_rejoinPending = PlayerPrefs.HasKey(PrefRejoin);
         m_rehostPending = PlayerPrefs.HasKey(PrefRehost);
+
+        // First launch ever: ask for a name and color. Anyone who already used BetterMoonscraper (a saved name, or
+        // anything picked in Settings > Customize) isn't asked.
+        bool usedBefore = PlayerPrefs.HasKey(PrefUsername) || PlayerPrefs.HasKey("Customize.Theme") || PlayerPrefs.HasKey("Customize.MenuColor");
+        m_welcomeOpen = !PlayerPrefs.HasKey(PrefWelcomeDone) && !usedBefore;
+        if (!m_welcomeOpen && !PlayerPrefs.HasKey(PrefWelcomeDone))
+        {
+            PlayerPrefs.SetInt(PrefWelcomeDone, 1);
+            PlayerPrefs.Save();
+        }
 
         DuetRooms.quitting += OnQuitting;
         Application.quitting += OnQuitting;
@@ -396,6 +407,12 @@ public class DuetPanel : MonoBehaviour
             return;
         }
 
+        if (m_welcomeOpen)
+        {
+            DrawWelcome();
+            return;
+        }
+
         DrawHostLostNotice();
 
         if (!m_visible || isHudHidden)
@@ -500,6 +517,75 @@ public class DuetPanel : MonoBehaviour
         }
         if (GUILayout.Button("Cancel"))
             CloseQuitPrompt();
+        GUILayout.EndHorizontal();
+        GUILayout.EndArea();
+    }
+
+    // The first-launch box: your name and color, as other people see them in Collab Mode and in the charter credit
+    bool m_welcomeOpen;
+    const int WelcomeId = 0x4478;
+    const float WelcomeWidth = 440;
+
+    void DrawWelcome()
+    {
+        isTyping = true;    // Typing the name mustn't trigger the editor's shortcuts
+
+        float scale = GuiScale;
+        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+        DuetInputBlocker.Block(WelcomeId, new Rect(0, 0, Screen.width / scale, Screen.height / scale), scale);
+        GUISkin oldSkin = GUI.skin;
+        GUI.skin = DuetSkin.skin;
+        Rect rect = new Rect((Screen.width / scale - WelcomeWidth) / 2, (Screen.height / scale - WelcomeHeight()) / 2, WelcomeWidth, WelcomeHeight());
+        GUI.ModalWindow(WelcomeId, rect, DrawWelcomeWindow, string.Empty);
+        GUI.skin = oldSkin;
+    }
+
+    // Grows when the custom color sliders or the rainbow speed are showing
+    float WelcomeHeight()
+    {
+        return 250 + (m_showCustomColor ? 120 : 0) + (DuetPresence.IsRainbow(m_color) ? 30 : 0);
+    }
+
+    void DrawWelcomeWindow(int id)
+    {
+        DuetSkin.DrawTitle("Welcome to BetterMoonscraper", WelcomeWidth);
+        GUILayout.BeginArea(new Rect(10, 30, WelcomeWidth - 20, WelcomeHeight() - 40));
+
+        GUILayout.Label("Pick your name and its color. Others see them when you chart together in Collab Mode, and they go in the charter credit. You can change both later in the Collab Mode window.");
+        GUILayout.Space(6);
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Name", GUILayout.Width(60));
+        m_username = GUILayout.TextField(m_username, DuetSession.MaxNameLength);
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(6);
+        DrawColorPicker(false);
+
+        GUILayout.Space(6);
+        string shown = m_username.Trim();
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Looks like:", GUILayout.Width(90));
+        Color oldContent = GUI.contentColor;
+        GUI.contentColor = DuetPresence.GetColor(m_color);
+        GUILayout.Label(shown.Length > 0 ? shown : "Your name");
+        GUI.contentColor = oldContent;
+        GUILayout.EndHorizontal();
+
+        GUILayout.FlexibleSpace();
+        GUILayout.BeginHorizontal();
+        GUILayout.FlexibleSpace();
+        GUI.enabled = shown.Length > 0;
+        if (GUILayout.Button("Done", GUILayout.Width(120)))
+        {
+            m_username = shown;
+            PlayerPrefs.SetString(PrefUsername, m_username);
+            PlayerPrefs.SetInt(PrefWelcomeDone, 1);
+            PlayerPrefs.Save();
+            m_welcomeOpen = false;
+            isTyping = false;
+            GUIUtility.keyboardControl = 0;
+        }
+        GUI.enabled = true;
         GUILayout.EndHorizontal();
         GUILayout.EndArea();
     }
@@ -757,7 +843,7 @@ public class DuetPanel : MonoBehaviour
     }
 
     // Your color for your name, cursor and song bar marker, and whether to show other people's ghost notes
-    void DrawColorPicker()
+    void DrawColorPicker(bool showGhostsToggle = true)
     {
         GUILayout.Label("Your color: " + DuetPresence.GetColorName(m_color));
         GUILayout.BeginHorizontal();
@@ -825,6 +911,9 @@ public class DuetPanel : MonoBehaviour
                     SetColor(DuetPresence.MakeCustomColor(typed), false);
             }
         }
+
+        if (!showGhostsToggle)
+            return;
 
         bool showGhosts = GUILayout.Toggle(m_showGhosts, " Show other people's ghost notes");
         if (showGhosts != m_showGhosts)
