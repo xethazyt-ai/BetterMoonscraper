@@ -546,6 +546,7 @@ public class AutoTempoDetector
         public double bpm;
         public bool ramp;           // One measure of a slowdown or speed-up
         public double[] beats;      // ...and where each of its beats falls, the first being the downbeat, for a marker on each
+        public double[] halves;     // ...and a note halfway through a long beat, where there is one (NaN where not)
     }
 
     public class Map
@@ -722,6 +723,9 @@ public class AutoTempoDetector
                     double length = (beats[last] - beats[i]) * beatsPerMeasure / (last - i);
                     Segment segment = new Segment { downbeat = beats[i], bpm = 60 * beatsPerMeasure / length, ramp = true };
                     segment.beats = beats.GetRange(i, last - i + (last == beats.Count - 1 && last - i < beatsPerMeasure ? 1 : 0)).ToArray();
+                    segment.halves = new double[segment.beats.Length];
+                    for (int b = 0; b < segment.beats.Length; ++b)
+                        segment.halves[b] = HalfBeatNote(beats, i + b);
                     best.Add(segment);
                 }
             }
@@ -753,6 +757,28 @@ public class AutoTempoDetector
                 return best;
         }
         return null;
+    }
+
+    // A beat held well past the one before it, as an ending rings out, often has a note in its middle that the
+    // beat's even split wouldn't put on the grid. That note's time, or NaN.
+    double HalfBeatNote(List<double> beats, int i)
+    {
+        if (i < 1 || i + 1 >= beats.Count)
+            return double.NaN;
+        double gap = beats[i + 1] - beats[i];
+        if (gap < (beats[i] - beats[i - 1]) * 1.2)
+            return double.NaN;
+        double best = double.NaN, bestValue = 2;
+        for (double t = beats[i] + gap * 0.3; t <= beats[i] + gap * 0.7; t += 0.002)
+        {
+            double value = PeakNear(m_onsets, t, 0.004);
+            if (value > bestValue)
+            {
+                bestValue = value;
+                best = t;
+            }
+        }
+        return best;
     }
 
     // The strongest note start within a window, or the moment itself if there's none
@@ -1407,7 +1433,7 @@ public class AutoTempoDetector
     public class Marker
     {
         public int measure;     // Counting from the chart's start
-        public int beat;        // ...and the beat in it
+        public double beat;     // ...and the beat in it (0.5 = halfway to the next)
         public double bpm;
     }
 
@@ -1472,7 +1498,15 @@ public class AutoTempoDetector
                         break;
                     next = segment.beats[b] + (segment.beats[b] - segment.beats[b - 1]);
                 }
-                markers.Add(new Marker { measure = measure, beat = b, bpm = 60 / (next - segment.beats[b]) });
+                double half = segment.halves != null ? segment.halves[b] : double.NaN;
+                if (double.IsNaN(half))
+                {
+                    markers.Add(new Marker { measure = measure, beat = b, bpm = 60 / (next - segment.beats[b]) });
+                    continue;
+                }
+                // A note in the middle of a long beat gets the half beat's line put on it
+                markers.Add(new Marker { measure = measure, beat = b, bpm = 30 / (half - segment.beats[b]) });
+                markers.Add(new Marker { measure = measure, beat = b + 0.5, bpm = 30 / (next - half) });
             }
         }
 
