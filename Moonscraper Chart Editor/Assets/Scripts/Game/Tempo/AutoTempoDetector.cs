@@ -591,9 +591,58 @@ public class AutoTempoDetector
             double ratio = candidate.bpm / old.bpm;
             // The first that fits: the list already prefers the beat over its half or double
             if (ratio > 0.67 && ratio < 1.5)
-                return Math.Abs(ratio - 1) > 0.003 ? candidate : null;
+            {
+                candidate = ThreeTwoCheck(candidate, old.bpm, changeAt, changeAt + SectionSeconds, 4);
+                return Math.Abs(candidate.bpm / old.bpm - 1) > 0.003 ? candidate : null;
+            }
         }
         return null;
+    }
+
+    // Music that moves in threes fits both a tempo and the one 3:2 from it (133 and 200 BPM share every sixteenth).
+    // The one whose measures line up better, with more on its beats, is the one a charter would use.
+    Candidate ThreeTwoCheck(Candidate found, double oldBpm, double from, double to, int beatsPerMeasure)
+    {
+        to = Math.Min(duration, to);
+        Candidate best = found;
+        double bestFit = MeasureShare(found, from, to, beatsPerMeasure);
+        double bestStrength = BeatStrength(found.bpm, found.firstBeat, from, to) / ((to - from) * found.bpm / 60);
+        foreach (double factor in new[] { 1.5, 2.0 / 3 })
+        {
+            double bpm = found.bpm * factor;
+            double ratio = bpm / oldBpm;
+            if (bpm < MinBpm || bpm > MaxBpm || ratio <= 0.67 || ratio >= 1.5)
+                continue;
+            double period = 60 / bpm;
+            double phase = 0, phaseStrength = double.MinValue;
+            for (int k = 0; k < 12; ++k)
+            {
+                double tryPhase = (found.firstBeat + period * k / 12) % period;
+                double strength = BeatStrength(bpm, tryPhase, from, to);
+                if (strength > phaseStrength)
+                {
+                    phaseStrength = strength;
+                    phase = tryPhase;
+                }
+            }
+            Candidate other = new Candidate { bpm = bpm, score = found.score, firstBeat = phase, isWhole = found.isWhole };
+            double fit = MeasureShare(other, from, to, beatsPerMeasure);
+            double strengthPerBeat = phaseStrength / ((to - from) * bpm / 60);
+            if (fit >= bestFit && strengthPerBeat > bestStrength * 1.1)
+            {
+                best = other;
+                bestFit = fit;
+                bestStrength = strengthPerBeat;
+            }
+        }
+        return best;
+    }
+
+    // The share of measures that line up
+    double MeasureShare(Candidate tempo, double from, double to, int beatsPerMeasure)
+    {
+        Check check = CheckMeasures(tempo, from, beatsPerMeasure, to);
+        return check.measuresChecked == 0 ? 0 : 1 - (double)check.unsureMeasures.Count / check.measuresChecked;
     }
 
     // A tempo found after a change is often its half or double; the one nearest the old tempo is the one meant
@@ -652,7 +701,10 @@ public class AutoTempoDetector
                     break;
                 }
             }
-            if (next == null || Math.Abs(next.bpm / old.bpm - 1) < 0.01)
+            if (next == null)
+                continue;
+            next = ThreeTwoCheck(next, old.bpm, probe, probe + RampSettleSeconds, beatsPerMeasure);
+            if (Math.Abs(next.bpm / old.bpm - 1) < 0.01)
                 continue;
             double nextMeasure = 60 / next.bpm * beatsPerMeasure;
             Check check = CheckMeasures(next, probe, beatsPerMeasure, Math.Min(duration, probe + nextMeasure * 16));
@@ -697,7 +749,7 @@ public class AutoTempoDetector
             List<Segment> best = null;
             double end = anchor;
             double bestScore = double.MinValue;
-            for (double ending = anchor; ending > rangeStart + oldMeasure; ending -= nextMeasure)
+            for (double ending = anchor; ending > rangeStart + oldMeasure; ending -= 60 / next.bpm)
             {
                 double newScore = 0;
                 int newBeats = 0;

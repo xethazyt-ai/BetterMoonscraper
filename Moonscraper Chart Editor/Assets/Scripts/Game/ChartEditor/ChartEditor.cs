@@ -659,11 +659,27 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (BlockedForDuetGuest())
             return;
 
+        m_newWaiting = true;
+        m_menuAfterNew = null;
         EditCheckThen(NewChecked);
+    }
+
+    // File > New opens Song Properties too, but only once the new chart exists: not while the unsaved changes box
+    // is still asking, and not at all if that's cancelled
+    bool m_newWaiting;
+    DisplayMenu m_menuAfterNew;
+
+    public void EnableMenuAfterNew(DisplayMenu menu)
+    {
+        if (m_newWaiting)
+            m_menuAfterNew = menu;
+        else
+            EnableMenu(menu);
     }
 
     void NewChecked()
     {
+        m_newWaiting = false;
         while (isSaving);
 
         if (errorManager.HasErrorToDisplay())
@@ -683,6 +699,12 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
         selectedObjectsManager.currentSelectedObject = null;
         isDirty = true;
+
+        if (m_menuAfterNew != null)
+        {
+            EnableMenu(m_menuAfterNew);
+            m_menuAfterNew = null;
+        }
     }
     /*
     IEnumerator resetLag()
