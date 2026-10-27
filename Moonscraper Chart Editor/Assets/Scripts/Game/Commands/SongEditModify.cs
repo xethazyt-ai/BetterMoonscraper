@@ -50,6 +50,13 @@ public class SongEditModify<T> : SongEditCommand where T : SongObject
 
     void CloneInto(SongObject objectToCopyInto, SongObject objectToCopyFrom)
     {
+        // Gone already (deleted by a later edit, or by someone else in Collab): nothing left to change
+        if (objectToCopyInto == null)
+        {
+            UnityEngine.Debug.LogWarning("Modify skipped: the " + typeof(T).Name + " at tick " + objectToCopyFrom.tick + " no longer exists");
+            return;
+        }
+
         Chart chart = SongEditTarget.chart;
 
         SongObject recordedBefore = objectToCopyInto.Clone();
