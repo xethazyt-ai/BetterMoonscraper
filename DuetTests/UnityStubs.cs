@@ -188,6 +188,7 @@ public class ChartEditor : UnityEngine.MonoBehaviour
     public bool isLoadingCollaborationSong;
 
     public bool EditCheck() { return true; }
+    public void EditCheckThen(System.Action next) { next(); }
     public void LoadCollaborationSong(Song song, bool reloadAudio, bool keepView, bool keepFile = false) { currentSong = song; }
     public void UnloadCollaborationSong() { currentSong = new Song(); }
     public System.Collections.IEnumerator _Load(string file, bool recordLastLoaded = true) { yield break; }

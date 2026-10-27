@@ -86,6 +86,21 @@ public class DuetPanel : MonoBehaviour
         return true;
     }
 
+    // Opening or starting another chart asks about unsaved changes here too, in the same style as the quit box,
+    // instead of with the old Windows pop-up. False when the box can't be shown, so the caller asks the old way.
+    static bool s_unsavedPromptOpen = false;
+    Action m_afterUnsavedPrompt;
+
+    public static bool AskAboutUnsavedChanges(Action next)
+    {
+        if (s_instance == null || s_quitPromptOpen)
+            return false;
+
+        s_instance.m_afterUnsavedPrompt = next;
+        s_unsavedPromptOpen = true;
+        return true;
+    }
+
     public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
     public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
 
@@ -407,6 +422,12 @@ public class DuetPanel : MonoBehaviour
             return;
         }
 
+        if (s_unsavedPromptOpen)
+        {
+            DrawUnsavedPrompt();
+            return;
+        }
+
         if (m_welcomeOpen)
         {
             DrawWelcome();
@@ -594,6 +615,71 @@ public class DuetPanel : MonoBehaviour
     {
         s_quitPromptOpen = false;
         isTyping = false;
+    }
+
+    const int UnsavedPromptId = 0x4479;
+    const string UnsavedPromptText = "You have unsaved changes. Do you want to save them first?";
+    float m_unsavedPromptHeight = 130;
+
+    void DrawUnsavedPrompt()
+    {
+        isTyping = true;    // Keeps the editor's shortcuts quiet until it's answered
+
+        float scale = GuiScale;
+        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+        DuetInputBlocker.Block(UnsavedPromptId, new Rect(0, 0, Screen.width / scale, Screen.height / scale), scale);
+        GUISkin oldSkin = GUI.skin;
+        GUI.skin = DuetSkin.skin;
+        GUIStyle label = GUI.skin.label;
+        GUIStyle button = GUI.skin.button;
+        m_unsavedPromptHeight = Mathf.Max(130, 24 + 10 + label.CalcHeight(new GUIContent(UnsavedPromptText), QuitPromptWidth - 20) + label.margin.vertical
+            + 12 + button.CalcHeight(new GUIContent("Save"), 120) + button.margin.vertical);
+        Rect rect = new Rect((Screen.width / scale - QuitPromptWidth) / 2, (Screen.height / scale - m_unsavedPromptHeight) / 2, QuitPromptWidth, m_unsavedPromptHeight);
+        GUI.ModalWindow(UnsavedPromptId, rect, DrawUnsavedPromptWindow, string.Empty);
+        GUI.skin = oldSkin;
+    }
+
+    void DrawUnsavedPromptWindow(int id)
+    {
+        DuetSkin.DrawTitle("Unsaved changes", QuitPromptWidth);
+        GUILayout.BeginArea(new Rect(10, 24, QuitPromptWidth - 20, m_unsavedPromptHeight - 34));
+        GUILayout.Label(UnsavedPromptText);
+        GUILayout.FlexibleSpace();
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("Save"))
+        {
+            Action next = CloseUnsavedPrompt();
+            if (m_editor._Save())
+                StartCoroutine(RunWhenSaved(next));
+        }
+        if (GUILayout.Button("Don't save"))
+        {
+            Action next = CloseUnsavedPrompt();
+            if (next != null)
+                next();
+        }
+        if (GUILayout.Button("Cancel"))
+            CloseUnsavedPrompt();
+        GUILayout.EndHorizontal();
+        GUILayout.EndArea();
+    }
+
+    Action CloseUnsavedPrompt()
+    {
+        Action next = m_afterUnsavedPrompt;
+        m_afterUnsavedPrompt = null;
+        s_unsavedPromptOpen = false;
+        isTyping = false;
+        return next;
+    }
+
+    System.Collections.IEnumerator RunWhenSaved(Action next)
+    {
+        yield return null;
+        while (m_editor.isSaving)
+            yield return null;
+        if (next != null)
+            next();
     }
 
     System.Collections.IEnumerator QuitWhenSaved()
@@ -998,9 +1084,11 @@ public class DuetPanel : MonoBehaviour
             return;
         }
 
-        if (!m_editor.EditCheck())
-            return;     // The user cancelled when asked about unsaved changes
+        m_editor.EditCheckThen(() => Join(useRooms, code, port));
+    }
 
+    void Join(bool useRooms, string code, int port)
+    {
 
         m_sessionIsRoom = useRooms;
         m_unloadedAfterSession = false;

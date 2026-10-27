@@ -390,6 +390,16 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         return true;
     }
 
+    // Asks about unsaved changes in an in-editor box like the quit one, then runs next unless the user cancels
+    public void EditCheckThen(System.Action next)
+    {
+        if (!DuetPanel.isGuest && isDirty && DuetPanel.AskAboutUnsavedChanges(next))
+            return;
+
+        if (EditCheck())
+            next();
+    }
+
     volatile bool haltThreadForQuit = false;
     volatile bool quittingCheckPassed = false;
     volatile bool didForceQuit = false;
@@ -649,9 +659,11 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (BlockedForDuetGuest())
             return;
 
-        if (!EditCheck())
-            return;
+        EditCheckThen(NewChecked);
+    }
 
+    void NewChecked()
+    {
         while (isSaving);
 
         if (errorManager.HasErrorToDisplay())
@@ -704,7 +716,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (System.IO.File.Exists(Globals.autosaveLocation))
             System.IO.File.Delete(Globals.autosaveLocation);
 
-        StartCoroutine(_Load());
+        EditCheckThen(() => StartCoroutine(_Load()));
     }
 
     public void Save()
@@ -1038,9 +1050,6 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
     IEnumerator _Load()
     {
-        if (!EditCheck())
-            yield break;
-
         while (isSaving)
             yield return null;
 
