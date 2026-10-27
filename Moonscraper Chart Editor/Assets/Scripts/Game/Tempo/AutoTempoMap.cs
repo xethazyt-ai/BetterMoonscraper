@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using MoonscraperChartEditor.Song;
+using MoonscraperEngine;
 using MoonscraperEngine.Audio;
 using UnityEngine;
 using UnityEngine.SceneManagement;
