@@ -678,6 +678,124 @@ public class AutoTempoDetector
             && check.firstDownbeat < at + measure * 2;
     }
 
+    const double TailSeconds = 45;          // How close to the end a part that never settles is followed beat by beat
+    const double TailHitShare = 0.75;       // ...if at least this share of its beats land on a note
+
+    // The rest of the song from a measure line, beat by beat, trying each tempo found there for its start and keeping
+    // the one whose beats land on notes best. The change often starts a measure before the first one flagged, so it
+    // starts from whichever of those two measure lines has a note on it.
+    List<Segment> TrackTail(Segment old, double changeAt, int beatsPerMeasure)
+    {
+        double oldMeasure = 60 / old.bpm * beatsPerMeasure;
+        double start = changeAt;
+        if (changeAt - oldMeasure > old.downbeat && PeakNear(m_onsets, changeAt - oldMeasure, 0.03) > PeakNear(m_onsets, changeAt, 0.03))
+            start = changeAt - oldMeasure;
+        start = OnsetNear(start, 0.03);
+
+        Result found = Detect(start, Math.Min(duration, start + 10));
+        List<Segment> best = null;
+        double bestScore = 0;
+        foreach (Candidate candidate in found.candidates)
+        {
+            foreach (double factor in new[] { 1.0, 0.5, 2.0 })
+            {
+                double bpm = candidate.bpm * factor;
+                if (bpm < MinBpm || bpm > MaxBpm || bpm / old.bpm < 0.5 || bpm / old.bpm > 2)
+                    continue;
+                int hits;
+                List<double> beats = TrackBeats(start, bpm, out hits);
+                if (beats.Count < beatsPerMeasure * 2 || hits < (beats.Count - 1) * TailHitShare)
+                    continue;
+                double score = 0;
+                foreach (double beat in beats)
+                    score += PeakNear(m_onsets, beat, 0.01);
+                score /= beats.Count;
+                if (score <= bestScore)
+                    continue;
+                bestScore = score;
+                best = new List<Segment>();
+                for (int i = 0; i + 1 < beats.Count; i += beatsPerMeasure)
+                {
+                    // A last measure cut short by the end keeps the pace of its own beats
+                    int last = Math.Min(i + beatsPerMeasure, beats.Count - 1);
+                    double length = (beats[last] - beats[i]) * beatsPerMeasure / (last - i);
+                    best.Add(new Segment { downbeat = beats[i], bpm = 60 * beatsPerMeasure / length, ramp = true });
+                }
+            }
+        }
+        if (best == null)
+            return null;
+
+        // Beats that keep to the old tempo (or its half or double) mean nothing changed: just a part with unclear measures
+        foreach (Segment segment in best)
+        {
+            double ratio = segment.bpm / old.bpm;
+            if (Math.Abs(ratio - 1) > 0.04 && Math.Abs(ratio - 0.5) > 0.02 && Math.Abs(ratio - 2) > 0.08)
+                return best;
+        }
+        return null;
+    }
+
+    // The strongest note start within a window, or the moment itself if there's none
+    double OnsetNear(double t, double radius)
+    {
+        double best = t, bestValue = 0;
+        for (double x = t - radius; x <= t + radius; x += 0.002)
+        {
+            double value = PeakNear(m_onsets, x, 0.002);
+            if (value > bestValue)
+            {
+                bestValue = value;
+                best = x;
+            }
+        }
+        return best;
+    }
+
+    // Beats one at a time from a measure line, each looked for near where the last gap says the next one falls, so
+    // the tempo can keep moving. Stops where the notes stop.
+    List<double> TrackBeats(double start, double bpm, out int hits)
+    {
+        List<double> beats = new List<double> { start };
+        double period = 60 / bpm;
+        int misses = 0;
+        hits = 0;
+        while (true)
+        {
+            double last = beats[beats.Count - 1];
+            double expected = last + period;
+            if (expected > duration)
+                break;
+            double best = expected, bestValue = 0;
+            for (double t = expected - period * 0.2; t <= expected + period * 0.2; t += 0.002)
+            {
+                double off = (t - expected) / (period * 0.1);
+                double value = PeakNear(m_onsets, t, 0.004) * Math.Exp(-0.5 * off * off);
+                if (value > bestValue)
+                {
+                    bestValue = value;
+                    best = t;
+                }
+            }
+            if (bestValue < 0.5)
+            {
+                if (++misses > 4)
+                    break;
+                best = expected;
+            }
+            else
+            {
+                misses = 0;
+                ++hits;
+            }
+            period = period * 0.6 + (best - last) * 0.4;
+            beats.Add(best);
+        }
+        // Not past the last note
+        beats.RemoveRange(beats.Count - misses, misses);
+        return beats;
+    }
+
     /// <summary>
     /// A slowdown or speed-up: from the old tempo into a new steady one found a little later. The measures between
     /// get a tempo each, changing evenly, placed where the beats land best.
@@ -981,6 +1099,17 @@ public class AutoTempoDetector
                     from = afterDownbeat - 60 / tempo.bpm * 0.5;
                     m_forcedDownbeat = afterDownbeat;
                     carryOn = true;
+                    break;
+                }
+
+                // Near the end, music that keeps slowing down or speeding up (an outro winding down) never settles
+                // into a new tempo: follow it beat by beat to the end
+                List<Segment> tail = changeAt > duration - TailSeconds ? TrackTail(current, changeAt, beatsPerMeasure) : null;
+                if (tail != null)
+                {
+                    foreach (double unsure in m_pendingUnsure)
+                        map.unsureMeasures.Add(unsure);
+                    map.segments.AddRange(tail);
                     break;
                 }
 
