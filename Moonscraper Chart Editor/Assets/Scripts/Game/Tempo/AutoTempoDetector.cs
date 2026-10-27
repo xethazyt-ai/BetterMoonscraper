@@ -78,6 +78,80 @@ public class AutoTempoDetector
         BuildOnsets(audio, rate);
     }
 
+    AutoTempoDetector() { }
+
+    const int FeatureVersion = 1;
+    const int ChromaBlock = 8;      // Frames averaged together for each saved pitch-class share
+
+    /// <summary>
+    /// Saves what the detector heard (note starts, low end, loudness, pitch classes), not the audio itself, so a song
+    /// can be mapped again later without its audio: for testing the detector against charts.
+    /// </summary>
+    public void WriteFeatures(System.IO.BinaryWriter writer)
+    {
+        int frames = m_onsets.Length;
+        writer.Write(FeatureVersion);
+        writer.Write(duration);
+        writer.Write(m_hopSeconds);
+        writer.Write(m_frameOffset);
+        writer.Write(frames);
+        // A byte each, on a square-root scale: fine steps for the quiet values the checks compare against
+        for (int f = 0; f < frames; ++f)
+            writer.Write(ToByte(Math.Sqrt(m_onsets[f]) * 40));
+        for (int f = 0; f < frames; ++f)
+            writer.Write(ToByte(Math.Sqrt(m_kicks[f]) * 40));
+        for (int f = 0; f < frames; ++f)
+            writer.Write(ToByte((m_energySums[f + 1] - m_energySums[f]) * 12));
+        for (int f = 0; f < frames; f += ChromaBlock)
+        {
+            int end = Math.Min(frames, f + ChromaBlock);
+            for (int k = 0; k < 12; ++k)
+            {
+                double share = (m_chromaSums[end * 12 + k] - m_chromaSums[f * 12 + k]) / (end - f);
+                writer.Write(ToByte(share * 255));
+            }
+        }
+    }
+
+    public static AutoTempoDetector ReadFeatures(System.IO.BinaryReader reader)
+    {
+        if (reader.ReadInt32() != FeatureVersion)
+            throw new Exception("unknown feature version");
+        AutoTempoDetector detector = new AutoTempoDetector();
+        detector.duration = reader.ReadDouble();
+        detector.m_hopSeconds = reader.ReadDouble();
+        detector.m_frameOffset = reader.ReadDouble();
+        int frames = reader.ReadInt32();
+        detector.m_onsets = new float[frames];
+        detector.m_kicks = new float[frames];
+        detector.m_energySums = new double[frames + 1];
+        detector.m_chromaSums = new double[(frames + 1) * 12];
+        for (int f = 0; f < frames; ++f)
+            detector.m_onsets[f] = (float)Math.Pow(reader.ReadByte() / 40.0, 2);
+        for (int f = 0; f < frames; ++f)
+            detector.m_kicks[f] = (float)Math.Pow(reader.ReadByte() / 40.0, 2);
+        for (int f = 0; f < frames; ++f)
+            detector.m_energySums[f + 1] = detector.m_energySums[f] + reader.ReadByte() / 12.0;
+        for (int f = 0; f < frames; f += ChromaBlock)
+        {
+            int end = Math.Min(frames, f + ChromaBlock);
+            double[] share = new double[12];
+            for (int k = 0; k < 12; ++k)
+                share[k] = reader.ReadByte() / 255.0;
+            for (int g = f; g < end; ++g)
+            {
+                for (int k = 0; k < 12; ++k)
+                    detector.m_chromaSums[(g + 1) * 12 + k] = detector.m_chromaSums[g * 12 + k] + share[k];
+            }
+        }
+        return detector;
+    }
+
+    static byte ToByte(double value)
+    {
+        return (byte)Math.Max(0, Math.Min(255, Math.Round(value)));
+    }
+
     // Averages each group of samples: a rough low-pass that keeps drums and loses only the highest cymbal sizzle
     static float[] Downsample(float[] samples, int factor)
     {

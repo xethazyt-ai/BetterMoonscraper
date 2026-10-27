@@ -44,6 +44,10 @@ public class AutoTempoMap : MonoBehaviour
     string m_status = string.Empty;
     Vector2 m_scroll;
 
+    // Testing against a folder of finished charts (runs off the main thread too)
+    TempoTest m_test;
+    Thread m_testThread;
+
     public static bool IsPointerOver()
     {
         if (s_instance == null || !s_instance.m_visible || DuetPanel.isHudHidden)
@@ -264,6 +268,12 @@ public class AutoTempoMap : MonoBehaviour
 
     void DrawWindow(int id)
     {
+        if (m_test != null)
+        {
+            DrawTest();
+            return;
+        }
+
         if (m_working)
         {
             GUILayout.Label(m_status);
@@ -389,8 +399,62 @@ public class AutoTempoMap : MonoBehaviour
 
     void DrawClose()
     {
+        if (!m_working && GUILayout.Button("Test on a songs folder..."))
+            StartTest();
         if (GUILayout.Button("Close"))
             m_visible = false;
+    }
+
+    string TestFolder { get { return Path.Combine(Application.persistentDataPath, "Tempo Test"); } }
+
+    // Maps every song in a folder and compares it with its chart's own tempo map; the charts are only read
+    void StartTest()
+    {
+        string picked;
+        if (!FileExplorer.OpenFolderPanel(out picked) || string.IsNullOrEmpty(picked))
+            return;
+
+        string output = TestFolder;
+        try
+        {
+            string pack = Path.Combine(output, "Test Pack");
+            if (Directory.Exists(pack))
+            {
+                foreach (string old in Directory.GetFiles(pack, "*.tempo"))
+                    File.Delete(old);
+            }
+            Directory.CreateDirectory(output);
+        }
+        catch (Exception e)
+        {
+            m_status = "Couldn't set up the test folder: " + e.Message;
+            return;
+        }
+
+        m_test = new TempoTest(picked, output, AudioManager.DecodeMono);
+        m_testThread = new Thread(m_test.Run);
+        m_testThread.IsBackground = true;
+        m_testThread.Start();
+    }
+
+    void DrawTest()
+    {
+        GUILayout.Label("Testing Auto Tempo Map against your charts (they're only read, never changed).");
+        GUILayout.Label(m_test.status);
+        if (m_test.done + m_test.failed > 0)
+            GUILayout.Label(m_test.done + " tested" + (m_test.failed > 0 ? ", " + m_test.failed + " skipped" : ""));
+        if (!m_test.finished)
+        {
+            if (GUILayout.Button(m_test.stop ? "Stopping after this song..." : "Stop"))
+                m_test.stop = true;
+            return;
+        }
+
+        GUILayout.Label("Results are in the Tempo Test folder: the report, and a Test Pack folder (what the detector heard, no audio) to zip up and send.");
+        if (GUILayout.Button("Open results folder"))
+            Application.OpenURL("file:///" + TestFolder.Replace('\\', '/'));
+        if (GUILayout.Button("Done"))
+            m_test = null;
     }
 
     static string FormatBpm(double bpm)
