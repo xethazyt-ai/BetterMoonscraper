@@ -446,7 +446,7 @@ public class AutoTempoMap : MonoBehaviour
         if (!m_test.finished)
         {
             if (GUILayout.Button(m_test.stop ? "Stopping after this song..." : "Stop"))
-                m_test.stop = true;
+                m_test.Stop();
             return;
         }
 

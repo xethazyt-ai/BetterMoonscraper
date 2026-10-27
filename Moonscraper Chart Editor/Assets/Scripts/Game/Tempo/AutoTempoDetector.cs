@@ -58,6 +58,15 @@ public class AutoTempoDetector
 
     public double duration { get; private set; }
 
+    /// <summary>When mapping must give up (a TimeoutException), so one odd song can't hold up a batch test.</summary>
+    public DateTime deadline = DateTime.MaxValue;
+
+    void CheckDeadline()
+    {
+        if (DateTime.UtcNow > deadline)
+            throw new TimeoutException("mapping took too long");
+    }
+
     /// <summary>Mono samples of the song (any rate).</summary>
     public AutoTempoDetector(float[] samples, int sampleRate)
     {
@@ -881,6 +890,7 @@ public class AutoTempoDetector
         hits = 0;
         while (true)
         {
+            CheckDeadline();
             double last = beats[beats.Count - 1];
             double expected = last + period;
             if (expected > duration)
@@ -923,7 +933,8 @@ public class AutoTempoDetector
                 misses = 0;
                 ++hits;
             }
-            period = period * 0.3 + (best - last) * 0.7;
+            // Kept within reach of where it started: dense notes can otherwise pull it ever shorter, never reaching the end
+            period = Math.Max(Math.Max(60 / MaxBpm, startPeriod * 0.5), Math.Min(startPeriod * 4, period * 0.3 + (best - last) * 0.7));
             beats.Add(best);
         }
         // Not past the last note
@@ -942,6 +953,7 @@ public class AutoTempoDetector
         double oldMeasure = 60 / old.bpm * beatsPerMeasure;
         for (double probe = changeAt + RampProbeSeconds; probe + RampSettleSeconds * 0.66 < duration && probe < changeAt + RampMaxSeconds; probe += RampProbeSeconds)
         {
+            CheckDeadline();
             Result settled = Detect(probe, Math.Min(duration, probe + RampSettleSeconds));
             Candidate next = null;
             foreach (Candidate found in settled.candidates)
@@ -1004,6 +1016,7 @@ public class AutoTempoDetector
             double bestScore = double.MinValue;
             for (double ending = anchor; ending > rangeStart + oldMeasure; ending -= 60 / next.bpm)
             {
+                CheckDeadline();
                 double newScore = 0;
                 int newBeats = 0;
                 for (double t = ending; t < horizon - 0.01; t += 60 / next.bpm, ++newBeats)
@@ -1177,6 +1190,7 @@ public class AutoTempoDetector
         tempo = Extend(tempo, from);
         for (int segment = 0; segment < MaxSegments; ++segment)
         {
+            CheckDeadline();
             Check check = CheckMeasures(tempo, from, beatsPerMeasure, duration);
             if (map.segments.Count > 0)
             {
@@ -1212,6 +1226,7 @@ public class AutoTempoDetector
             bool carryOn = false;
             while (true)
             {
+                CheckDeadline();
                 int runStart = FindRun(check.unsureMeasures, searchFrom, measure);
                 if (runStart < 0)
                 {

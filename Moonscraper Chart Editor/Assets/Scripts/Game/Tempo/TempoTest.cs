@@ -16,6 +16,7 @@ using System.Text;
 public class TempoTest
 {
     public const int MaxPackedSongs = 300;
+    const double MaxSecondsPerSong = 90;   // Mapping past this is a bug: the song is skipped and noted in the report
 
     static readonly string[] s_audioExtensions = { ".ogg", ".opus", ".mp3", ".wav", ".flac" };
 
@@ -385,7 +386,7 @@ public class TempoTest
     public volatile string status = string.Empty;
     public volatile bool stop;
     public volatile bool finished;
-    public int done, failed;
+    public volatile int done, failed;
     public string reportPath;
 
     readonly string m_songsFolder;
@@ -438,69 +439,148 @@ public class TempoTest
         string packFolder = Path.Combine(m_outFolder, "Test Pack");
         Directory.CreateDirectory(packFolder);
         reportPath = Path.Combine(m_outFolder, "Tempo Test Report.csv");
-        int packed = 0;
-        List<double> means = new List<double>();
-        using (StreamWriter report = new StreamWriter(reportPath, false, new UTF8Encoding(true)))
+        m_charts = charts;
+        m_packFolder = packFolder;
+        m_means = new List<double>();
+        using (m_report = new StreamWriter(reportPath, false, new UTF8Encoding(true)))
         {
-            report.WriteLine("Song,Chart,Chart BPM,Chart markers,Our BPM,Our markers,Beats,Offset ms,Mean error ms,Within 25 ms %,Beat ratio,Worst at,Drift from,Unsure measures,Not 4/4,Seconds,Pack file");
-            for (int i = 0; i < charts.Count && !stop; ++i)
+            m_report.WriteLine("Song,Chart,Chart BPM,Chart markers,Our BPM,Our markers,Beats,Offset ms,Mean error ms,Within 25 ms %,Beat ratio,Worst at,Drift from,Unsure measures,Not 4/4,Seconds,Pack file");
+
+            // Several songs at once, one a core (leaving one for the editor)
+            int workers = Math.Max(1, Math.Min(MaxWorkers, Environment.ProcessorCount - 1));
+            List<System.Threading.Thread> threads = new List<System.Threading.Thread>();
+            for (int w = 0; w < workers; ++w)
             {
-                string chart = charts[i];
-                string name = MakeRelative(Path.GetDirectoryName(chart));
-                status = "Testing " + (i + 1) + " of " + charts.Count + ": " + name;
-                DateTime started = DateTime.Now;
-                try
-                {
-                    Truth truth = chart.EndsWith(".mid", StringComparison.OrdinalIgnoreCase) ? ReadMidi(chart) : ReadChart(chart);
-                    truth.offset += IniDelay(Path.GetDirectoryName(chart));
-                    if (truth.bpms.Count == 0 || truth.firstNote < 0)
-                        throw new Exception("chart has no tempo map or notes");
-
-                    int rate;
-                    float[] mix = MixAudio(Path.GetDirectoryName(chart), out rate);
-                    AutoTempoDetector detector = new AutoTempoDetector(mix, rate);
-                    mix = null;
-                    AutoTempoDetector.Map map = detector.MapAuto(4, 0, AutoTempoDetector.Mode.Auto);
-                    List<AutoTempoDetector.Marker> markers = AutoTempoDetector.ToMarkers(map.segments, 0, 4);
-                    List<double> ours = BeatTimes(markers, 4, detector.duration);
-                    Score score = Compare(truth, ours);
-
-                    // The first songs, and after that only those that went wrong, are kept for tuning
-                    string packName = string.Empty;
-                    if (packed < MaxPackedSongs && (packed < MaxPackedSongs / 2 || score.meanErrorMs > 15 || Math.Abs(score.beatRatio - 1) > 0.05))
-                    {
-                        packName = (i + 1).ToString("0000") + ".tempo";
-                        WritePack(Path.Combine(packFolder, packName), name, truth, detector);
-                        ++packed;
-                    }
-
-                    report.WriteLine(string.Join(",", new string[] {
-                        Csv(name), Path.GetFileName(chart), Num(truth.bpms[0]), truth.bpms.Count.ToString(),
-                        markers.Count > 1 ? Num(markers[1].bpm) : markers.Count > 0 ? Num(markers[0].bpm) : "", markers.Count.ToString(),
-                        score.beats.ToString(), Num(score.shiftMs), Num(score.meanErrorMs), Num(score.withinShare * 100),
-                        Num(score.beatRatio), Time(score.worstAt), Time(score.driftFrom), map.unsureMeasures.Count.ToString(),
-                        truth.onlyFourFour ? "" : "yes", Num((DateTime.Now - started).TotalSeconds), packName }));
-                    means.Add(score.meanErrorMs);
-                    ++done;
-                }
-                catch (Exception e)
-                {
-                    report.WriteLine(Csv(name) + "," + Path.GetFileName(chart) + ",,,,,,,,,,,,,,,skipped: " + Csv(e.Message));
-                    ++failed;
-                }
-                report.Flush();
+                System.Threading.Thread thread = new System.Threading.Thread(Work);
+                thread.IsBackground = true;
+                thread.Start();
+                threads.Add(thread);
             }
+            foreach (System.Threading.Thread thread in threads)
+                thread.Join();
         }
 
-        means.Sort();
+        m_means.Sort();
         string summary = done + " songs tested" + (failed > 0 ? ", " + failed + " skipped" : "");
-        if (means.Count > 0)
+        if (m_means.Count > 0)
         {
-            int good = means.FindAll(m => m < 10).Count;
-            summary += ". Median error " + Num(means[means.Count / 2]) + " ms; " + good + " of " + means.Count + " within 10 ms on average";
+            int good = m_means.FindAll(m => m < 10).Count;
+            summary += ". Median error " + Num(m_means[m_means.Count / 2]) + " ms; " + good + " of " + m_means.Count + " within 10 ms on average";
         }
         status = (stop ? "Stopped. " : "Done. ") + summary + ".";
         File.WriteAllText(Path.Combine(m_outFolder, "Summary.txt"), status);
+    }
+
+    const int MaxWorkers = 8;
+    readonly object m_lock = new object();
+    List<string> m_charts;
+    string m_packFolder;
+    StreamWriter m_report;
+    List<double> m_means;
+    int m_next, m_packed;
+    readonly List<AutoTempoDetector> m_active = new List<AutoTempoDetector>();
+
+    /// <summary>Stops the test: songs being mapped give up at once.</summary>
+    public void Stop()
+    {
+        stop = true;
+        lock (m_lock)
+        {
+            foreach (AutoTempoDetector detector in m_active)
+                detector.deadline = DateTime.MinValue;
+        }
+    }
+
+    void Work()
+    {
+        while (!stop)
+        {
+            int i;
+            lock (m_lock)
+            {
+                if (m_next >= m_charts.Count)
+                    return;
+                i = m_next++;
+                status = "Testing " + (i + 1) + " of " + m_charts.Count + ": " + MakeRelative(Path.GetDirectoryName(m_charts[i]));
+            }
+            TestSong(i);
+        }
+    }
+
+    void TestSong(int i)
+    {
+        string chart = m_charts[i];
+        string name = MakeRelative(Path.GetDirectoryName(chart));
+        DateTime started = DateTime.Now;
+        AutoTempoDetector detector = null;
+        try
+        {
+            Truth truth = chart.EndsWith(".mid", StringComparison.OrdinalIgnoreCase) ? ReadMidi(chart) : ReadChart(chart);
+            truth.offset += IniDelay(Path.GetDirectoryName(chart));
+            if (truth.bpms.Count == 0 || truth.firstNote < 0)
+                throw new Exception("chart has no tempo map or notes");
+
+            int rate;
+            float[] mix = MixAudio(Path.GetDirectoryName(chart), out rate);
+            if (stop)
+                return;
+            detector = new AutoTempoDetector(mix, rate);
+            mix = null;
+            detector.deadline = DateTime.UtcNow.AddSeconds(MaxSecondsPerSong);
+            lock (m_lock)
+                m_active.Add(detector);
+            AutoTempoDetector.Map map = detector.MapAuto(4, 0, AutoTempoDetector.Mode.Auto);
+            List<AutoTempoDetector.Marker> markers = AutoTempoDetector.ToMarkers(map.segments, 0, 4);
+            List<double> ours = BeatTimes(markers, 4, detector.duration);
+            Score score = Compare(truth, ours);
+
+            // The first songs, and after that only those that went wrong, are kept for tuning
+            string packName = string.Empty;
+            lock (m_lock)
+            {
+                if (m_packed < MaxPackedSongs && (m_packed < MaxPackedSongs / 2 || score.meanErrorMs > 15 || Math.Abs(score.beatRatio - 1) > 0.05))
+                {
+                    packName = (i + 1).ToString("00000") + ".tempo";
+                    ++m_packed;
+                }
+            }
+            if (packName.Length > 0)
+                WritePack(Path.Combine(m_packFolder, packName), name, truth, detector);
+
+            string row = string.Join(",", new string[] {
+                Csv(name), Path.GetFileName(chart), Num(truth.bpms[0]), truth.bpms.Count.ToString(),
+                markers.Count > 1 ? Num(markers[1].bpm) : markers.Count > 0 ? Num(markers[0].bpm) : "", markers.Count.ToString(),
+                score.beats.ToString(), Num(score.shiftMs), Num(score.meanErrorMs), Num(score.withinShare * 100),
+                Num(score.beatRatio), Time(score.worstAt), Time(score.driftFrom), map.unsureMeasures.Count.ToString(),
+                truth.onlyFourFour ? "" : "yes", Num((DateTime.Now - started).TotalSeconds), packName });
+            lock (m_lock)
+            {
+                m_report.WriteLine(row);
+                m_report.Flush();
+                m_means.Add(score.meanErrorMs);
+                ++done;
+            }
+        }
+        catch (Exception e)
+        {
+            // A song cut off by Stop isn't a result
+            if (stop)
+                return;
+            lock (m_lock)
+            {
+                m_report.WriteLine(Csv(name) + "," + Path.GetFileName(chart) + ",,,,,,,,,,,,,," + Num((DateTime.Now - started).TotalSeconds) + ",skipped: " + Csv(e.Message));
+                m_report.Flush();
+                ++failed;
+            }
+        }
+        finally
+        {
+            if (detector != null)
+            {
+                lock (m_lock)
+                    m_active.Remove(detector);
+            }
+        }
     }
 
     void FindCharts(string folder, List<string> charts)
