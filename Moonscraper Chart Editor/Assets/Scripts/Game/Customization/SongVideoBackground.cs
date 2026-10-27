@@ -18,8 +18,8 @@ public class SongVideoBackground : MonoBehaviour
     // In the order Clone Hero looks for them. Unity plays H.264 .mp4 and VP8 .webm; VP9/AV1 .webm won't play.
     static readonly string[] s_videoNames = { "video.mp4", "video.webm", "video.avi", "video.mpeg", "video.mpg", "video.mov", "video.m4v", "video.wmv", "video.ogv" };
 
-    const double ResyncSeconds = 0.12;      // Playing: how far the video may drift before it's caught up
-    const double JumpSeconds = 1.0;         // Playing: further off than this (a jump) seeks, nearer catches up by speed
+    const double ResyncSeconds = 0.2;       // Playing: how far the video may drift before it's caught up with a seek
+    const float ResyncIntervalSeconds = 1.5f;   // ...and not more often than this, so a slow seek can't keep restarting
     const float SeekTimeoutSeconds = 1.5f;  // A seek that never reports back stops blocking the next one
     const float StuckSeconds = 0.75f;       // Playing: a picture that hasn't moved for this long gets restarted
     const double ScrubSeconds = 1.0 / 30;   // Scrolling: how far the chart has to move before showing another frame
@@ -46,8 +46,9 @@ public class SongVideoBackground : MonoBehaviour
 
     // Playing: when the video's time last moved, to notice it stuck (such as restarting after it reached its end)
     bool m_wasPlaying;
-    double m_lastObservedTime = double.NaN;
+    long m_lastObservedFrame = -1;
     float m_lastAdvanceAt;
+    float m_lastResyncAt;
 
     /// <summary>
     /// A line for Settings about the current song's video, such as why it isn't showing
@@ -312,9 +313,14 @@ public class SongVideoBackground : MonoBehaviour
             if (!m_wasPlaying)
             {
                 m_wasPlaying = true;
-                m_lastObservedTime = double.NaN;
+                m_lastObservedFrame = -1;
                 m_lastAdvanceAt = Time.unscaledTime;
             }
+
+            // Only set when the Speed slider changes: on Windows every change of playback speed makes the decoder
+            // start over, so nudging it each frame to catch up left the picture frozen after a jump
+            if (m_player.canSetPlaybackSpeed && Math.Abs(m_player.playbackSpeed - speed) > 0.001f)
+                m_player.playbackSpeed = speed;
 
             if (!m_player.isPrepared)
             {
@@ -329,24 +335,18 @@ public class SongVideoBackground : MonoBehaviour
             else if (!seekBusy)
             {
                 double drift = target - m_player.time;
-                if (Math.Abs(drift) > JumpSeconds * Math.Max(1, speed))
-                    Seek(ahead);
-                else if (m_player.canSetPlaybackSpeed)
+                if (Math.Abs(drift) > ResyncSeconds * Math.Max(1, speed) && Time.unscaledTime - m_lastResyncAt > ResyncIntervalSeconds)
                 {
-                    // A little off: play a touch faster or slower until it lines up, instead of seeking
-                    float catchUp = Math.Abs(drift) > ResyncSeconds ? Mathf.Clamp((float)drift, -0.25f, 0.25f) : 0;
-                    float wanted = speed * (1 + catchUp);
-                    if (Math.Abs(m_player.playbackSpeed - wanted) > 0.001f)
-                        m_player.playbackSpeed = wanted;
-                }
-                else if (Math.Abs(drift) > ResyncSeconds * Math.Max(1, speed))
+                    m_lastResyncAt = Time.unscaledTime;
                     Seek(ahead);
+                }
             }
 
-            // Stuck: the picture hasn't moved for a while although the song is playing, so start it again from here
-            if (m_player.time != m_lastObservedTime)
+            // Stuck: the picture hasn't moved for a while although the song is playing, so start it again from here.
+            // This watches the frame shown, not the clock, which can keep running while no new frames come out.
+            if (m_player.frame != m_lastObservedFrame || seekBusy)
             {
-                m_lastObservedTime = m_player.time;
+                m_lastObservedFrame = m_player.frame;
                 m_lastAdvanceAt = Time.unscaledTime;
             }
             else if (Time.unscaledTime - m_lastAdvanceAt > StuckSeconds && !seekBusy && m_player.isPrepared)

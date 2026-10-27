@@ -420,7 +420,8 @@ namespace UnityEngine.UI
             contentRectTransform.sizeDelta = sizeDelta;
 
             float extraSpace = dropdownRectTransform.rect.height - contentRectTransform.rect.height;
-            if (extraSpace > 0)
+            // Fit the list to its items both ways, so options added at runtime (Auto Tempo Map) aren't cut off
+            if (extraSpace != 0)
                 dropdownRectTransform.sizeDelta = new Vector2(dropdownRectTransform.sizeDelta.x, dropdownRectTransform.sizeDelta.y - extraSpace);
 
             // Invert anchoring and position if dropdown is partially or fully outside of canvas rect.
