@@ -882,6 +882,13 @@ public class ChartEditor : UnitySingleton<ChartEditor>
                 {
                     // TODO
                 }
+
+                // Audio named the way Clone Hero finds it, and song.ini's details, for what the chart leaves out
+                if (newSong != null && !mid)
+                {
+                    try { SongFolderDefaults.Apply(newSong, currentFileName); }
+                    catch (Exception e) { Logger.LogException(e, "Failed to look for the song's files next to the chart"); }
+                }
             }),
 
             new LoadingTask("Loading audio", () =>
