@@ -39,7 +39,8 @@ public class AutoTempoMap : MonoBehaviour
     double m_chosenBpm;
     int m_beatsPerMeasure = 4;
     AutoTempoDetector.Mode m_mode = AutoTempoDetector.Mode.Auto;
-    static readonly string[] s_modeNames = { "Auto", "Steady", "Follow the beat" };
+    static readonly AutoTempoDetector.Mode[] s_modes = { AutoTempoDetector.Mode.Auto, AutoTempoDetector.Mode.Follow };
+    static readonly string[] s_modeNames = { "Auto", "Follow every beat" };
     string m_status = string.Empty;
     Vector2 m_scroll;
 
@@ -303,10 +304,10 @@ public class AutoTempoMap : MonoBehaviour
         GUILayout.Label("Changes:", GUILayout.Width(62));
         for (int i = 0; i < s_modeNames.Length; ++i)
         {
-            bool on = (int)m_mode == i;
+            bool on = m_mode == s_modes[i];
             if (GUILayout.Toggle(on, s_modeNames[i], "button") && !on)
             {
-                m_mode = (AutoTempoDetector.Mode)i;
+                m_mode = s_modes[i];
                 Analyse(m_map.startBpm);
             }
         }
@@ -321,12 +322,27 @@ public class AutoTempoMap : MonoBehaviour
                 slowest = Math.Min(slowest, segment.bpm);
                 fastest = Math.Max(fastest, segment.bpm);
             }
-            GUILayout.Label("The tempo moves" + (m_mode == AutoTempoDetector.Mode.Auto ? " (found by Auto)" : string.Empty) + ", from " + FormatBpm(slowest) + " to " + FormatBpm(fastest) + ": " + m_map.segments.Count + " BPM markers follow it.");
+            GUILayout.Label("Following every beat, from " + FormatBpm(slowest) + " to " + FormatBpm(fastest) + ": " + m_map.segments.Count + " BPM markers follow it.");
         }
         else
         {
             for (int i = 1; i < m_map.segments.Count; ++i)
-                GUILayout.Label("Tempo change at " + Utility.timeConvertion((float)(m_map.segments[i].downbeat - song.offset)) + " to " + FormatBpm(m_map.segments[i].bpm));
+            {
+                AutoTempoDetector.Segment segment = m_map.segments[i];
+                string at = Utility.timeConvertion((float)(segment.downbeat - song.offset));
+                if (!segment.ramp)
+                {
+                    GUILayout.Label("Tempo change at " + at + " to " + FormatBpm(segment.bpm));
+                    continue;
+                }
+                // A slowdown or speed-up: one line for all its measures
+                int last = i;
+                while (last + 1 < m_map.segments.Count && m_map.segments[last + 1].ramp)
+                    ++last;
+                double to = last + 1 < m_map.segments.Count ? m_map.segments[last + 1].bpm : m_map.segments[last].bpm;
+                GUILayout.Label((to < m_map.segments[i - 1].bpm ? "Slows down" : "Speeds up") + " to " + FormatBpm(to) + " from " + at + ", over " + (last - i + 1) + " measures (a BPM marker on each)");
+                i = last;
+            }
         }
 
         if (m_map.unsureMeasures.Count == 0)
