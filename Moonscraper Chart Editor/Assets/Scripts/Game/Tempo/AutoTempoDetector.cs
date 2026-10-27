@@ -319,13 +319,22 @@ public class AutoTempoDetector
         }
     }
 
+    // Very slow tempos fold a quiet intro's few notes into a sharp pile by chance (a 120 BPM song read as 57.6), so a
+    // candidate counts for less the further it is from where songs usually are
+    static double TempoPrior(double bpm)
+    {
+        double octaves = Math.Log(bpm / 130, 2) / 0.8;
+        return Math.Exp(-0.5 * octaves * octaves);
+    }
+
     double FrameTime(int frame) { return frame * m_hopSeconds + m_frameOffset; }
 
     /// <summary>
     /// The song's tempo, best guess first, with the half, double and other related tempos it could be mistaken for.
-    /// Only the part from 'from' to 'to' (seconds) is used; pass 0 and the duration for the whole song.
+    /// Only the part from 'from' to 'to' (seconds) is used; pass 0 and the duration for the whole song. 'fresh' is for
+    /// a song's own tempo, with nothing before it to go on (not a change partway through).
     /// </summary>
-    public Result Detect(double from, double to)
+    public Result Detect(double from, double to, bool fresh = false)
     {
         Result result = new Result();
         result.musicStart = FindMusicStart(from);
@@ -350,8 +359,8 @@ public class AutoTempoDetector
             }
         }
 
-        result.candidates.Sort((a, b) => b.score.CompareTo(a.score));
-        PreferBeatOverHalf(result.candidates, first, last);
+        result.candidates.Sort((a, b) => (b.score * TempoPrior(b.bpm)).CompareTo(a.score * TempoPrior(a.bpm)));
+        PreferBeatOverHalf(result.candidates, first, last, fresh);
         // Duplicates after refining
         for (int i = result.candidates.Count - 1; i > 0; --i)
         {
@@ -564,9 +573,11 @@ public class AutoTempoDetector
         return result;
     }
 
+    const double TripletShare = 0.7;    // How strong a slower candidate's thirds must be, for the 3:2 faster one
+
     // Folding at half the real tempo also piles everything up (every other beat lands on the off-beat bin). If the
     // off-beat of a slower candidate is about as strong as its beat, the faster one is the real beat.
-    void PreferBeatOverHalf(List<Candidate> candidates, int first, int last)
+    void PreferBeatOverHalf(List<Candidate> candidates, int first, int last, bool fresh)
     {
         // Repeats, so a fold at a quarter of the tempo climbs all the way up
         for (bool moved = true; moved && candidates.Count > 1; )
@@ -574,6 +585,24 @@ public class AutoTempoDetector
             moved = false;
             Candidate top = candidates[0];
             double beat = Strength(top.bpm, top.firstBeat, 0, first, last);
+
+            // Notes on the thirds of its beat: a straight tempo 3:2 faster folded into a slower one (a 160 BPM
+            // song's dotted-quarter pattern makes 106.7 fold sharply too), not triplets. Only for a song's own tempo:
+            // partway through, a slowdown or speed-up smears the fold enough to fool it.
+            double third = Strength(top.bpm, top.firstBeat, 1.0 / 3, first, last);
+            double twoThirds = Strength(top.bpm, top.firstBeat, 2.0 / 3, first, last);
+            if (fresh && Math.Min(third, twoThirds) > beat * TripletShare)
+            {
+                Candidate faster = candidates.Find(c => Math.Abs(c.bpm / top.bpm - 1.5) < 0.01 && c.bpm <= 250);
+                if (faster != null)
+                {
+                    candidates.Remove(faster);
+                    candidates.Insert(0, faster);
+                    moved = true;
+                    continue;
+                }
+            }
+
             double offBeat = Strength(top.bpm, top.firstBeat, 0.5, first, last);
             // A strong off-beat means the faster tempo is the beat. Slow tempos need less to tip them, since songs
             // under 100 BPM are usually charted at double.
@@ -1172,8 +1201,8 @@ public class AutoTempoDetector
         Map map = new Map();
         // The tempo the song starts in, from its first stretch: over the whole song a later, longer section in another
         // tempo could win and the start would be mapped in the wrong one
-        Result whole = Detect(0, duration);
-        Result detected = Detect(whole.musicStart, whole.musicStart + SectionSeconds);
+        Result whole = Detect(0, duration, true);
+        Result detected = Detect(whole.musicStart, whole.musicStart + SectionSeconds, true);
         if (detected.candidates.Count == 0)
             detected = whole;
         map.choices = detected.candidates;
