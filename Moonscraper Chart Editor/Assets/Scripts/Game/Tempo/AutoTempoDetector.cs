@@ -37,6 +37,7 @@ public class AutoTempoDetector
         public double firstDownbeat;                        // Seconds into the audio
         public List<double> unsureMeasures = new List<double>();   // Start times of measures that don't line up
         public int measuresChecked;
+        public List<double> downbeatChoices = new List<double>();   // Other beats about as strong as the downbeat
     }
 
     const int TargetRate = 11025;
@@ -44,6 +45,7 @@ public class AutoTempoDetector
     const int Hop = 64;             // About 5.8 ms
     const double MinBpm = 50, MaxBpm = 320;
     const double KickMaxHz = 160;
+    const double PadSeconds = 0.5;
     const double FluxLatencySeconds = 0.0105;
 
     float[] m_onsets;               // Whole mix
@@ -61,8 +63,15 @@ public class AutoTempoDetector
         float[] audio = Downsample(samples, factor);
         duration = samples.Length / (double)sampleRate;
         m_hopSeconds = Hop / (double)rate;
+
+        // Silence in front, so a song that hits on its very first sample still shows a jump from quiet to loud
+        int pad = (int)(PadSeconds * rate);
+        float[] padded = new float[audio.Length + pad];
+        Array.Copy(audio, 0, padded, pad, audio.Length);
+        audio = padded;
+
         // A hit shows up most strongly a little before the window's middle reaches it (measured on test drums)
-        m_frameOffset = Window / 2.0 / rate + FluxLatencySeconds;
+        m_frameOffset = Window / 2.0 / rate + FluxLatencySeconds - pad / (double)rate;
         BuildOnsets(audio, rate);
     }
 
@@ -446,11 +455,17 @@ public class AutoTempoDetector
         public List<double> unsureMeasures = new List<double>();    // Start times (audio) of measures to check by ear
         public int measuresChecked;
         public double musicStart;
+        public List<double> followDownbeats;    // Following: every measure's start as followed
+        public bool followed;
+        public double followScore;
+        public double startBpm;     // The tempo picked from the choices, that the map starts from
     }
 
     const int ChangeRunMeasures = 4;     // This many unsure measures within ChangeWindowMeasures means the tempo changed
     const int ChangeWindowMeasures = 6;
     const int MaxSegments = 12;
+    const double SectionSeconds = 40;     // How much of the song from a start or a change is used to find its tempo
+    List<double> m_pendingUnsure = new List<double>();
 
     /// <summary>
     /// The whole song's tempo map: the main tempo (or 'chosenBpm' when one of the choices was picked), where the first
@@ -459,7 +474,12 @@ public class AutoTempoDetector
     public Map MapSong(int beatsPerMeasure, double chosenBpm)
     {
         Map map = new Map();
-        Result detected = Detect(0, duration);
+        // The tempo the song starts in, from its first stretch: over the whole song a later, longer section in another
+        // tempo could win and the start would be mapped in the wrong one
+        Result whole = Detect(0, duration);
+        Result detected = Detect(whole.musicStart, whole.musicStart + SectionSeconds);
+        if (detected.candidates.Count == 0)
+            detected = whole;
         map.choices = detected.candidates;
         map.musicStart = detected.musicStart;
         if (detected.candidates.Count == 0)
@@ -475,6 +495,7 @@ public class AutoTempoDetector
             }
         }
 
+        map.startBpm = tempo.bpm;
         double from = detected.musicStart;
         for (int segment = 0; segment < MaxSegments; ++segment)
         {
@@ -482,9 +503,14 @@ public class AutoTempoDetector
             if (map.segments.Count > 0)
             {
                 Segment previous = map.segments[map.segments.Count - 1];
+                check.firstDownbeat = InStepWith(previous, check, beatsPerMeasure);
                 check.firstDownbeat = MoveChangeBack(previous, tempo.bpm, check.firstDownbeat, beatsPerMeasure);
                 if (check.firstDownbeat <= previous.downbeat + 0.05)
+                {
+                    // It found the same tempo again, so it can't tell what changed: leave those to check by ear
+                    map.unsureMeasures.AddRange(m_pendingUnsure);
                     break;
+                }
                 // Measures from the new start that the old tempo flagged but the new one covers
                 map.unsureMeasures.RemoveAll(t => t >= check.firstDownbeat);
             }
@@ -511,13 +537,18 @@ public class AutoTempoDetector
 
             // The new tempo, from the change on, close to the old one (a change, not a half or double)
             double changeAt = check.unsureMeasures[runStart];
-            Result next = Detect(changeAt, duration);
+            m_pendingUnsure = check.unsureMeasures.GetRange(runStart, check.unsureMeasures.Count - runStart);
+            Result next = Detect(changeAt, Math.Min(duration, changeAt + SectionSeconds));
             Candidate changed = null;
             foreach (Candidate candidate in next.candidates)
             {
                 double ratio = candidate.bpm / tempo.bpm;
-                if (ratio > 0.67 && ratio < 1.5 && (changed == null || candidate.score > changed.score))
+                // The first that fits: the list already prefers the beat over its half or double
+                if (ratio > 0.67 && ratio < 1.5)
+                {
                     changed = candidate;
+                    break;
+                }
             }
             if (changed == null)
             {
@@ -531,6 +562,196 @@ public class AutoTempoDetector
             from = changeAt - 60 / tempo.bpm * 0.5;
         }
         return map;
+    }
+
+    const double FollowSearch = 0.12;       // Following: how far (share of a beat) a beat may land from where it's expected
+    const double FollowPhaseGain = 0.6;     // ...how much of that miss moves the beat
+    const double FollowTempoGain = 0.12;    // ...and how much it changes the tempo
+    const double FollowGridSeconds = 0.012; // Measures that stay this close to an even grid share one BPM marker
+
+    static bool FitsGrid(List<double> downbeats, int from, int to)
+    {
+        double length = (downbeats[to] - downbeats[from]) / (to - from);
+        for (int k = from + 1; k < to; ++k)
+        {
+            if (Math.Abs(downbeats[k] - (downbeats[from] + (k - from) * length)) > FollowGridSeconds)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Whether the song needs following: the steady map's measures drift away from the beats as followed
+    /// </summary>
+    static bool NeedsFollowing(Map steady, Map followed, int beatsPerMeasure)
+    {
+        if (followed.followDownbeats == null || steady.segments.Count == 0)
+            return false;
+        int off = 0;
+        int segment = 0;
+        foreach (double downbeat in followed.followDownbeats)
+        {
+            while (segment + 1 < steady.segments.Count && steady.segments[segment + 1].downbeat <= downbeat + 0.1)
+                ++segment;
+            Segment s = steady.segments[segment];
+            double length = 60.0 * beatsPerMeasure / s.bpm;
+            double measures = (downbeat - s.downbeat) / length;
+            double error = Math.Abs(measures - Math.Round(measures)) * length;
+            if (error > 0.035)
+                ++off;
+        }
+        return off >= 3;
+    }
+
+    /// <summary>
+    /// For songs whose tempo wanders (live drummers, slowing down or speeding up): starts like MapSong, then follows
+    /// the beat one beat at a time and gives a tempo for each measure, merging measures that keep the same tempo.
+    /// </summary>
+    public Map FollowSong(int beatsPerMeasure, double chosenBpm)
+    {
+        return BestFollow(MapSong(beatsPerMeasure, chosenBpm), beatsPerMeasure);
+    }
+
+    // Following through the steady map's sudden changes suits a jump; following on without them suits a ramp, where
+    // the steady map puts a change somewhere in the middle. Whichever lands on more beats wins.
+    Map BestFollow(Map steady, int beatsPerMeasure)
+    {
+        Map through = Follow(steady, beatsPerMeasure, true);
+        if (steady.segments.Count < 2)
+            return through;
+        Map on = Follow(steady, beatsPerMeasure, false);
+        return on.followScore > through.followScore ? on : through;
+    }
+
+    public enum Mode { Auto, Steady, Follow }
+
+    /// <summary>
+    /// The song's map: steady tempos (with any sudden changes), or followed beat by beat when the tempo wanders,
+    /// which Auto picks when the steady map drifts off the beats.
+    /// </summary>
+    public Map MapAuto(int beatsPerMeasure, double chosenBpm, Mode mode)
+    {
+        Map steady = MapSong(beatsPerMeasure, chosenBpm);
+        if (mode == Mode.Steady || steady.segments.Count == 0)
+            return steady;
+        Map followed = BestFollow(steady, beatsPerMeasure);
+        if (mode == Mode.Follow || NeedsFollowing(steady, followed, beatsPerMeasure))
+        {
+            followed.followed = true;
+            return followed;
+        }
+        return steady;
+    }
+
+    Map Follow(Map steady, int beatsPerMeasure, bool throughChanges)
+    {
+        Map map = new Map { choices = steady.choices, musicStart = steady.musicStart, startBpm = steady.startBpm };
+        if (steady.segments.Count == 0)
+            return map;
+
+        double period = 60 / steady.segments[0].bpm;
+        double beat = steady.segments[0].downbeat;
+        double typical = 0;
+        {
+            List<float> values = new List<float>();
+            for (double t = beat; t < duration; t += period)
+            {
+                float value = PeakNear(m_onsets, t, 0.02);
+                if (value > 0.2f)
+                    values.Add(value);
+            }
+            values.Sort();
+            typical = values.Count > 0 ? values[values.Count / 2] : 1;
+        }
+
+        // Every downbeat, following the beats as they drift
+        List<double> downbeats = new List<double> { beat };
+        List<int> heard = new List<int>();
+        int heardThisMeasure = 0;
+        double minPeriod = 60 / MaxBpm, maxPeriod = 60 / MinBpm;
+        int nextChange = throughChanges ? 1 : steady.segments.Count;
+        double score = 0;
+        for (int i = 1; beat + period < duration - 0.05; ++i)
+        {
+            // A sudden change the steady map found: too big a jump to follow, so start again from it
+            while (nextChange < steady.segments.Count && beat + period > steady.segments[nextChange].downbeat - period * 0.5
+                && Math.Abs(steady.segments[nextChange].bpm * period / 60 - 1) < FollowSearch * 0.6)
+                ++nextChange;   // Close to the tempo it's following already: follow it there instead
+            if (nextChange < steady.segments.Count && beat + period > steady.segments[nextChange].downbeat - period * 0.5)
+            {
+                Segment change = steady.segments[nextChange++];
+                beat = change.downbeat;
+                period = 60 / change.bpm;
+                downbeats.Add(beat);
+                heard.Add(heardThisMeasure + beatsPerMeasure / 2);
+                heardThisMeasure = 0;
+                i = 0;
+                continue;
+            }
+
+            double expected = beat + period;
+            double offset;
+            float strength = StrongestNear(expected, period * FollowSearch, out offset);
+            if (strength > typical * 0.5)
+            {
+                score += strength;
+                beat = expected + offset * FollowPhaseGain;
+                period = Math.Max(minPeriod, Math.Min(maxPeriod, period + offset * FollowTempoGain));
+                ++heardThisMeasure;
+            }
+            else
+                beat = expected;     // Nothing to go by (a break): carry on at the same tempo
+
+            if (i % beatsPerMeasure == 0)
+            {
+                downbeats.Add(beat);
+                heard.Add(heardThisMeasure);
+                heardThisMeasure = 0;
+            }
+        }
+
+        // Sections of one steady tempo: as many measures as stay within a few ms of an even grid
+        int sectionStart = 0;
+        while (sectionStart < downbeats.Count - 1)
+        {
+            int end = sectionStart + 1;
+            while (end + 1 < downbeats.Count && FitsGrid(downbeats, sectionStart, end + 1))
+                ++end;
+            map.segments.Add(new Segment { downbeat = downbeats[sectionStart], bpm = 60.0 * beatsPerMeasure * (end - sectionStart) / (downbeats[end] - downbeats[sectionStart]) });
+            sectionStart = end;
+        }
+        if (map.segments.Count == 0)
+            map.segments.Add(steady.segments[0]);
+        map.followDownbeats = downbeats;
+        map.followScore = score;
+
+        // Measures where hardly any beat was heard were guessed: worth checking
+        for (int m = 0; m < heard.Count; ++m)
+        {
+            ++map.measuresChecked;
+            if (heard[m] < beatsPerMeasure / 2 && PeakNear(m_onsets, downbeats[m], period) > typical * 0.3)
+                map.unsureMeasures.Add(downbeats[m]);
+        }
+        return map;
+    }
+
+    // Songs change tempo on a bar line, so of the beats that could start the new section's measures (kicks often
+    // land on 1 and 3 alike), take the one a whole number of the old measures after the old downbeat
+    static double InStepWith(Segment previous, Check check, int beatsPerMeasure)
+    {
+        double oldMeasure = 60 / previous.bpm * beatsPerMeasure;
+        double best = check.firstDownbeat, bestError = double.MaxValue;
+        foreach (double choice in check.downbeatChoices)
+        {
+            double measures = (choice - previous.downbeat) / oldMeasure;
+            double error = Math.Abs(measures - Math.Round(measures));
+            if (error < bestError - 0.05)
+            {
+                bestError = error;
+                best = choice;
+            }
+        }
+        return best;
     }
 
     // A change is found a few measures late (it takes some measures to drift off), so walk the new tempo's measures
@@ -647,6 +868,11 @@ public class AutoTempoDetector
         while (bestOffset < beatsPerMeasure - 1 && kicks[bestOffset] < bestKick * 0.8)
             ++bestOffset;
         check.firstDownbeat = beat + bestOffset * period;
+        for (int offset = 0; offset < beatsPerMeasure; ++offset)
+        {
+            if (kicks[offset] >= bestKick * 0.6)
+                check.downbeatChoices.Add(beat + offset * period);
+        }
 
         // Each measure: are the onsets near its beats right on them? Measures whose hits sit consistently early or
         // late (a tempo change) or that have hits but none on the beats are unsure. Silent ones are fine.

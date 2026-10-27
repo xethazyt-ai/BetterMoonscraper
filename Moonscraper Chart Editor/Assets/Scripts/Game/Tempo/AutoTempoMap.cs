@@ -38,6 +38,8 @@ public class AutoTempoMap : MonoBehaviour
     Song m_analysedSong;
     double m_chosenBpm;
     int m_beatsPerMeasure = 4;
+    AutoTempoDetector.Mode m_mode = AutoTempoDetector.Mode.Auto;
+    static readonly string[] s_modeNames = { "Auto", "Steady", "Follow the beat" };
     string m_status = string.Empty;
     Vector2 m_scroll;
 
@@ -187,6 +189,7 @@ public class AutoTempoMap : MonoBehaviour
         m_status = m_detector == null ? "Listening to the song..." : "Mapping at that tempo...";
         AutoTempoDetector detector = m_detector;
         int beats = m_beatsPerMeasure;
+        AutoTempoDetector.Mode mode = m_mode;
 
         m_thread = new Thread(() =>
         {
@@ -194,7 +197,7 @@ public class AutoTempoMap : MonoBehaviour
             {
                 if (detector == null)
                     detector = new AutoTempoDetector(MixFiles(files), m_mixRate);
-                AutoTempoDetector.Map map = detector.MapSong(beats, bpm);
+                AutoTempoDetector.Map map = detector.MapAuto(beats, bpm, mode);
                 m_detector = detector;
                 m_pendingMap = map;
             }
@@ -289,15 +292,42 @@ public class AutoTempoMap : MonoBehaviour
             if (shown >= 3)
                 break;
             ++shown;
-            bool chosen = Math.Abs(candidate.bpm - main.bpm) < 0.001;
+            bool chosen = Math.Abs(candidate.bpm - m_map.startBpm) < 0.001;
             if (GUILayout.Toggle(chosen, FormatBpm(candidate.bpm), "button") && !chosen)
                 Analyse(candidate.bpm);
         }
         GUILayout.EndHorizontal();
 
+        // Steady tempos with sudden changes, or following a tempo that speeds up and slows down
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Changes:", GUILayout.Width(62));
+        for (int i = 0; i < s_modeNames.Length; ++i)
+        {
+            bool on = (int)m_mode == i;
+            if (GUILayout.Toggle(on, s_modeNames[i], "button") && !on)
+            {
+                m_mode = (AutoTempoDetector.Mode)i;
+                Analyse(m_map.startBpm);
+            }
+        }
+        GUILayout.EndHorizontal();
+
         GUILayout.Label("First measure: " + Utility.timeConvertion((float)(main.downbeat - song.offset)) + ", where the song comes in.");
-        for (int i = 1; i < m_map.segments.Count; ++i)
-            GUILayout.Label("Tempo change at " + Utility.timeConvertion((float)(m_map.segments[i].downbeat - song.offset)) + " to " + FormatBpm(m_map.segments[i].bpm));
+        if (m_map.followed)
+        {
+            double slowest = double.MaxValue, fastest = 0;
+            foreach (AutoTempoDetector.Segment segment in m_map.segments)
+            {
+                slowest = Math.Min(slowest, segment.bpm);
+                fastest = Math.Max(fastest, segment.bpm);
+            }
+            GUILayout.Label("The tempo moves" + (m_mode == AutoTempoDetector.Mode.Auto ? " (found by Auto)" : string.Empty) + ", from " + FormatBpm(slowest) + " to " + FormatBpm(fastest) + ": " + m_map.segments.Count + " BPM markers follow it.");
+        }
+        else
+        {
+            for (int i = 1; i < m_map.segments.Count; ++i)
+                GUILayout.Label("Tempo change at " + Utility.timeConvertion((float)(m_map.segments[i].downbeat - song.offset)) + " to " + FormatBpm(m_map.segments[i].bpm));
+        }
 
         if (m_map.unsureMeasures.Count == 0)
         {
