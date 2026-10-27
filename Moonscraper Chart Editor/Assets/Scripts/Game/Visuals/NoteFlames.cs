@@ -24,6 +24,7 @@ public class NoteFlames : MonoBehaviour
 
     const float BurstSeconds = 0.3f;
     const float HoldSeconds = 0.08f;    // A held flame goes out this long after the sustain stops asking for it
+    const float HeldLooksLike = 0.3f;   // How far through a hit's burst a held flame looks
     const int MaxFlames = 48;
     const float LiftLanes = 0.25f;      // Starts just up the highway from the strikeline, in front of the strikers
     const float OpenScale = 0.7f;       // Open notes and kicks: a smaller flame on every lane
@@ -218,7 +219,7 @@ public class NoteFlames : MonoBehaviour
         flame.basePosition = position;
         flame.gameObject.layer = m_layer;
         flame.color = color;
-        flame.width = laneSpacing * 0.95f * scale * (held ? 0.7f : 1);
+        flame.width = laneSpacing * 0.95f * scale;
         flame.age = 0;
         flame.life = held ? HoldSeconds : BurstSeconds;
         flame.held = held;
@@ -248,6 +249,13 @@ public class NoteFlames : MonoBehaviour
                 continue;
 
             flame.age += flame.held ? delta : delta * animationSpeed;     // A held flame lasts as long as the sustain asks
+            if (playing && flame.held && flame.age >= flame.life)
+            {
+                // The sustain ended: it dies down the way a hit's flame does, rather than vanishing
+                flame.held = false;
+                flame.life = BurstSeconds;
+                flame.age = BurstSeconds * HeldLooksLike;
+            }
             if (!playing || flame.age >= flame.life)
             {
                 flame.gameObject.SetActive(false);
@@ -265,23 +273,13 @@ public class NoteFlames : MonoBehaviour
         if (!camera)
             return;
 
-        float t = Mathf.Clamp01(flame.age / flame.life);
-        float height, brightness, width, flash;
-        if (flame.held)
-        {
-            height = 1.2f;
-            width = 1;
-            brightness = 0.85f;
-            flash = 0.3f;
-        }
-        else
-        {
-            // A hit bursts up, then dies down
-            height = Mathf.Lerp(1.0f, 1.6f, Mathf.Sqrt(t));
-            width = Mathf.Lerp(1.15f, 0.8f, t);
-            brightness = 1 - t * t;
-            flash = (1 - t) * (1 - t);
-        }
+        // A hit bursts up, then dies down. A held sustain looks like a hit's flame partway through, so a sustain's
+        // flames match every other note's
+        float t = flame.held ? HeldLooksLike : Mathf.Clamp01(flame.age / flame.life);
+        float height = Mathf.Lerp(1.0f, 1.6f, Mathf.Sqrt(t));
+        float width = Mathf.Lerp(1.15f, 0.8f, t);
+        float brightness = 1 - t * t;
+        float flash = (1 - t) * (1 - t);
 
         Transform transform = flame.gameObject.transform;
         transform.rotation = camera.transform.rotation;

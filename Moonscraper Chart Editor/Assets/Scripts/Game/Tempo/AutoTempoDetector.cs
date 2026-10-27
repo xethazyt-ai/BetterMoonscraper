@@ -430,7 +430,8 @@ public class AutoTempoDetector
             float value = m_onsets[i];
             if (value <= 0)
                 continue;
-            double position = FrameTime(i) % period * binScale;
+            // Frames just before the audio's start have negative times: keep them in the fold too
+            double position = (FrameTime(i) % period + period) % period * binScale;
             int bin = (int)position;
             double part = position - bin;
             fold[bin % bins] += value * (1 - part);
@@ -503,8 +504,13 @@ public class AutoTempoDetector
         double window = SectionSeconds;
         Candidate good = tempo;
         double goodScore = double.NaN;
-        while (from + window < duration)
+        bool reachedEnd = false;
+        while (!reachedEnd && from + window < duration)
         {
+            CheckDeadline();
+            // Checked here rather than by adding up again: from + (duration - from) can come out a hair short of
+            // duration, which kept this going forever
+            reachedEnd = window * 2 >= duration - from;
             window = Math.Min(duration - from, window * 2);
             int first = Math.Max(0, (int)((from - m_frameOffset) / m_hopSeconds));
             int last = Math.Min(m_onsets.Length, (int)((from + window - m_frameOffset) / m_hopSeconds));

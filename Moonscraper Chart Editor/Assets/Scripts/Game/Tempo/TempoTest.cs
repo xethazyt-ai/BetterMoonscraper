@@ -303,16 +303,29 @@ public class TempoTest
         return beats;
     }
 
-    public static Score Compare(Truth truth, List<double> ours)
+    public static Score Compare(Truth truth, List<double> ours, double audioEnd)
     {
         Score score = new Score();
         if (truth.firstNote < 0 || ours.Count == 0)
             return score;
-        double from = truth.TickToTime(truth.firstNote), to = truth.TickToTime(truth.lastNote);
         List<double> chartBeats = new List<double>();
         long beat = truth.firstNote / truth.resolution * truth.resolution;
+        // Only while there's audio: some charts carry a stray note far past the song's end
+        // Walks the tempo map once alongside the beats (charts can have thousands of BPM markers)
+        int marker = 0;
+        double markerTime = truth.offset;
         for (; beat <= truth.lastNote; beat += truth.resolution)
-            chartBeats.Add(truth.TickToTime(beat));
+        {
+            while (marker + 1 < truth.bpmTicks.Count && truth.bpmTicks[marker + 1] <= beat)
+            {
+                markerTime += (truth.bpmTicks[marker + 1] - truth.bpmTicks[marker]) / (double)truth.resolution * 60 / truth.bpms[marker];
+                ++marker;
+            }
+            double time = markerTime + (beat - truth.bpmTicks[marker]) / (double)truth.resolution * 60 / truth.bpms[marker];
+            if (time > audioEnd)
+                break;
+            chartBeats.Add(time);
+        }
         if (chartBeats.Count < 8)
             return score;
 
@@ -532,7 +545,7 @@ public class TempoTest
             AutoTempoDetector.Map map = detector.MapAuto(4, 0, AutoTempoDetector.Mode.Auto);
             List<AutoTempoDetector.Marker> markers = AutoTempoDetector.ToMarkers(map.segments, 0, 4);
             List<double> ours = BeatTimes(markers, 4, detector.duration);
-            Score score = Compare(truth, ours);
+            Score score = Compare(truth, ours, detector.duration);
 
             // The first songs, and after that only those that went wrong, are kept for tuning
             string packName = string.Empty;
@@ -568,7 +581,7 @@ public class TempoTest
                 return;
             lock (m_lock)
             {
-                m_report.WriteLine(Csv(name) + "," + Path.GetFileName(chart) + ",,,,,,,,,,,,,," + Num((DateTime.Now - started).TotalSeconds) + ",skipped: " + Csv(e.Message));
+                m_report.WriteLine(Csv(name) + "," + Path.GetFileName(chart) + ",,,,,,,,,,,,,," + Num((DateTime.Now - started).TotalSeconds) + ",skipped: " + Csv(e.Message + Where(e)));
                 m_report.Flush();
                 ++failed;
             }
@@ -670,6 +683,22 @@ public class TempoTest
     {
         string root = m_songsFolder.TrimEnd('\\', '/');
         return folder.StartsWith(root) ? folder.Substring(root.Length).TrimStart('\\', '/') : folder;
+    }
+
+    // The first few places in the code an error came from, so a report shows where to fix it
+    static string Where(Exception e)
+    {
+        if (e is TimeoutException || string.IsNullOrEmpty(e.StackTrace))
+            return string.Empty;
+        string[] frames = e.StackTrace.Split('\n');
+        List<string> kept = new List<string>();
+        for (int i = 0; i < frames.Length && kept.Count < 3; ++i)
+        {
+            string frame = frames[i].Trim();
+            if (frame.Length > 0)
+                kept.Add(frame);
+        }
+        return " | " + string.Join(" | ", kept.ToArray());
     }
 
     static string Num(double value)
