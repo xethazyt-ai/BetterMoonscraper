@@ -1394,15 +1394,11 @@ public class AutoTempoDetector
     public Map MapAuto(int beatsPerMeasure, double chosenBpm, Mode mode)
     {
         Map steady = MapSong(beatsPerMeasure, chosenBpm);
-        if (mode == Mode.Steady || steady.segments.Count == 0)
+        if (mode != Mode.Follow || steady.segments.Count == 0)
             return steady;
         Map followed = BestFollow(steady, beatsPerMeasure);
-        if (mode == Mode.Follow)
-        {
-            followed.followed = true;
-            return followed;
-        }
-        return steady;
+        followed.followed = true;
+        return followed;
     }
 
     Map Follow(Map steady, int beatsPerMeasure, bool throughChanges)
