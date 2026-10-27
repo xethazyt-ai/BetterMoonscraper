@@ -1243,13 +1243,23 @@ public class AutoTempoDetector
         double firstMeasure = 60 / segments[0].bpm * beatsPerMeasure;
         double lead = segments[0].downbeat - chartStart;
         int measure = 0;
+        int firstLine = 0;      // The measure whose line is the first downbeat
         if (lead > 0.01)
         {
-            int count = Math.Max(1, (int)Math.Round(lead / firstMeasure));
+            int count = (int)Math.Round(lead / firstMeasure);
+            if (count == 0)
+            {
+                // Music that starts almost at once: a measure that short would need a huge BPM, so the lead-in takes
+                // in the first real measure too and lines up with the second downbeat
+                lead += firstMeasure;
+                count = 1;
+                firstLine = -1;
+            }
             markers.Add(new Marker { measure = 0, bpm = 60 * beatsPerMeasure * count / lead });
             measure = count;
         }
         markers.Add(new Marker { measure = measure, bpm = segments[0].bpm });
+        measure += firstLine;
 
         for (int i = 1; i < segments.Count; ++i)
         {
