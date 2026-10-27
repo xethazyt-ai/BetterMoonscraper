@@ -18,8 +18,8 @@ public class SongVideoBackground : MonoBehaviour
     // In the order Clone Hero looks for them. Unity plays H.264 .mp4 and VP8 .webm; VP9/AV1 .webm won't play.
     static readonly string[] s_videoNames = { "video.mp4", "video.webm", "video.avi", "video.mpeg", "video.mpg", "video.mov", "video.m4v", "video.wmv", "video.ogv" };
 
-    const double ResyncSeconds = 0.2;       // Playing: how far the video may drift before it's caught up with a seek
-    const float ResyncIntervalSeconds = 1.5f;   // ...and not more often than this, so a slow seek can't keep restarting
+    const double ResyncSeconds = 0.1;       // Playing: how far the video may drift before it's caught up with a seek
+    const float ResyncIntervalSeconds = 1.0f;   // ...and not more often than this, so a slow seek can't keep restarting
     const float SeekTimeoutSeconds = 1.5f;  // A seek that never reports back stops blocking the next one
     const float StuckSeconds = 0.75f;       // Playing: a picture that hasn't moved for this long gets restarted
     const double ScrubSeconds = 1.0 / 30;   // Scrolling: how far the chart has to move before showing another frame

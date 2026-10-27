@@ -110,6 +110,12 @@ public class AutoTempoMap : MonoBehaviour
             open.AddListener(Open);
             events.Insert(index, open);
             menu.menuEvent = events.ToArray();
+
+            // The menu keeps "nothing picked" as value = the old option count, which is now this option's index, and
+            // picking the value it already has does nothing. Park it past the end again, as DropDownMenu does.
+            dropdown.options.Add(new CustomUnityDropdown.OptionData() { text = "" });
+            dropdown.value = dropdown.options.Count - 1;
+            dropdown.options.RemoveAt(dropdown.options.Count - 1);
             return;
         }
         Debug.LogWarning("Couldn't find the Tools menu to add Auto Tempo Map to");
