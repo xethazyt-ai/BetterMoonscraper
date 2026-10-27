@@ -545,6 +545,7 @@ public class AutoTempoDetector
         public double downbeat;     // Seconds into the audio of the measure this tempo starts on
         public double bpm;
         public bool ramp;           // One measure of a slowdown or speed-up
+        public double[] beats;      // ...and where each of its beats falls, the first being the downbeat, for a marker on each
     }
 
     public class Map
@@ -719,17 +720,35 @@ public class AutoTempoDetector
                     // A last measure cut short by the end keeps the pace of its own beats
                     int last = Math.Min(i + beatsPerMeasure, beats.Count - 1);
                     double length = (beats[last] - beats[i]) * beatsPerMeasure / (last - i);
-                    best.Add(new Segment { downbeat = beats[i], bpm = 60 * beatsPerMeasure / length, ramp = true });
+                    Segment segment = new Segment { downbeat = beats[i], bpm = 60 * beatsPerMeasure / length, ramp = true };
+                    segment.beats = beats.GetRange(i, last - i + (last == beats.Count - 1 && last - i < beatsPerMeasure ? 1 : 0)).ToArray();
+                    best.Add(segment);
                 }
             }
         }
         if (best == null)
             return null;
 
-        // Beats that keep to the old tempo (or its half or double) mean nothing changed: just a part with unclear measures
-        foreach (Segment segment in best)
+        // Notes that still fit the old tempo going on unchanged mean the music didn't really slow down
+        double[] lastBeats = best[best.Count - 1].beats;
+        double end = lastBeats[lastBeats.Length - 1];
+        foreach (double factor in new[] { 1.0, 0.5 })
         {
-            double ratio = segment.bpm / old.bpm;
+            int gridBeats = 0, gridHits = 0;
+            for (double t = start; t <= end; t += 60 / (old.bpm * factor), ++gridBeats)
+            {
+                if (PeakNear(m_onsets, t, 0.03) >= 0.5)
+                    ++gridHits;
+            }
+            if (gridHits >= gridBeats * TailHitShare)
+                return null;
+        }
+
+        // Beats that keep to the old tempo (or its half or double) mean nothing changed: just a part with unclear measures.
+        // The very last measure doesn't count, as the last note can ring out however long it likes.
+        for (int i = 0; i + 1 < best.Count; ++i)
+        {
+            double ratio = best[i].bpm / old.bpm;
             if (Math.Abs(ratio - 1) > 0.04 && Math.Abs(ratio - 0.5) > 0.02 && Math.Abs(ratio - 2) > 0.08)
                 return best;
         }
@@ -757,7 +776,7 @@ public class AutoTempoDetector
     List<double> TrackBeats(double start, double bpm, out int hits)
     {
         List<double> beats = new List<double> { start };
-        double period = 60 / bpm;
+        double period = 60 / bpm, startPeriod = period;
         int misses = 0;
         hits = 0;
         while (true)
@@ -767,9 +786,10 @@ public class AutoTempoDetector
             if (expected > duration)
                 break;
             double best = expected, bestValue = 0;
-            for (double t = expected - period * 0.2; t <= expected + period * 0.2; t += 0.002)
+            // More room on the late side: an ending can slow down a lot from one beat to the next
+            for (double t = expected - period * 0.2; t <= expected + period * 0.35; t += 0.002)
             {
-                double off = (t - expected) / (period * 0.1);
+                double off = (t - expected) / (period * (t < expected ? 0.1 : 0.25));
                 double value = PeakNear(m_onsets, t, 0.004) * Math.Exp(-0.5 * off * off);
                 if (value > bestValue)
                 {
@@ -777,10 +797,25 @@ public class AutoTempoDetector
                     best = t;
                 }
             }
+            // Music that has already slowed a lot can hold the next beat even longer, as the last notes ring out
+            if (bestValue < 0.5 && period > startPeriod * 1.2)
+            {
+                for (double t = expected + period * 0.35; t <= expected + period * 0.8; t += 0.002)
+                {
+                    double value = PeakNear(m_onsets, t, 0.004);
+                    if (value > bestValue && value >= 2)
+                    {
+                        bestValue = value;
+                        best = t;
+                    }
+                }
+            }
             if (bestValue < 0.5)
             {
-                if (++misses > 4)
+                // This miss isn't in the list yet
+                if (misses == 4)
                     break;
+                ++misses;
                 best = expected;
             }
             else
@@ -788,7 +823,7 @@ public class AutoTempoDetector
                 misses = 0;
                 ++hits;
             }
-            period = period * 0.6 + (best - last) * 0.4;
+            period = period * 0.3 + (best - last) * 0.7;
             beats.Add(best);
         }
         // Not past the last note
@@ -908,6 +943,8 @@ public class AutoTempoDetector
             if (best == null)
                 continue;
             FitRamp(best, end, beatsPerMeasure);
+            for (int i = 0; i < best.Count; ++i)
+                best[i].beats = BeatsOf(best[i].downbeat, i + 1 < best.Count ? best[i + 1].downbeat : end, beatsPerMeasure);
             after = Extend(next, end);
             afterDownbeat = end;
             return best;
@@ -950,6 +987,21 @@ public class AutoTempoDetector
             ramp[i].downbeat = lines[i];
             ramp[i].bpm = 60.0 * beatsPerMeasure / (lines[i + 1] - lines[i]);
         }
+    }
+
+    // Where each beat of a measure falls: on the note nearest its even place, if there's a clear one
+    double[] BeatsOf(double from, double to, int beatsPerMeasure)
+    {
+        double period = (to - from) / beatsPerMeasure;
+        double[] beats = new double[beatsPerMeasure];
+        beats[0] = from;
+        for (int b = 1; b < beatsPerMeasure; ++b)
+        {
+            double even = from + b * period;
+            double hit = OnsetNear(even, period * 0.12);
+            beats[b] = PeakNear(m_onsets, hit, 0.002) >= 0.5 && hit > beats[b - 1] + period * 0.5 ? hit : even;
+        }
+        return beats;
     }
 
     // How well a measure's evenly spaced beats land on hits
@@ -1355,6 +1407,7 @@ public class AutoTempoDetector
     public class Marker
     {
         public int measure;     // Counting from the chart's start
+        public int beat;        // ...and the beat in it
         public double bpm;
     }
 
@@ -1396,16 +1449,37 @@ public class AutoTempoDetector
             double gap = segments[i].downbeat - segments[i - 1].downbeat;
             int count = Math.Max(1, (int)Math.Round(gap / length));
             double last = gap - (count - 1) * length;     // The measure that brings the next downbeat onto a line
-            if (Math.Abs(last - length) > 0.001)
+            // A nudge of a percent or so is just the new part's start found a few milliseconds off: no marker for it
+            if (Math.Abs(last - length) > 0.001 && (segments[i - 1].ramp || Math.Abs(last / length - 1) > 0.015))
                 markers.Add(new Marker { measure = measure + count - 1, bpm = 60 * beatsPerMeasure / last });
             measure += count;
-            markers.Add(new Marker { measure = measure, bpm = segments[i].bpm });
+
+            Segment segment = segments[i];
+            if (segment.beats == null)
+            {
+                markers.Add(new Marker { measure = measure, bpm = segment.bpm });
+                continue;
+            }
+            // A slowdown or speed-up gets a marker on every beat, so each lands where it's heard
+            double measureEnd = i + 1 < segments.Count ? segments[i + 1].downbeat : segment.downbeat + 60 / segment.bpm * beatsPerMeasure;
+            for (int b = 0; b < segment.beats.Length; ++b)
+            {
+                double next = b + 1 < segment.beats.Length ? segment.beats[b + 1] : measureEnd;
+                if (b + 1 == segment.beats.Length && segment.beats.Length < beatsPerMeasure)
+                {
+                    // The song's last beat, in a measure the ending cuts short: it keeps the pace that led into it
+                    if (b == 0)
+                        break;
+                    next = segment.beats[b] + (segment.beats[b] - segment.beats[b - 1]);
+                }
+                markers.Add(new Marker { measure = measure, beat = b, bpm = 60 / (next - segment.beats[b]) });
+            }
         }
 
-        // Two markers on one measure: the later one wins
+        // Two markers on one beat: the later one wins
         for (int i = markers.Count - 2; i >= 0; --i)
         {
-            if (markers[i].measure == markers[i + 1].measure)
+            if (markers[i].measure == markers[i + 1].measure && markers[i].beat == markers[i + 1].beat)
                 markers.RemoveAt(i);
         }
         return markers;

@@ -456,7 +456,7 @@ public class AutoTempoMap : MonoBehaviour
         foreach (AutoTempoDetector.Marker marker in markers)
         {
             uint value = (uint)Math.Max(1, Math.Min(uint.MaxValue, Math.Round(marker.bpm * 1000)));
-            uint tick = (uint)marker.measure * measureTicks;
+            uint tick = (uint)marker.measure * measureTicks + (uint)(marker.beat * measureTicks / m_beatsPerMeasure);
             if (tick == 0 && first != null)
                 commands.Add(new SongEditModify<BPM>(first, new BPM(0, value)));
             else
