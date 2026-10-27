@@ -83,6 +83,17 @@ public static class DuetFiles
 
     // Audio, images, video and song.ini: the only kinds of file sent or accepted, so a host can't drop a program
     // or anything else onto a joiner's computer
+    static readonly HashSet<string> s_videoExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp4", ".webm", ".avi", ".mkv", ".mov",
+    };
+
+    // Videos are sent last and don't hold up the rest: they're often hundreds of MB, and charting can start without one
+    public static bool IsVideoName(string name)
+    {
+        return s_videoExtensions.Contains(Path.GetExtension(name));
+    }
+
     public static bool IsSongFileName(string name)
     {
         return s_songFileExtensions.Contains(Path.GetExtension(name)) || string.Equals(name, "song.ini", StringComparison.OrdinalIgnoreCase);
@@ -240,6 +251,34 @@ public class DuetFileReceiver
     public long totalBytes { get; private set; }     // Of the files being sent, not the reused ones
     public long receivedBytes { get; private set; }
     public bool isComplete { get { return m_pending.Count == 0; } }
+
+    // Everything but the video, which is sent last
+    public bool isCompleteExceptVideo
+    {
+        get
+        {
+            foreach (string name in m_pending)
+            {
+                if (!DuetFiles.IsVideoName(name))
+                    return false;
+            }
+            return true;
+        }
+    }
+
+    /// <summary>The song's video on this computer once it's here, or null.</summary>
+    public string videoPath
+    {
+        get
+        {
+            foreach (KeyValuePair<string, string> pair in localPaths)
+            {
+                if (DuetFiles.IsVideoName(pair.Key) && !m_pending.Contains(pair.Key))
+                    return pair.Value;
+            }
+            return null;
+        }
+    }
 
     // Returns the names of the files that need sending
     public List<string> Start(List<DuetFileEntry> entries)

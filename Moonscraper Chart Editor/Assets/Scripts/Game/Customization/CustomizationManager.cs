@@ -4,6 +4,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Video;
 
 /// <summary>
 /// Applies the color profile, highway and background picked in Settings > Customize, when the editor opens and
@@ -20,6 +21,10 @@ public class CustomizationManager : MonoBehaviour
     CustomImage m_highwayImage;
     CustomImage m_backgroundImage;
     float m_videoAspect;        // Width over height of the song video showing as the background, or 0 when none is
+
+    // A background picked from Clone Hero's Video Backgrounds, looping silently behind the highway
+    VideoPlayer m_backgroundVideo;
+    RenderTexture m_backgroundVideoTexture;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -244,6 +249,7 @@ public class CustomizationManager : MonoBehaviour
         CustomNoteColors.Clear();
         DisposeImage(ref m_highwayImage);
         DisposeImage(ref m_backgroundImage);
+        StopBackgroundVideo();
     }
 
     /// <summary>
@@ -310,8 +316,11 @@ public class CustomizationManager : MonoBehaviour
         m_videoAspect = 0;
         m_fittedScreenAspect = 0;
 
+        StopBackgroundVideo();
         string path = CustomizationPrefs.GetStored(CustomizationPrefs.Kind.Background);
-        if (path != null)
+        if (path != null && CloneHeroFolders.IsVideo(path))
+            StartBackgroundVideo(path);
+        else if (path != null)
             error = TryLoad(path, TextureWrapMode.Clamp, out m_backgroundImage);
 
         foreach (BackgroundBlending background in m_backgrounds)
@@ -326,6 +335,63 @@ public class CustomizationManager : MonoBehaviour
             SongVideoBackground.instance.ShowAgain();
 
         return error;
+    }
+
+    void StartBackgroundVideo(string path)
+    {
+        GameObject holder = new GameObject("Background Video");
+        holder.transform.SetParent(transform, false);
+        m_backgroundVideo = holder.AddComponent<VideoPlayer>();
+        m_backgroundVideo.playOnAwake = false;
+        m_backgroundVideo.source = VideoSource.Url;
+        m_backgroundVideo.url = path.Replace('\\', '/');
+        m_backgroundVideo.audioOutputMode = VideoAudioOutputMode.None;
+        m_backgroundVideo.renderMode = VideoRenderMode.RenderTexture;
+        m_backgroundVideo.isLooping = true;
+        m_backgroundVideo.skipOnDrop = true;
+        m_backgroundVideo.prepareCompleted += OnBackgroundVideoPrepared;
+        m_backgroundVideo.errorReceived += (player, message) => Debug.LogWarning("Couldn't play the background video " + path + ": " + message);
+        m_backgroundVideo.Prepare();
+
+        // Stopped before Unity starts tearing things down, as with the song video
+        Application.quitting -= StopBackgroundVideo;
+        Application.quitting += StopBackgroundVideo;
+    }
+
+    void OnBackgroundVideoPrepared(VideoPlayer player)
+    {
+        if (player != m_backgroundVideo)
+            return;
+
+        int width = (int)Math.Max(16, player.width), height = (int)Math.Max(16, player.height);
+        m_backgroundVideoTexture = new RenderTexture(width, height, 0);
+        m_backgroundVideoTexture.name = "Background Video";
+        m_backgroundVideoTexture.Create();
+        player.targetTexture = m_backgroundVideoTexture;
+        player.Play();
+
+        ShowVideoBackground(m_backgroundVideoTexture, width / (float)height);
+        // The song's own video stays in front when it's showing
+        if (SongVideoBackground.instance)
+            SongVideoBackground.instance.ShowAgain();
+    }
+
+    void StopBackgroundVideo()
+    {
+        if (m_backgroundVideo)
+        {
+            m_backgroundVideo.prepareCompleted -= OnBackgroundVideoPrepared;
+            m_backgroundVideo.Stop();
+            Destroy(m_backgroundVideo.gameObject);
+        }
+        m_backgroundVideo = null;
+
+        if (m_backgroundVideoTexture)
+        {
+            m_backgroundVideoTexture.Release();
+            Destroy(m_backgroundVideoTexture);
+        }
+        m_backgroundVideoTexture = null;
     }
 
     static string TryLoad(string path, TextureWrapMode wrapMode, out CustomImage image)

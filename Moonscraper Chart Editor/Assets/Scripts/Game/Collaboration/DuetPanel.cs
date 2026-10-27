@@ -689,7 +689,8 @@ public class DuetPanel : MonoBehaviour
         if (!isHost && files != null && !files.isComplete)
         {
             GUILayout.Space(8);
-            GUILayout.Label(string.Format("Getting the song's files: {0:0.0} of {1:0.0} MB", files.receivedBytes / 1048576.0, files.totalBytes / 1048576.0));
+            GUILayout.Label(string.Format(files.isCompleteExceptVideo ? "Getting the song's video (you can chart meanwhile): {0:0.0} of {1:0.0} MB" : "Getting the song's files: {0:0.0} of {1:0.0} MB",
+                files.receivedBytes / 1048576.0, files.totalBytes / 1048576.0));
         }
         else if (!isHost && files != null && m_song.missingAudioFiles.Count > 0)
         {

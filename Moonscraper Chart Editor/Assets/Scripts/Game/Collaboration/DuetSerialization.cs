@@ -228,7 +228,7 @@ public static class DuetSerialization
     }
 
     const int MaxTextLength = 1024;
-    const double MaxBpmValue = 10000000;   // 10,000 BPM, stored times 1000
+    const double MaxBpmValue = uint.MaxValue;   // 4,294,967.295 BPM, stored times 1000
     const double MaxTimeSignaturePart = 256;
 
     static uint GetUInt(Dictionary<string, object> obj, string key)

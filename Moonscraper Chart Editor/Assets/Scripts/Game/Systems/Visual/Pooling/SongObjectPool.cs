@@ -12,6 +12,10 @@ public abstract class SongObjectPool {
 
     const int POOL_EXTEND_SIZE = 50;
 
+    // The most objects of this kind shown at once. Past this, the ones furthest up the highway aren't drawn, rather
+    // than making thousands more objects (a chart with tens of thousands of notes on screen used to freeze and crash).
+    protected virtual int maxSize { get { return int.MaxValue; } }
+
     public SongObjectPool(GameObject parent, GameObject prefab, int initialSize)
     {
         if (!prefab.GetComponentInChildren<SongObjectController>())
@@ -58,8 +62,12 @@ public abstract class SongObjectPool {
                 {
                     ++pos;
 
-                    if (pos >= pool.Length)
-                        ExtendPool(ref pool, prefab, POOL_EXTEND_SIZE, parent);
+                    if (pos >= pool.Length && pool.Length < maxSize)
+                    {
+                        // Grows faster the bigger it already is, so a dense chart doesn't make a frame of tiny steps
+                        int extend = Mathf.Min(Mathf.Max(POOL_EXTEND_SIZE, pool.Length / 4), maxSize - pool.Length);
+                        ExtendPool(ref pool, prefab, extend, parent);
+                    }
                 }
 
                 if (pos < pool.Length && !pool[pos].gameObject.activeSelf)

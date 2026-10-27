@@ -20,7 +20,8 @@ public class SongVideoBackground : MonoBehaviour
 
     const double ResyncSeconds = 0.12;      // Playing: how far the video may drift before it's caught up
     const double JumpSeconds = 1.0;         // Playing: further off than this (a jump) seeks, nearer catches up by speed
-    const float SeekTimeoutSeconds = 3;     // A seek that never reports back stops blocking the next one
+    const float SeekTimeoutSeconds = 1.5f;  // A seek that never reports back stops blocking the next one
+    const float StuckSeconds = 0.75f;       // Playing: a picture that hasn't moved for this long gets restarted
     const double ScrubSeconds = 1.0 / 30;   // Scrolling: how far the chart has to move before showing another frame
     const float ScrubIntervalSeconds = 0.08f;
 
@@ -42,6 +43,11 @@ public class SongVideoBackground : MonoBehaviour
     float m_seekStartedAt;
     float m_lastSeekDuration = 0.25f;
     double m_queuedSeek = double.NaN;
+
+    // Playing: when the video's time last moved, to notice it stuck (such as restarting after it reached its end)
+    bool m_wasPlaying;
+    double m_lastObservedTime = double.NaN;
+    float m_lastAdvanceAt;
 
     /// <summary>
     /// A line for Settings about the current song's video, such as why it isn't showing
@@ -65,9 +71,20 @@ public class SongVideoBackground : MonoBehaviour
         instance = this;
     }
 
+    // Collab Mode joiners: the host's video, kept with the other received files rather than next to the chart
+    static string s_collabVideo;
+
+    void OnCollabVideo(string path)
+    {
+        s_collabVideo = path;
+        if (FindVideo() != m_path)
+            Reload();
+    }
+
     void Start()
     {
         Application.quitting += StopForQuit;
+        DuetSession.songVideoReceived += OnCollabVideo;
         ChartEditor.Instance.events.songLoadedEvent.Register(Reload);
         ChartEditor.Instance.events.saveEvent.Register(ReloadIfMoved);
         Reload();
@@ -91,6 +108,7 @@ public class SongVideoBackground : MonoBehaviour
     void OnDestroy()
     {
         Application.quitting -= StopForQuit;
+        DuetSession.songVideoReceived -= OnCollabVideo;
         if (instance == this)
             instance = null;
         if (ChartEditor.InstanceExists)
@@ -116,7 +134,9 @@ public class SongVideoBackground : MonoBehaviour
         string path = FindVideo();
         if (path == null)
         {
-            status = "This song has no video.";
+            DuetSession session = DuetPanel.activeSession;
+            bool downloading = session != null && session.role == DuetSession.Role.Client && session.songFiles != null && !session.songFiles.isComplete;
+            status = downloading ? "The host's files are still downloading; the video shows once it's here." : "This song has no video.";
             return;
         }
 
@@ -219,6 +239,13 @@ public class SongVideoBackground : MonoBehaviour
             return;
 
         int width = (int)Math.Max(16, player.width), height = (int)Math.Max(16, player.height);
+        if (m_prepared && m_texture)
+        {
+            // Ready again after stopping at its end: same video, same picture
+            player.targetTexture = m_texture;
+            Seek(TargetSeconds());
+            return;
+        }
         m_texture = new RenderTexture(width, height, 0);
         m_texture.name = "Song Video";
         m_texture.Create();
@@ -282,7 +309,19 @@ public class SongVideoBackground : MonoBehaviour
 
             // Aim where the song will be once the seek is done, rather than where it was when it started
             double ahead = target + m_lastSeekDuration * speed;
-            if (!m_player.isPlaying)
+            if (!m_wasPlaying)
+            {
+                m_wasPlaying = true;
+                m_lastObservedTime = double.NaN;
+                m_lastAdvanceAt = Time.unscaledTime;
+            }
+
+            if (!m_player.isPrepared)
+            {
+                // It stopped at its end and let go of the file: get it ready again, then carry on from here
+                m_player.Prepare();
+            }
+            else if (!m_player.isPlaying)
             {
                 Seek(ahead);
                 m_player.Play();
@@ -303,9 +342,26 @@ public class SongVideoBackground : MonoBehaviour
                 else if (Math.Abs(drift) > ResyncSeconds * Math.Max(1, speed))
                     Seek(ahead);
             }
+
+            // Stuck: the picture hasn't moved for a while although the song is playing, so start it again from here
+            if (m_player.time != m_lastObservedTime)
+            {
+                m_lastObservedTime = m_player.time;
+                m_lastAdvanceAt = Time.unscaledTime;
+            }
+            else if (Time.unscaledTime - m_lastAdvanceAt > StuckSeconds && !seekBusy && m_player.isPrepared)
+            {
+                m_seeking = false;
+                m_player.Pause();
+                Seek(ahead);
+                m_player.Play();
+                m_lastAdvanceAt = Time.unscaledTime;
+            }
+
             m_lastScrubTarget = double.NaN;
             return;
         }
+        m_wasPlaying = false;
 
         if (m_player.isPlaying)
             m_player.Pause();
@@ -377,6 +433,10 @@ public class SongVideoBackground : MonoBehaviour
     {
         if (!ChartEditor.InstanceExists || ChartEditor.Instance.currentSong == null)
             return null;
+
+        DuetSession session = DuetPanel.activeSession;
+        if (session != null && session.role == DuetSession.Role.Client)
+            return s_collabVideo != null && File.Exists(s_collabVideo) ? s_collabVideo : null;
 
         foreach (string folder in SongFolders())
         {

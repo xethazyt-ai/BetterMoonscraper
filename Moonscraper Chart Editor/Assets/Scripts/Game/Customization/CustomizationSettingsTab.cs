@@ -17,6 +17,7 @@ public class CustomizationSettingsTab : MonoBehaviour
     const float ControlLeft = 300, ControlWidth = 250, ButtonWidth = 70, Gap = 8;
 
     static readonly ExtensionFilter s_imageFilter = new ExtensionFilter("Images", "png", "jpg", "jpeg", "gif");
+    static readonly ExtensionFilter s_backgroundFilter = new ExtensionFilter("Images and videos", "png", "jpg", "jpeg", "gif", "mp4", "webm", "mov", "m4v", "ogv", "avi");
     static readonly ExtensionFilter s_profileFilter = new ExtensionFilter("Clone Hero color profiles", "ini");
 
     class Choice
@@ -514,7 +515,7 @@ public class CustomizationSettingsTab : MonoBehaviour
     void BrowseImage(CustomizationPrefs.Kind kind)
     {
         string path;
-        if (FileExplorer.OpenFilePanel(s_imageFilter, "png", out path))
+        if (FileExplorer.OpenFilePanel(kind == CustomizationPrefs.Kind.Background ? s_backgroundFilter : s_imageFilter, "png", out path))
             Choose(kind, path);
     }
 

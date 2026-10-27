@@ -25,6 +25,7 @@ public class BPMPropertiesPanelController : PropertiesPanelController {
     BPM prevClonedBPM = new BPM();
 
     const uint c_minBpmValue = 1000;
+    const int MaxBpmIntegerDigits = 7;     // Up to millions of BPM, for speed-up and gimmick charts
     const uint c_incrementRate = 1000;
     const uint c_decrementRate = 1000;
 
@@ -32,6 +33,7 @@ public class BPMPropertiesPanelController : PropertiesPanelController {
     {
         c_decimalStr = c_decimal.ToString();
         bpmValue.onValidateInput = validatePositiveDecimal;
+        bpmValue.characterLimit = MaxBpmIntegerDigits + 4;     // Up to 4,294,967.295 BPM (the most a chart can store)
     }
 
     void OnEnable()
@@ -48,7 +50,7 @@ public class BPMPropertiesPanelController : PropertiesPanelController {
     void UpdateBPMInputFieldText()
     {
         if (currentBPM != null)
-            bpmValue.text = (currentBPM.displayValue).ToString();
+            bpmValue.text = ((decimal)currentBPM.value / 1000m).ToString();     // decimal keeps every digit of a big tempo
     }
 
     void Controls()
@@ -158,27 +160,12 @@ public class BPMPropertiesPanelController : PropertiesPanelController {
         if (value.Length > 0 && value[value.Length - 1] == c_decimal)
             value = value.Remove(value.Length - 1);
         
-        if (value != string.Empty && value[value.Length - 1] != c_decimal && currentBPM != null && float.Parse(value) != 0)
+        decimal typed;
+        if (value != string.Empty && value[value.Length - 1] != c_decimal && currentBPM != null
+            && decimal.TryParse(value, System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.CurrentCulture, out typed) && typed != 0)
         {
-            // Convert the float string to an int string
-            int zerosToAdd = 0;
-            if (value.Contains(c_decimal))
-            {
-                int index = value.IndexOf(c_decimal);
-
-                zerosToAdd = 7 - (value.Length + (3 - index));      // string length can be a total of 7 characters; 6 digits and the "."
-                value = value.Remove(index, 1);
-            }
-            else
-            {
-                zerosToAdd = 3;     // Number of zeros after the decimal point
-            }
-
-            for (int i = 0; i < zerosToAdd; ++i)
-                value += "0";
-
-            // Actually parse the value now
-            uint parsedVal = uint.Parse(value);// * 1000;     // Store it in another variable due to weird parsing-casting bug at decimal points of 2 or so. Seems to fix it for whatever reason.
+            // Stored as BPM x 1000, which tops out at 4,294,967.295 BPM
+            uint parsedVal = (uint)System.Math.Min(uint.MaxValue, System.Math.Round(typed * 1000m));
 
             bool pop = !lockedRecord && tentativeRecord;
 
@@ -211,9 +198,9 @@ public class BPMPropertiesPanelController : PropertiesPanelController {
 
         if ((addedChar == c_decimal && !text.Contains(c_decimal) && text.Length > 0) || (addedChar >= '0' && addedChar <= '9'))
         {
-            bool invalidDecimalPosition = text.Contains(c_decimal) && text.IndexOf(c_decimal) > 2 && charIndex <= text.IndexOf(c_decimal);
+            bool invalidDecimalPosition = text.Contains(c_decimal) && text.IndexOf(c_decimal) > MaxBpmIntegerDigits - 1 && charIndex <= text.IndexOf(c_decimal);
             bool exceedsDigitLimitAfterDecimalPoint = text.Contains(c_decimal) && (text.Length - text.IndexOf(c_decimal)) > 3 && charIndex > text.IndexOf(c_decimal);
-            bool greaterThanMaxInts = addedChar != c_decimal && !text.Contains(c_decimal) && text.Length > 2;
+            bool greaterThanMaxInts = addedChar != c_decimal && !text.Contains(c_decimal) && text.Length > MaxBpmIntegerDigits - 1;
 
             if (invalidDecimalPosition || greaterThanMaxInts || exceedsDigitLimitAfterDecimalPoint)
                 return '\0';
@@ -223,9 +210,9 @@ public class BPMPropertiesPanelController : PropertiesPanelController {
                 if (bpmValue.selectionAnchorPosition == text.Length && bpmValue.selectionFocusPosition == 0)
                     return addedChar;
 
-                if (!text.Contains(c_decimal) && text.Length < 3)         // Adding a number, no decimal point
+                if (!text.Contains(c_decimal) && text.Length < MaxBpmIntegerDigits)         // Adding a number, no decimal point
                     return addedChar;
-                else if (text.Contains(c_decimal) && text.IndexOf(c_decimal) <= 3)
+                else if (text.Contains(c_decimal) && text.IndexOf(c_decimal) <= MaxBpmIntegerDigits)
                     return addedChar;
             }
 

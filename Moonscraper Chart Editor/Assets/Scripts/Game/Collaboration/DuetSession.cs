@@ -582,7 +582,10 @@ public class DuetSession
 
         Dictionary<string, string> offered = new Dictionary<string, string>();
         List<object> files = new List<object>();
-        foreach (DuetFileEntry entry in DuetFiles.Describe(m_song.GetSongFilePaths(), offered))
+        List<DuetFileEntry> entries = DuetFiles.Describe(m_song.GetSongFilePaths(), offered);
+        // Videos last, so the audio and everything else arrive first and charting can start
+        entries.Sort((a, b) => DuetFiles.IsVideoName(a.name).CompareTo(DuetFiles.IsVideoName(b.name)));
+        foreach (DuetFileEntry entry in entries)
             files.Add(DuetFiles.ToJson(entry));
         m_offeredFiles[client] = offered;
         client.Send(Message("files", "files", files));
@@ -1314,6 +1317,9 @@ public class DuetSession
                 m_awaitingSnapshot = false;
                 m_unacknowledgedEdits.Clear();
                 m_songFilesUsed = false;
+                m_songVideoUsed = false;
+                if (songVideoReceived != null)
+                    songVideoReceived(null);    // The old song's video doesn't go with the new chart
                 Log("The host opened another chart. You now have it.");
                 break;
 
@@ -1342,6 +1348,7 @@ public class DuetSession
                     if (songFiles != null)
                         songFiles.Close();
                     songFiles = new DuetFileReceiver();
+                    m_songVideoUsed = false;
                     List<string> wanted = songFiles.Start(entries);
 
                     List<object> names = new List<object>();
@@ -1390,18 +1397,38 @@ public class DuetSession
     }
 
     bool m_songFilesUsed = false;
+    bool m_songVideoUsed = false;
+
+    /// <summary>
+    /// Joiners: the song's video arrived (its path), or the song changed and there's none yet (null). The video is
+    /// kept apart from the other files, so it's handed over on its own.
+    /// </summary>
+    public static event Action<string> songVideoReceived;
 
     void CheckSongFilesDone()
     {
-        if (m_songFilesUsed || songFiles == null || !songFiles.isComplete)
+        if (songFiles == null)
             return;
 
-        m_songFilesUsed = true;
-        m_song.UseSongFiles(songFiles.localPaths);
-        if (songFiles.failed.Count > 0)
-            Log("Couldn't get " + string.Join(", ", songFiles.failed.ToArray()) + " from the host");
-        else if (songFiles.totalBytes > 0)
-            Log("Got all the song's files");
+        // Audio and the rest first; the video, sent last, follows when it's here
+        if (!m_songFilesUsed && songFiles.isCompleteExceptVideo)
+        {
+            m_songFilesUsed = true;
+            m_song.UseSongFiles(songFiles.localPaths);
+        }
+
+        if (m_songFilesUsed && !m_songVideoUsed && songFiles.isComplete)
+        {
+            m_songVideoUsed = true;
+            string video = songFiles.videoPath;
+            if (video != null && songVideoReceived != null)
+                songVideoReceived(video);
+
+            if (songFiles.failed.Count > 0)
+                Log("Couldn't get " + string.Join(", ", songFiles.failed.ToArray()) + " from the host");
+            else if (songFiles.totalBytes > 0)
+                Log("Got all the song's files");
+        }
     }
 
     static string MegaBytes(long bytes)

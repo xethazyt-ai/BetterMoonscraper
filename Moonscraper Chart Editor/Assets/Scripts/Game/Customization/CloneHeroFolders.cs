@@ -10,12 +10,14 @@ using System.IO;
 public static class CloneHeroFolders
 {
     public static readonly string[] ImageExtensions = { ".png", ".jpg", ".jpeg", ".gif" };
+    public static readonly string[] VideoExtensions = { ".mp4", ".webm", ".mov", ".m4v", ".ogv", ".avi" };
     static readonly string[] s_profileExtensions = { ".ini" };
 
     // Clone Hero has used both names for its image background folder
     static readonly string[] s_colorFolders = { "Colors" };
     static readonly string[] s_highwayFolders = { "Highways" };
     static readonly string[] s_backgroundFolders = { "Image Backgrounds", "Backgrounds" };
+    static readonly string[] s_videoBackgroundFolders = { "Video Backgrounds" };
 
     public class Item
     {
@@ -89,7 +91,7 @@ public static class CloneHeroFolders
 
     static bool LooksLikeCustomFolder(string folder)
     {
-        foreach (string[] names in new[] { s_colorFolders, s_highwayFolders, s_backgroundFolders })
+        foreach (string[] names in new[] { s_colorFolders, s_highwayFolders, s_backgroundFolders, s_videoBackgroundFolders })
         {
             foreach (string name in names)
             {
@@ -102,7 +104,20 @@ public static class CloneHeroFolders
 
     public static List<Item> ListColorProfiles(string customFolder) { return List(customFolder, s_colorFolders, s_profileExtensions); }
     public static List<Item> ListHighways(string customFolder) { return List(customFolder, s_highwayFolders, ImageExtensions); }
-    public static List<Item> ListBackgrounds(string customFolder) { return List(customFolder, s_backgroundFolders, ImageExtensions); }
+
+    // Image Backgrounds and Video Backgrounds together, as Clone Hero offers both for its background
+    public static List<Item> ListBackgrounds(string customFolder)
+    {
+        List<Item> items = List(customFolder, s_backgroundFolders, ImageExtensions);
+        items.AddRange(List(customFolder, s_videoBackgroundFolders, VideoExtensions));
+        items.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+        return items;
+    }
+
+    public static bool IsVideo(string path)
+    {
+        return !string.IsNullOrEmpty(path) && Array.IndexOf(VideoExtensions, Path.GetExtension(path).ToLowerInvariant()) >= 0;
+    }
 
     static List<Item> List(string customFolder, string[] subfolders, string[] extensions)
     {
