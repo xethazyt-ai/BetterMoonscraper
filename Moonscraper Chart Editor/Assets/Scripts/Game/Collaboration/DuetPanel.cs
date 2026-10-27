@@ -98,7 +98,7 @@ public class DuetPanel : MonoBehaviour
 
     public static bool IsPointerOverPanel()
     {
-        if (DuetChat.IsPointerOver() || PatternBlueprints.IsPointerOver() || s_quitPromptOpen)
+        if (DuetChat.IsPointerOver() || PatternBlueprints.IsPointerOver() || AutoTempoMap.IsPointerOver() || s_quitPromptOpen)
             return true;
 
         if (s_instance == null || !s_instance.m_visible || isHudHidden)

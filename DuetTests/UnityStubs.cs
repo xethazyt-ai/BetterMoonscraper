@@ -238,6 +238,11 @@ public class DuetWindow
     public void PlaceOnce(UnityEngine.Vector2 fallback) { }
 }
 
+public static class AutoTempoMap
+{
+    public static bool IsPointerOver() { return false; }
+}
+
 public static class PatternBlueprints
 {
     public static bool isTyping { get { return false; } }

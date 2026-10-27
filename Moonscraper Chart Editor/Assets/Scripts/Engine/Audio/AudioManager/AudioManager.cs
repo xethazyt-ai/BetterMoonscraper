@@ -237,6 +237,49 @@ namespace MoonscraperEngine.Audio
             }
         }
 
+        /// <summary>
+        /// The whole file decoded to mono floats, for analysing it (Auto Tempo Map). Safe off the main thread.
+        /// Returns null if it can't be read.
+        /// </summary>
+        public static float[] DecodeMono(string sourcePath, out int sampleRate)
+        {
+            sampleRate = 0;
+            int handle = StreamCreateFile(sourcePath, 0, 0, BASSFlag.BASS_STREAM_DECODE | BASSFlag.BASS_SAMPLE_FLOAT | BASSFlag.BASS_STREAM_PRESCAN);
+            if (handle == 0)
+            {
+                UnityEngine.Debug.LogWarningFormat("Unable to open {0} to analyse it. Error {1}", sourcePath, Bass.BASS_ErrorGetCode());
+                return null;
+            }
+
+            try
+            {
+                BASS_CHANNELINFO info = Bass.BASS_ChannelGetInfo(handle);
+                sampleRate = info.freq;
+                int channels = Math.Max(1, info.chans);
+                long bytes = Bass.BASS_ChannelGetLength(handle, BASSMode.BASS_POS_BYTE);
+                List<float> mono = new List<float>(bytes > 0 ? (int)Math.Min(int.MaxValue, bytes / 4 / channels) : 1 << 20);
+
+                float[] buffer = new float[16384 * channels];
+                int read;
+                while ((read = Bass.BASS_ChannelGetData(handle, buffer, buffer.Length * 4 | (int)BASSData.BASS_DATA_FLOAT)) > 0)
+                {
+                    int values = read / 4;
+                    for (int i = 0; i + channels <= values; i += channels)
+                    {
+                        float sum = 0;
+                        for (int c = 0; c < channels; ++c)
+                            sum += buffer[i + c];
+                        mono.Add(sum / channels);
+                    }
+                }
+                return mono.ToArray();
+            }
+            finally
+            {
+                Bass.BASS_StreamFree(handle);
+            }
+        }
+
         static bool RenderWavAtSpeed(string sourcePath, string wavPath, float speed, bool pitched)
         {
             int handle = StreamCreateFile(sourcePath, 0, 0, BASSFlag.BASS_STREAM_DECODE | BASSFlag.BASS_STREAM_PRESCAN);
