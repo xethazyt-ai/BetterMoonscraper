@@ -159,11 +159,35 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
         return DuetFiles.FindSongFiles(string.IsNullOrEmpty(chartFile) ? null : Path.GetDirectoryName(chartFile), audio);
     }
 
+    public Dictionary<Song.AudioInstrument, string> GetAudioFileNames()
+    {
+        Dictionary<Song.AudioInstrument, string> fileNames = new Dictionary<Song.AudioInstrument, string>();
+        Song song = m_editor.currentSong;
+        foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
+        {
+            string location = song.GetAudioLocation(audio);
+            if (!string.IsNullOrEmpty(location))
+                fileNames[audio] = Path.GetFileName(location);
+        }
+        return fileNames;
+    }
+
+    public void SetAudioFileNames(Dictionary<Song.AudioInstrument, string> fileNames)
+    {
+        m_audioFileNames = new Dictionary<Song.AudioInstrument, string>(fileNames);
+    }
+
     public void UseSongFiles(Dictionary<string, string> localPaths)
     {
         m_songFiles = new Dictionary<string, string>(localPaths, System.StringComparer.OrdinalIgnoreCase);
 
         Song song = m_editor.currentSong;
+        // Stems the host no longer has go quiet here too
+        foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
+        {
+            if (!m_audioFileNames.ContainsKey(audio))
+                song.SetAudioLocation(audio, string.Empty);
+        }
         missingAudioFiles.Clear();
         foreach (KeyValuePair<Song.AudioInstrument, string> pair in m_audioFileNames)
         {

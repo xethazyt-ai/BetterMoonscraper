@@ -40,6 +40,11 @@ public interface IDuetSongHost
     // Joining: the host's files have arrived, by file name, at these paths on this computer
     void UseSongFiles(Dictionary<string, string> localPaths);
 
+    // Hosting: the open song's audio file names, by stem. Joining: the host changed them mid-session, so the files
+    // that come next fill these stems instead
+    Dictionary<Song.AudioInstrument, string> GetAudioFileNames();
+    void SetAudioFileNames(Dictionary<Song.AudioInstrument, string> fileNames);
+
     // Goes up each time a different song is opened, for example when the host opens another chart mid-session
     int songNumber { get; }
 
@@ -325,7 +330,10 @@ public class DuetSession
         if (state == State.Connected)
         {
             if (role == Role.Host)
+            {
                 SendNewSongIfChanged();
+                SendSongFilesIfChanged();
+            }
             SendPresenceIfChanged();
             SendSongInfoIfChanged();
         }
@@ -622,6 +630,84 @@ public class DuetSession
             client.Send(message);
             SendSongDetailsAndFiles(client);
         }
+        m_songFilesSignature = null;     // The new song's files went out with it; start comparing from here
+    }
+
+    // The host added, swapped or removed audio (or other song files) with people already in: send them the new set,
+    // as when joining, rather than only to whoever joins next
+    string m_songFilesSignature;
+    double m_songFilesCheckedAt = double.MinValue;
+    const double SongFilesCheckSeconds = 1.5;
+
+    void SendSongFilesIfChanged()
+    {
+        if (m_song.isBusy || clockSeconds - m_songFilesCheckedAt < SongFilesCheckSeconds)
+            return;
+        m_songFilesCheckedAt = clockSeconds;
+
+        string signature = SongFilesSignature();
+        if (m_songFilesSignature == null || signature == m_songFilesSignature)
+        {
+            m_songFilesSignature = signature;
+            return;
+        }
+        m_songFilesSignature = signature;
+
+        Dictionary<string, object> audio = AudioJson(m_song.GetAudioFileNames());
+        int sentTo = 0;
+        foreach (IDuetLink client in new List<IDuetLink>(m_joinedClients))
+        {
+            if (client.isClosed)
+                continue;
+            client.Send(Message("songaudio", "audio", audio));
+            SendSongDetailsAndFiles(client);
+            ++sentTo;
+        }
+        if (sentTo > 0)
+            Log("The song's audio or files changed, so they were sent to everyone again");
+    }
+
+    string SongFilesSignature()
+    {
+        List<string> parts = new List<string>();
+        foreach (KeyValuePair<Song.AudioInstrument, string> pair in m_song.GetAudioFileNames())
+            parts.Add(pair.Key + "=" + pair.Value);
+        foreach (string path in m_song.GetSongFilePaths())
+        {
+            string part = path;
+            try
+            {
+                FileInfo info = new FileInfo(path);
+                if (info.Exists)
+                    part += "|" + info.Length + "|" + info.LastWriteTimeUtc.Ticks;
+            }
+            catch (Exception) { }
+            parts.Add(part);
+        }
+        parts.Sort(StringComparer.Ordinal);
+        return string.Join("\n", parts.ToArray());
+    }
+
+    static Dictionary<string, object> AudioJson(Dictionary<Song.AudioInstrument, string> fileNames)
+    {
+        Dictionary<string, object> audio = new Dictionary<string, object>();
+        foreach (KeyValuePair<Song.AudioInstrument, string> pair in fileNames)
+            audio[pair.Key.ToString()] = pair.Value;
+        return audio;
+    }
+
+    static Dictionary<Song.AudioInstrument, string> ReadAudioJson(Dictionary<string, object> audio)
+    {
+        Dictionary<Song.AudioInstrument, string> fileNames = new Dictionary<Song.AudioInstrument, string>();
+        if (audio == null)
+            return fileNames;
+        foreach (KeyValuePair<string, object> pair in audio)
+        {
+            Song.AudioInstrument instrument;
+            if (pair.Value is string && Enum.TryParse(pair.Key, out instrument))
+                fileNames[instrument] = (string)pair.Value;
+        }
+        return fileNames;
     }
 
     // Lets everyone who was waiting for the recovered chart carry on joining, or start over if its sender left
@@ -1070,9 +1156,7 @@ public class DuetSession
 
     Dictionary<string, object> SnapshotMessage(string type, DuetSongSnapshot snapshot)
     {
-        Dictionary<string, object> audio = new Dictionary<string, object>();
-        foreach (KeyValuePair<Song.AudioInstrument, string> pair in snapshot.audioFileNames)
-            audio[pair.Key.ToString()] = pair.Value;
+        Dictionary<string, object> audio = AudioJson(snapshot.audioFileNames);
 
         return Message(type,
             "seq", (double)lastSeq,
@@ -1334,6 +1418,12 @@ public class DuetSession
                 ApplySongInfo(message);
                 break;
 
+            case "songaudio":
+                // The host changed the audio mid-session; the files that follow fill these stems
+                m_song.SetAudioFileNames(ReadAudioJson(DuetJson.GetObject(message, "audio")));
+                Log("The host changed the song's audio. Getting it now.");
+                break;
+
             case "files":
                 {
                     List<DuetFileEntry> entries = new List<DuetFileEntry>();
@@ -1348,6 +1438,7 @@ public class DuetSession
                     if (songFiles != null)
                         songFiles.Close();
                     songFiles = new DuetFileReceiver();
+                    m_songFilesUsed = false;    // A new set (on joining, a new song, or the host changing the audio)
                     m_songVideoUsed = false;
                     List<string> wanted = songFiles.Start(entries);
 
@@ -1441,16 +1532,8 @@ public class DuetSession
         DuetSongSnapshot snapshot = new DuetSongSnapshot();
         snapshot.chartText = DuetJson.GetString(message, "chart", string.Empty);
 
-        Dictionary<string, object> audio = DuetJson.GetObject(message, "audio");
-        if (audio != null)
-        {
-            foreach (KeyValuePair<string, object> pair in audio)
-            {
-                Song.AudioInstrument instrument;
-                if (pair.Value is string && Enum.TryParse(pair.Key, out instrument))
-                    snapshot.audioFileNames[instrument] = (string)pair.Value;
-            }
-        }
+        foreach (KeyValuePair<Song.AudioInstrument, string> pair in ReadAudioJson(DuetJson.GetObject(message, "audio")))
+            snapshot.audioFileNames[pair.Key] = pair.Value;
 
         lastSeq = (int)DuetJson.GetNumber(message, "seq");
         m_song.LoadSnapshot(snapshot, isResync);

@@ -62,7 +62,11 @@ public static class SessionTests
         public List<string> sharedFiles = new List<string>();
         public Dictionary<string, string> receivedFiles;
         public List<string> GetSongFilePaths() { return sharedFiles; }
-        public void UseSongFiles(Dictionary<string, string> localPaths) { receivedFiles = new Dictionary<string, string>(localPaths); }
+        public void UseSongFiles(Dictionary<string, string> localPaths) { receivedFiles = new Dictionary<string, string>(localPaths); ++filesUsed; }
+        public int filesUsed = 0;
+        public Dictionary<Song.AudioInstrument, string> audioFileNames = new Dictionary<Song.AudioInstrument, string>();
+        public Dictionary<Song.AudioInstrument, string> GetAudioFileNames() { return audioFileNames; }
+        public void SetAudioFileNames(Dictionary<Song.AudioInstrument, string> fileNames) { audioFileNames = new Dictionary<Song.AudioInstrument, string>(fileNames); }
 
         public Dictionary<string, string> ReadSongInfo() { return DuetSongInfo.Read(song); }
         public void ApplySongInfo(Dictionary<string, string> info) { DuetSongInfo.Apply(song, info); }
@@ -128,6 +132,17 @@ public static class SessionTests
         alice.OnLocalEdit(aliceSong.Edit(Delete(new Note(0, 0))));
         Pump(all, () => Same(hostSong, aliceSong) && Same(hostSong, bobSong));
         Expect("edits keep working after a refresh", Same(hostSong, aliceSong) && Same(hostSong, bobSong) && NoteLength(hostSong, 0, 0) < 0);
+
+        // The host adds the song audio with everyone already in: they get it without leaving and rejoining
+        string audioFolder = Path.Combine(Path.GetTempPath(), "duet-added-audio");
+        Directory.CreateDirectory(audioFolder);
+        string audioPath = Path.Combine(audioFolder, "song.ogg");
+        File.WriteAllBytes(audioPath, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 });
+        hostSong.sharedFiles.Add(audioPath);
+        hostSong.audioFileNames[Song.AudioInstrument.Song] = "song.ogg";
+        Pump(all, () => aliceSong.receivedFiles != null && aliceSong.receivedFiles.ContainsKey("song.ogg") && bobSong.receivedFiles != null && bobSong.receivedFiles.ContainsKey("song.ogg"));
+        Expect("audio added mid-session reaches everyone", aliceSong.receivedFiles != null && aliceSong.receivedFiles.ContainsKey("song.ogg") && bobSong.receivedFiles != null && bobSong.receivedFiles.ContainsKey("song.ogg"));
+        Expect("joiners learn which stem the new audio is", aliceSong.audioFileNames.ContainsKey(Song.AudioInstrument.Song) && aliceSong.audioFileNames[Song.AudioInstrument.Song] == "song.ogg");
 
         // Someone running a different version is turned away with a reason
         DuetConnection stranger = DuetConnection.Connect("127.0.0.1", host.port, 2000);
