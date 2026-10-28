@@ -282,6 +282,27 @@ public class NoteController : SongObjectController {
 
         if (sustainBroken)
             sustainRen.enabled = false;
+
+        LogOpenSustainState();
+    }
+
+    // Open sustains still vanish for some charters while a song plays, so each change in an open sustain's state is
+    // written to the log (the Collab Logs folder keeps a copy) to find out which step loses it
+    string m_lastOpenSustainState;
+    void LogOpenSustainState()
+    {
+        if (!note.IsOpenNote() || note.length == 0)
+            return;
+
+        string state = string.Format("hit {0}, broken {1}, drawn {2}, sustain on {3}, length {4}, width {5}, layer {6} {7}, whammy {8}, x {9:0.00}, z {10:0.00}",
+            hit, sustainBroken, sustainRen.enabled, sustain.gameObject.activeInHierarchy, sustain.transform.localScale.y > 0 ? "ok" : "zero",
+            ((LineRenderer)sustainRen).widthMultiplier, sustainRen.sortingLayerName, sustainRen.sortingOrder, whammy && whammy.enabled,
+            sustain.transform.position.x, sustain.transform.position.z);
+        if (state == m_lastOpenSustainState)
+            return;
+
+        m_lastOpenSustainState = state;
+        Debug.Log(string.Format("Open sustain at {0} (length {1}) at {2:0.00}s: {3}", note.tick, note.length, editor.currentVisibleTime, state));
     }
 
     public void SetDesiredWhammy(float whammyBarValue)
@@ -308,7 +329,12 @@ public class NoteController : SongObjectController {
             NoteFlames.Hold(note);
         }
         else
+        {
             sustainBroken = true;
+            if (note.IsOpenNote())
+                Debug.Log(string.Format("Open sustain at {0} cut off: end {1:0.00}, strikeline {2:0.00}, top of view {3:0.00}", note.tick,
+                    note.song.TickToWorldYPosition(note.tick + note.length), editor.visibleStrikeline.position.y, editor.camYMax.position.y));
+        }
     }
 
     public static float GetXPos(float chartPos, Note note)
@@ -352,6 +378,7 @@ public class NoteController : SongObjectController {
 
     public void Activate()
     {
+        m_lastOpenSustainState = null;
         noteVisuals.gameObject.SetActive(true);
         sustainRen.enabled = true;
         hit = false;
@@ -381,6 +408,9 @@ public class NoteController : SongObjectController {
 
     public void HideFullNote()
     {
+        if (note != null && note.IsOpenNote() && note.length > 0)
+            Debug.Log("Open sustain at " + note.tick + " hidden as playback started");
+
         DeactivateNote();
         hit = true;
         sustainBroken = true;
