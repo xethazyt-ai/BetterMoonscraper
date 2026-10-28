@@ -155,6 +155,7 @@ public class DuetPanel : MonoBehaviour
     readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Window", new Rect(0, 0, 360, 10), new Vector2(280, 160), false, true);
 
     string m_username;
+    string m_renameDraft;     // The name box while in a session, until Change is pressed
     string m_portText;
     string m_address;
     string m_password = string.Empty;
@@ -738,6 +739,7 @@ public class DuetPanel : MonoBehaviour
     {
         if (m_session != null && !m_session.isActive)
             GUILayout.Label("Session ended: " + m_session.endReason);
+        m_renameDraft = null;
 
         GUILayout.Label("Your name (shown to the other person)");
         m_username = GUILayout.TextField(m_username, 24);
@@ -889,6 +891,27 @@ public class DuetPanel : MonoBehaviour
         }
         if (kick >= 0)
             m_session.Kick(kick);   // After the loop, since kicking changes the list
+
+        // Your name can change mid-session too; everyone's list, cursor tag and the charter credit follow
+        GUILayout.Space(8);
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Your name", GUILayout.Width(80));
+        if (m_renameDraft == null)
+            m_renameDraft = m_username;
+        m_renameDraft = GUILayout.TextField(m_renameDraft, DuetSession.MaxNameLength);
+        string renamed = m_renameDraft.Trim();
+        GUI.enabled = renamed.Length > 0 && renamed != m_username;
+        if (GUILayout.Button("Change", GUILayout.Width(80)))
+        {
+            m_username = renamed;
+            m_renameDraft = renamed;
+            PlayerPrefs.SetString(PrefUsername, m_username);
+            PlayerPrefs.Save();
+            m_session.Rename(m_username);
+            GUIUtility.keyboardControl = 0;
+        }
+        GUI.enabled = true;
+        GUILayout.EndHorizontal();
 
         GUILayout.Space(8);
         DrawColorPicker();

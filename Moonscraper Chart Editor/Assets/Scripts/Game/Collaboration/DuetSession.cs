@@ -101,7 +101,7 @@ public class DuetSession
     public enum State { Connecting, Joining, Connected, HostLost, Ended }
 
     readonly IDuetSongHost m_song;
-    readonly string m_username;
+    string m_username;
 
     public Role role { get; private set; }
     public State state { get; private set; }
@@ -1052,7 +1052,44 @@ public class DuetSession
                         other.Send(message);
                 }
                 break;
+
+            case "rename":
+                RenameUser(client.id, DuetJson.GetString(message, "name", string.Empty));
+                break;
         }
+    }
+
+    /// <summary>
+    /// Changes your name for everyone in the session, straight away. The host keeps names unique, as when joining.
+    /// </summary>
+    public void Rename(string name)
+    {
+        string clean = CleanName(name);
+        if (clean == m_username)
+            return;
+
+        m_username = clean;
+        if (role == Role.Host)
+            RenameUser(HostUserId, clean);
+        else if (m_host != null && state == State.Connected)
+            m_host.Send(Message("rename", "name", clean));
+    }
+
+    void RenameUser(int userId, string name)
+    {
+        DuetUser user = users.Find(u => u.id == userId);
+        if (user == null)
+            return;
+
+        string unique = UniqueName(CleanName(name), userId);
+        if (unique == user.name)
+            return;
+
+        Log(user.name + " is now called " + unique);
+        user.name = unique;
+        if (userId == HostUserId)
+            m_username = unique;
+        BroadcastUsers();
     }
 
     void Reject(IDuetLink client, string reason, string logLine)
@@ -1125,10 +1162,10 @@ public class DuetSession
         }
     }
 
-    string UniqueName(string name)
+    string UniqueName(string name, int exceptUserId = -1)
     {
         string unique = name;
-        for (int n = 2; users.Exists(u => u.name == unique); ++n)
+        for (int n = 2; users.Exists(u => u.name == unique && u.id != exceptUserId); ++n)
             unique = name + " " + n;
         return unique;
     }
@@ -1549,6 +1586,11 @@ public class DuetSession
             if (user != null)
                 users.Add(new DuetUser { id = (int)DuetJson.GetNumber(user, "id"), name = CleanName(DuetJson.GetString(user, "name", "Charter")) });
         }
+
+        // The host may have numbered our name to keep it unique
+        DuetUser me = users.Find(u => u.id == localUserId);
+        if (me != null)
+            m_username = me.name;
 
         List<int> gone = new List<int>();
         foreach (int id in presences.Keys)

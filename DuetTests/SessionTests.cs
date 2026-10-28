@@ -116,6 +116,13 @@ public static class SessionTests
         Expect("a second joiner gets the current chart", Same(hostSong, bobSong));
         Expect("a repeated name gets a number", host.users.Exists(u => u.name == "Alex 2"));
 
+        alice.Rename("Lex");
+        Pump(all, () => host.users.Exists(u => u.name == "Lex") && bob.users.Exists(u => u.name == "Lex"));
+        Expect("a joiner's new name reaches everyone", host.users.Exists(u => u.name == "Lex") && bob.users.Exists(u => u.name == "Lex") && !host.users.Exists(u => u.name == "Alex"));
+        host.Rename("Lex");
+        Pump(all, () => alice.users.Exists(u => u.id == 0 && u.name == "Lex 2"));
+        Expect("a rename to a taken name gets a number", alice.users.Exists(u => u.id == 0 && u.name == "Lex 2") && bob.users.Exists(u => u.id == 0 && u.name == "Lex 2"));
+
         bob.OnLocalEdit(bobSong.Edit(Add(new Starpower(0, 384))));
         Pump(all, () => Same(hostSong, aliceSong) && Same(hostSong, bobSong));
         Expect("a joiner's edit reaches the other joiner", Same(aliceSong, bobSong) && Same(hostSong, bobSong));
