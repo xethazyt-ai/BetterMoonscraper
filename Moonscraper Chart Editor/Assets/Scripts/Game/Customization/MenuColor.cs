@@ -166,7 +166,7 @@ public static class MenuColor
         "TestUISprite", "SliderBG", "settings_panel", "settings_panel_no_title", "settings_panel_resz", "panel1", "panel2",
         "panel3", "panel4", "panel_bg", "UISprite", "Background", "InputFieldBackground", "white_1", "Knob",
         "rect_knob_test", "1491902985_Checkbox Empty", "dropdown_arrow", "arrow", "handle_end", "UIMask", "dropshadow",
-        "logo_0", "fade", "fade2", "fade3", "border", "WhiteBox", "settings_panel_resz",
+        "fade", "fade2", "fade3", "border", "WhiteBox", "settings_panel_resz",
         // The menu bar's blue icons
         "undo", "redo", "undo_grey", "redo_grey", "play", "play_highlight", "play_pressed", "pause", "pause_pressed",
     };
