@@ -1,4 +1,4 @@
-// See LICENSE in project root for license information.
+﻿// See LICENSE in project root for license information.
 
 using System;
 using System.Collections.Generic;
@@ -79,7 +79,8 @@ public class CustomizationSettingsTab : MonoBehaviour
         m_dropdownTemplate = FindComponent<Dropdown>(graphicsGroup, "AA Level Dropdown");
         m_buttonTemplate = graphicsButton;
 
-        AddAutosaveRow(content ? content.Find("Editor Settings") as RectTransform : null);
+        RectTransform editorGroup = content ? content.Find("Editor Settings") as RectTransform : null;
+        AddConnectedNoticeRow(editorGroup, AddAutosaveRow(editorGroup));
 
         if (!graphicsButton || !lastButton || !graphicsGroup || !m_labelTemplate || !m_dropdownTemplate)
         {
@@ -169,7 +170,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         }
     }
 
-    static void AddAutosaveRow(RectTransform editorGroup)
+    static Text AddAutosaveRow(RectTransform editorGroup)
     {
         Text labelTemplate = FindComponent<Text>(editorGroup, "BG Swap Time Text");
         Dropdown dropdownTemplate = FindComponent<Dropdown>(editorGroup, "BG Swap Dropdown");
@@ -177,7 +178,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         if (!labelTemplate || !dropdownTemplate || !lastRow)
         {
             Debug.LogWarning("Settings menu layout has changed, so the autosave setting wasn't added");
-            return;
+            return null;
         }
 
         const float RowStep = 32;
@@ -210,6 +211,43 @@ public class CustomizationSettingsTab : MonoBehaviour
         dropdown.value = selected;
         dropdown.RefreshShownValue();
         dropdown.onValueChanged.AddListener((index) => AutoSaveSystem.chartAutosaveMinutes = AutoSaveSystem.ChartMinuteChoices[index]);
+
+        editorGroup.sizeDelta = new Vector2(editorGroup.sizeDelta.x, editorGroup.sizeDelta.y + RowStep);
+        return label;
+    }
+
+    // "Controller connected notice" checkbox under Autosave chart, copied from the hidden Slowdown Pitch Correction one
+    static void AddConnectedNoticeRow(RectTransform editorGroup, Text rowAbove)
+    {
+        RectTransform template = editorGroup ? editorGroup.Find("Slowdown Pitch Correction Enabled") as RectTransform : null;
+        Toggle templateToggle = template ? template.GetComponent<Toggle>() : null;
+        if (!templateToggle || !rowAbove)
+        {
+            Debug.LogWarning("Settings menu layout has changed, so the controller notice setting wasn't added");
+            return;
+        }
+
+        const float RowStep = 32;
+        RectTransform row = Instantiate(template, editorGroup);
+        row.name = "Controller Connected Notice";
+        foreach (HintMouseOver hint in row.GetComponentsInChildren<HintMouseOver>(true))
+            Destroy(hint);     // The pitch correction hint
+
+        Toggle toggle = row.GetComponent<Toggle>();
+        toggle.onValueChanged = new Toggle.ToggleEvent();     // Drops the copied pitch correction call
+        toggle.isOn = InputManager.connectedNotice;
+        toggle.onValueChanged.AddListener((on) => InputManager.connectedNotice = on);
+
+        Text text = row.GetComponentInChildren<Text>(true);
+        if (text)
+            text.text = "Controller Connected Notice:";
+
+        // Centred one row under the autosave row
+        RectTransform above = rowAbove.rectTransform;
+        float aboveCentre = above.localPosition.y + above.rect.center.y;
+        float rowCentre = row.localPosition.y + row.rect.center.y;
+        row.anchoredPosition += new Vector2(0, aboveCentre - RowStep - rowCentre);
+        row.gameObject.SetActive(true);
 
         editorGroup.sizeDelta = new Vector2(editorGroup.sizeDelta.x, editorGroup.sizeDelta.y + RowStep);
     }

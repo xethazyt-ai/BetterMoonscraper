@@ -18,6 +18,23 @@ using System.Threading;
 [UnitySingleton(UnitySingletonAttribute.Type.LoadedFromResources, false, "Prefabs/InputManager")]
 public class InputManager : UnitySingleton<InputManager>
 {
+    const string PrefConnectedNotice = "Controls.ConnectedNotice";
+
+    /// <summary>
+    /// Settings > Editor: the "... CONNECTED" notice when a controller or guitar is plugged in
+    /// </summary>
+    public static bool connectedNotice
+    {
+        get { return PlayerPrefs.GetInt(PrefConnectedNotice, 1) != 0; }
+        set { PlayerPrefs.SetInt(PrefConnectedNotice, value ? 1 : 0); PlayerPrefs.Save(); }
+    }
+
+    static void ShowConnectedNotice(string message)
+    {
+        if (connectedNotice && ChartEditor.InstanceExists && ChartEditor.Instance.services != null && ChartEditor.Instance.services.notificationBar)
+            ChartEditor.Instance.services.notificationBar.PushNotification(message, 5, true);
+    }
+
     const int SDL_INIT_TIMEOUT_MILLISECONDS = 10000;
 
     [SerializeField]
@@ -204,6 +221,7 @@ public class InputManager : UnitySingleton<InputManager>
 
             GamepadDevice gamepad = new GamepadDevice(gameController);
             Debug.Log("Controller " + gamepad.GetDeviceName() + " (XInput or a known controller, so it uses the gamepad controls)");
+            ShowConnectedNotice(gamepad.GetDeviceName().ToUpperInvariant() + " CONNECTED");
             controllers.Add(gamepad);
             devices.Add(gamepad);
 
@@ -225,8 +243,7 @@ public class InputManager : UnitySingleton<InputManager>
 
             JoystickDevice gamepad = new JoystickDevice(joystick);
             Debug.Log("Joystick " + gamepad.Describe() + ". Bind it in Settings > Controls with that device picked.");
-            if (ChartEditor.InstanceExists && ChartEditor.Instance.services != null && ChartEditor.Instance.services.notificationBar)
-                ChartEditor.Instance.services.notificationBar.PushNotification(gamepad.GetDeviceName().ToUpperInvariant() + " CONNECTED: PICK IT IN SETTINGS > CONTROLS TO BIND IT", 5, true);
+            ShowConnectedNotice(gamepad.GetDeviceName().ToUpperInvariant() + " CONNECTED: PICK IT IN SETTINGS > CONTROLS TO BIND IT");
             joysticks.Add(gamepad);
             devices.Add(gamepad);
 

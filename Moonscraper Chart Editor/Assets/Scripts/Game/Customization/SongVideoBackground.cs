@@ -18,15 +18,11 @@ public class SongVideoBackground : MonoBehaviour
     // In the order Clone Hero looks for them. Unity plays H.264 .mp4 and VP8 .webm; VP9/AV1 .webm won't play.
     static readonly string[] s_videoNames = { "video.mp4", "video.webm", "video.avi", "video.mpeg", "video.mpg", "video.mov", "video.m4v", "video.wmv", "video.ogv" };
 
-    // Playing. Seeking is slow (the decoder starts again from the last keyframe), so small drift is left to the video
-    // player, which follows the song's time by skipping or repeating frames, and seeks are kept for big jumps.
-    const double StartBehindSeconds = 0.25;     // A video this far behind the song starts playing and catches up itself
-    const double HoldAheadSeconds = 1.0;        // A video up to this far ahead waits on its frame for the song
-    const double PlayingAheadSeconds = 0.3;     // Playing this far ahead: pause until the song catches up
-    const double PlayingBehindSeconds = 0.5;    // Playing this far behind: seek
-    const float ResyncIntervalSeconds = 2.0f;   // ...and not more often than this, so a slow seek can't keep restarting
-    const float SeekTimeoutSeconds = 3.0f;  // A seek that never reports back stops blocking the next one
-    const float StuckSeconds = 1.5f;        // Playing: a picture that hasn't moved for this long gets restarted
+    const double ResyncSeconds = 0.1;       // Playing: how far the video may drift before it's caught up with a seek
+    const float ResyncIntervalSeconds = 1.0f;   // ...and not more often than this, so a slow seek can't keep restarting
+    const float SeekTimeoutSeconds = 1.5f;  // A seek that never reports back stops blocking the next one
+    const float StuckSeconds = 0.75f;       // Playing: a picture that hasn't moved for this long gets restarted
+    const double StartToleranceSeconds = 0.15;  // Pressing play: a paused video this close to the song starts without a seek
     const double ScrubSeconds = 1.0 / 30;   // Scrolling: how far the chart has to move before showing another frame
     const float ScrubIntervalSeconds = 0.08f;
 
@@ -162,7 +158,6 @@ public class SongVideoBackground : MonoBehaviour
         m_player.isLooping = false;
         m_player.skipOnDrop = true;
         m_player.waitForFirstFrame = true;
-        m_player.timeReference = VideoTimeReference.ExternalTime;   // Follows the song's time, set each frame
         m_player.prepareCompleted += OnPrepared;
         m_player.errorReceived += OnError;
         m_player.seekCompleted += OnSeekCompleted;
@@ -315,7 +310,7 @@ public class SongVideoBackground : MonoBehaviour
             float speed = Mathf.Max(0.01f, Globals.gameSettings.gameSpeed);
 
             // Aim where the song will be once the seek is done, rather than where it was when it started
-            double ahead = target + m_lastSeekDuration * speed + 0.1 * speed;
+            double ahead = target + m_lastSeekDuration * speed;
             if (!m_wasPlaying)
             {
                 m_wasPlaying = true;
@@ -327,52 +322,43 @@ public class SongVideoBackground : MonoBehaviour
             // start over, so nudging it each frame to catch up left the picture frozen after a jump
             if (m_player.canSetPlaybackSpeed && Math.Abs(m_player.playbackSpeed - speed) > 0.001f)
                 m_player.playbackSpeed = speed;
-            m_player.externalReferenceTime = target;
 
             if (!m_player.isPrepared)
             {
                 // It stopped at its end and let go of the file: get it ready again, then carry on from here
                 m_player.Prepare();
             }
+            else if (!m_player.isPlaying)
+            {
+                // Already showing this moment (the frame picked while scrolling to it): just play. Seeking again
+                // anyway made the decoder start over, which held the picture for a second or two after pressing play.
+                if (seekBusy || Math.Abs(target - m_player.time) > StartToleranceSeconds)
+                    Seek(ahead);
+                m_player.Play();
+            }
             else if (!seekBusy)
             {
-                double drift = target - m_player.time;     // Above 0: the video is behind the song
-                if (!m_player.isPlaying)
-                {
-                    // Starting, after a seek, or waiting for the song. Pressing play goes back a few seconds for the
-                    // start delay, so a video that's a little ahead just waits on its frame instead of seeking.
-                    if (drift > StartBehindSeconds || drift < -HoldAheadSeconds)
-                        Seek(ahead);
-                    else if (drift >= -0.02)
-                    {
-                        m_player.Play();
-                        m_lastAdvanceAt = Time.unscaledTime;
-                    }
-                }
-                else if (drift < -PlayingAheadSeconds)
-                {
-                    m_player.Pause();   // Waits for the song, or seeks back if it's far ahead
-                }
-                else if (drift > PlayingBehindSeconds && Time.unscaledTime - m_lastResyncAt > ResyncIntervalSeconds)
+                double drift = target - m_player.time;
+                if (Math.Abs(drift) > ResyncSeconds * Math.Max(1, speed) && Time.unscaledTime - m_lastResyncAt > ResyncIntervalSeconds)
                 {
                     m_lastResyncAt = Time.unscaledTime;
-                    m_player.Pause();
                     Seek(ahead);
                 }
             }
 
-            // Stuck: the picture hasn't moved for a while although it's meant to be playing, so start it again from
-            // here. This watches the frame shown, not the clock, which can keep running while no new frames come out.
-            if (!m_player.isPlaying || m_player.frame != m_lastObservedFrame || seekBusy)
+            // Stuck: the picture hasn't moved for a while although the song is playing, so start it again from here.
+            // This watches the frame shown, not the clock, which can keep running while no new frames come out.
+            if (m_player.frame != m_lastObservedFrame || seekBusy)
             {
                 m_lastObservedFrame = m_player.frame;
                 m_lastAdvanceAt = Time.unscaledTime;
             }
-            else if (Time.unscaledTime - m_lastAdvanceAt > StuckSeconds && m_player.isPrepared)
+            else if (Time.unscaledTime - m_lastAdvanceAt > StuckSeconds && !seekBusy && m_player.isPrepared)
             {
                 m_seeking = false;
                 m_player.Pause();
                 Seek(ahead);
+                m_player.Play();
                 m_lastAdvanceAt = Time.unscaledTime;
             }
 
