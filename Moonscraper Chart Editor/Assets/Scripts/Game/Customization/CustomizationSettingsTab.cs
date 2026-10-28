@@ -66,6 +66,8 @@ public class CustomizationSettingsTab : MonoBehaviour
             Refresh();
     }
 
+    const float SettingsScrollSensitivity = 100, DropdownScrollSensitivity = 50;
+
     void Build(SettingsController settings)
     {
         m_settings = settings;
@@ -78,6 +80,11 @@ public class CustomizationSettingsTab : MonoBehaviour
         m_labelTemplate = FindComponent<Text>(graphicsGroup, "AA Level");
         m_dropdownTemplate = FindComponent<Dropdown>(graphicsGroup, "AA Level Dropdown");
         m_buttonTemplate = graphicsButton;
+
+        // Faster mouse wheel scrolling in the Settings list (each notch moved it about a row)
+        ScrollRect scroll = panel ? FindComponent<ScrollRect>(panel, "Scroll View") : null;
+        if (scroll)
+            scroll.scrollSensitivity = Mathf.Max(scroll.scrollSensitivity, SettingsScrollSensitivity);
 
         RectTransform editorGroup = content ? content.Find("Editor Settings") as RectTransform : null;
         AddConnectedNoticeRow(editorGroup, AddAutosaveRow(editorGroup));
@@ -127,7 +134,15 @@ public class CustomizationSettingsTab : MonoBehaviour
 
         // Moonscraper's drop-down lists put the tick right against the text, so it overlaps wider letters
         foreach (Dropdown dropdown in settings.GetComponentsInChildren<Dropdown>(true))
+        {
             MakeRoomForTick(dropdown);
+
+            // Moonscraper's drop-down lists scroll one pixel per wheel notch, so long lists (color profiles,
+            // highways) barely moved
+            ScrollRect list = dropdown.template ? dropdown.template.GetComponent<ScrollRect>() : null;
+            if (list)
+                list.scrollSensitivity = Mathf.Max(list.scrollSensitivity, DropdownScrollSensitivity);
+        }
 
         // Reads every picked file again, for after editing a color profile or image while Moonscraper is open
         AddButton("Reload", ControlLeft, ReloadAll);
