@@ -55,7 +55,20 @@ public class Whammy : MonoBehaviour {
         ShiftAnimationKeys(lineCurve, keyShiftSpeed * Time.deltaTime * ChartEditor.worldUnitsPerSecond / transform.localScale.y);
 
         float whammyVal = (GetLerpedWhammyVal(desiredWhammy) + 1) * widthMultiplier;
-        lineCurve.AddKey(new Keyframe(0, whammyVal + 1));
+        AddStartKey(lineCurve, whammyVal + 1);
+    }
+
+    const float MinKeySpacing = 0.01f;
+
+    // Long sustains move their keys only a little each frame, so a new key every frame piled up hundreds of them.
+    // While the newest key is still close to the start it takes the new value instead.
+    static void AddStartKey(AnimationCurve lineCurve, float value)
+    {
+        Keyframe[] keys = lineCurve.keys;
+        if (keys.Length > 0 && keys[0].time < MinKeySpacing)
+            lineCurve.MoveKey(0, new Keyframe(keys[0].time, value));
+        else
+            lineCurve.AddKey(new Keyframe(0, value));
     }
 
     void ResetWhammy()
@@ -77,16 +90,19 @@ public class Whammy : MonoBehaviour {
 
     static void ShiftAnimationKeys(AnimationCurve lineCurve, float shiftDistance)
     {
-        for (int i = lineCurve.keys.Length - 1; i >= 0; --i)
+        // Read and write the keys once, as each read of AnimationCurve.keys copies them all
+        Keyframe[] keys = lineCurve.keys;
+        int kept = 0;
+        for (int i = 0; i < keys.Length; ++i)
         {
-            float keyTime = lineCurve.keys[i].time + shiftDistance;
-            float keyValue = lineCurve.keys[i].value;
-
+            float keyTime = keys[i].time + shiftDistance;
             if (keyTime <= 1)
-                lineCurve.MoveKey(i, new Keyframe(keyTime, keyValue));
-            else
-                lineCurve.RemoveKey(i);
+                keys[kept++] = new Keyframe(keyTime, keys[i].value);
         }
+
+        if (kept != keys.Length)
+            System.Array.Resize(ref keys, kept);
+        lineCurve.keys = keys;
     }
 
     public void SetWidth(float lineWidth)

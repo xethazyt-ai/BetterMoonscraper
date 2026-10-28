@@ -13,6 +13,7 @@ public class SetLineRendererPoints : MonoBehaviour {
 
     LineRenderer lineRen;
     Vector3 prevScale;
+    float prevWidth;
 
 	// Use this for initialization
 	void Start () {
@@ -26,16 +27,22 @@ public class SetLineRendererPoints : MonoBehaviour {
     }
 	
 	public void UpdateLineRendererPoints () {
-        if (transform.localScale != prevScale)
+        float width = Mathf.Max(1, lineRen.widthMultiplier);
+        if (transform.localScale != prevScale || width != prevWidth)
         {
             if (iterationsPerUnit <= 0)
                 iterationsPerUnit = 1;
 
-            int totalIterations = (int)(iterationsPerUnit * transform.localScale.y);
+            // Points are spaced by the line's width, so a wide open sustain gets the same shape as a fret sustain.
+            // Points much closer together than the line is wide made long open sustains vanish while held.
+            int totalIterations = (int)(iterationsPerUnit * transform.localScale.y / width);
+            if (totalIterations < 1)
+                totalIterations = 1;   // A single point draws nothing
 
             SetPoints(totalIterations);
         }
         prevScale = transform.localScale;
+        prevWidth = width;
     }
 
     void SetPoints (int totalIterations)
