@@ -203,6 +203,7 @@ public class InputManager : UnitySingleton<InputManager>
             Debug.Log("Added controller device " + index);
 
             GamepadDevice gamepad = new GamepadDevice(gameController);
+            Debug.Log("Controller " + gamepad.GetDeviceName() + " (XInput or a known controller, so it uses the gamepad controls)");
             controllers.Add(gamepad);
             devices.Add(gamepad);
 
@@ -223,6 +224,9 @@ public class InputManager : UnitySingleton<InputManager>
             Debug.Log("Added joystick device " + index);
 
             JoystickDevice gamepad = new JoystickDevice(joystick);
+            Debug.Log("Joystick " + gamepad.Describe() + ". Bind it in Settings > Controls with that device picked.");
+            if (ChartEditor.InstanceExists && ChartEditor.Instance.services != null && ChartEditor.Instance.services.notificationBar)
+                ChartEditor.Instance.services.notificationBar.PushNotification(gamepad.GetDeviceName().ToUpperInvariant() + " CONNECTED: PICK IT IN SETTINGS > CONTROLS TO BIND IT", 5, true);
             joysticks.Add(gamepad);
             devices.Add(gamepad);
 

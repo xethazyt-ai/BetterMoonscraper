@@ -247,6 +247,15 @@ namespace MoonscraperEngine.Input
             return deviceName;
         }
 
+        /// <summary>
+        /// What the controller has, for the log: guitars made with an Arduino, a Pico or an adapter all lay them out
+        /// differently, so this is the first thing to look at when one doesn't respond
+        /// </summary>
+        public string Describe()
+        {
+            return string.Format("{0}: {1} buttons, {2} axes, {3} hats", deviceName, totalButtons, totalAxis, totalHats);
+        }
+
         public DeviceType Type => DeviceType.Joystick;
 
         public IInputMap GetCurrentInput(InputAction.Properties properties)
@@ -342,13 +351,14 @@ namespace MoonscraperEngine.Input
                     return false;
                 }
 
+                // Held while the hat (such as a guitar's strum bar or a d-pad) is pushed that way. This always said no
+                // before, so frets or buttons bound to a hat never worked.
                 foreach (var hat in map.hats)
                 {
-                    if (GetHatPosition(hat.hatIndex) == hat.position)
+                    if (GetHatPosition(hat.hatIndex) != hat.position)
                     {
                         return false;
                     }
-                    return false;
                 }
 
                 return true;
@@ -484,7 +494,6 @@ namespace MoonscraperEngine.Input
 
                 // Ball not supported, todo
 
-                // Hat not supported, todo
                 foreach (var hat in map.hats)
                 {
                     if (GetHatPosition(hat.hatIndex) != hat.position)
@@ -493,7 +502,7 @@ namespace MoonscraperEngine.Input
                     }
                 }
 
-                return map.buttons.Count > 0 ? (float?)1 : null;
+                return map.buttons.Count > 0 || map.hats.Count > 0 ? (float?)1 : null;
             }
 
             return null;
