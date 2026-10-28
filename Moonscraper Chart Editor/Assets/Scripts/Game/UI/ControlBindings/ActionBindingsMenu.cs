@@ -241,8 +241,6 @@ public class ActionBindingsMenu : MonoBehaviour
         rebindInterface.Open(inputAction, inputMapToRebind, allActions, device);
     }
 
-    public bool isRebinding { get { return rebindInterface && rebindInterface.gameObject.activeSelf; } }
-
     public void OnRebindComplete()
     {
         PopulateFrom(loadedActions, categoryDisplayMask);

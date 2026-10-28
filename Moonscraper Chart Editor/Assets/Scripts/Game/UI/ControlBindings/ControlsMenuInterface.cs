@@ -30,17 +30,11 @@ public class ControlsMenuInterface : MonoBehaviour
     int actionCategoryIndex = 0;
     int deviceIndex = 0;
 
-    // Guitar Controller: the guitar actions for whichever controller was last pressed, so a guitar can be bound
-    // without picking it from the device list first
-    IInputDevice m_guitarDevice;
-    static readonly InputAction.Properties s_anyInput = new InputAction.Properties() { allowSameFrameMultiInput = false };
-
     MSChartEditorInput.MSChartEditorActionContainer actionsToEdit = null;
 
     enum ActionCategory
     {
         Editor,
-        Guitar_Controller,
         Gameplay_Guitar,
         Gameplay_Drums,
         Gameplay_ProDrums,
@@ -77,61 +71,6 @@ public class ControlsMenuInterface : MonoBehaviour
     void OnDeviceDisconnect(in IInputDevice device)
     {
         deviceIndex = 0;
-        if (m_guitarDevice == device)
-            m_guitarDevice = null;
-        RefreshActionBindingsMenu();
-    }
-
-    void Update()
-    {
-        if (GetCurrentActionCategory() != ActionCategory.Guitar_Controller || actionBindingsMenu.isRebinding)
-            return;
-
-        // Plugged in, unplugged, or another controller pressed: show that one
-        IInputDevice pressed = null;
-        foreach (IInputDevice device in InputManager.Instance.devices)
-        {
-            if (device.Type != MoonscraperEngine.Input.DeviceType.Keyboard && device.Connected && device != m_guitarDevice && device.GetCurrentInput(s_anyInput) != null)
-            {
-                pressed = device;
-                break;
-            }
-        }
-
-        if (pressed != null || (m_guitarDevice != null && !m_guitarDevice.Connected) || (m_guitarDevice == null && FirstController() != null))
-        {
-            m_guitarDevice = pressed ?? FirstController();
-            RefreshActionBindingsMenu();
-        }
-    }
-
-    static IInputDevice FirstController()
-    {
-        IInputDevice found = null;
-        foreach (IInputDevice device in InputManager.Instance.devices)
-        {
-            if (device.Type != MoonscraperEngine.Input.DeviceType.Keyboard && device.Connected)
-                found = device;     // The last one, which is the newest plugged in
-        }
-        return found;
-    }
-
-    // Guitar Controller's device arrows step through the controllers only
-    void CycleGuitarDevice(int step)
-    {
-        List<IInputDevice> controllers = new List<IInputDevice>();
-        foreach (IInputDevice device in InputManager.Instance.devices)
-        {
-            if (device.Type != MoonscraperEngine.Input.DeviceType.Keyboard && device.Connected)
-                controllers.Add(device);
-        }
-
-        if (controllers.Count > 0)
-        {
-            int index = controllers.IndexOf(m_guitarDevice);
-            index = ((index < 0 ? 0 : index + step) % controllers.Count + controllers.Count) % controllers.Count;
-            m_guitarDevice = controllers[index];
-        }
         RefreshActionBindingsMenu();
     }
 
@@ -155,12 +94,6 @@ public class ControlsMenuInterface : MonoBehaviour
 
     public void CycleDeviceForwards()
     {
-        if (GetCurrentActionCategory() == ActionCategory.Guitar_Controller)
-        {
-            CycleGuitarDevice(1);
-            return;
-        }
-
         ++deviceIndex;
         if (deviceIndex >= InputManager.Instance.devices.Count)
         {
@@ -172,12 +105,6 @@ public class ControlsMenuInterface : MonoBehaviour
 
     public void CycleDeviceBackwards()
     {
-        if (GetCurrentActionCategory() == ActionCategory.Guitar_Controller)
-        {
-            CycleGuitarDevice(-1);
-            return;
-        }
-
         --deviceIndex;
         if (deviceIndex < 0)
         {
@@ -206,17 +133,7 @@ public class ControlsMenuInterface : MonoBehaviour
 
     IInputDevice GetCurrentInputDevice()
     {
-        if (GetCurrentActionCategory() == ActionCategory.Guitar_Controller)
-        {
-            if (m_guitarDevice == null || !m_guitarDevice.Connected)
-                m_guitarDevice = FirstController();
-            if (m_guitarDevice != null)
-                return m_guitarDevice;
-        }
-
         // Todo, enum for current DISPLAYED device
-        if (deviceIndex >= InputManager.Instance.devices.Count)
-            deviceIndex = 0;
         return InputManager.Instance.devices[deviceIndex];
     }
 
@@ -231,9 +148,6 @@ public class ControlsMenuInterface : MonoBehaviour
         {
             case ActionCategory.Editor:
                 return MSChartEditorInput.Category.kEditorCategoryMask;
-
-            case ActionCategory.Guitar_Controller:
-                return GetCurrentInputDevice().Type == MoonscraperEngine.Input.DeviceType.Keyboard ? 0 : MSChartEditorInput.Category.kGameplayGuitarCategoryMask;
 
             case ActionCategory.Gameplay_Guitar:
                 return MSChartEditorInput.Category.kGameplayGuitarCategoryMask;
@@ -258,9 +172,6 @@ public class ControlsMenuInterface : MonoBehaviour
             case ActionCategory.Editor:
                 return "Editor";
 
-            case ActionCategory.Guitar_Controller:
-                return "Guitar Controller";
-
             case ActionCategory.Gameplay_Guitar:
                 return "Gameplay - Guitar";
 
@@ -281,12 +192,6 @@ public class ControlsMenuInterface : MonoBehaviour
     {
         actionCategoryText.text = GetCurrentActionCategoryName();
         deviceText.text = GetCurrentInputDevice().GetDeviceName();
-        if (GetCurrentActionCategory() == ActionCategory.Guitar_Controller)
-        {
-            deviceText.text = GetCurrentInputDevice().Type == MoonscraperEngine.Input.DeviceType.Keyboard
-                ? "Plug in your guitar (XInput, HID or adapter)"
-                : GetCurrentInputDevice().GetDeviceName() + " (press any button to switch guitars)";
-        }
         actionBindingsMenu.Setup(GetCurrentInputDevice(), actionsToEdit, GetCurrentActionCategoryMask());
     }
 
