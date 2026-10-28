@@ -214,7 +214,12 @@ public class NoteFlames : MonoBehaviour
             }
         }
 
-        Flame flame = Take();
+        // A hit's burst takes over any burst already on its lane, open or fret, so quick notes that aren't sustains
+        // restart one flame each rather than piling up into what looks like a held sustain. Only held sustain flames
+        // (like an extended open sustain under fret notes) share a lane.
+        Flame flame = held ? null : TakeBurstOnLane(LaneOf(key));
+        if (flame == null)
+            flame = Take();
         if (flame == null)
             return;
 
@@ -305,6 +310,27 @@ public class NoteFlames : MonoBehaviour
         m_properties.SetFloat("_Flash", flash);
         m_properties.SetVector("_MainTex_ST", new Vector4(1f / FrameCount, 1, frame / (float)FrameCount, 0));
         flame.renderer.SetPropertyBlock(m_properties);
+    }
+
+    static int LaneOf(int key)
+    {
+        return key < 0 ? -1 - key : key;
+    }
+
+    Flame TakeBurstOnLane(int lane)
+    {
+        Flame found = null;
+        foreach (Flame flame in m_flames)
+        {
+            if (!flame.active || flame.held || LaneOf(flame.key) != lane)
+                continue;
+
+            if (found == null)
+                found = flame;
+            else
+                flame.gameObject.SetActive(false);
+        }
+        return found;
     }
 
     Flame Take()

@@ -424,10 +424,9 @@ namespace MoonscraperChartEditor.Song
             {
                 Note seperatePrevious = previousSeperateNote;
 
-                if ((seperatePrevious == null) || (seperatePrevious != null && mask == seperatePrevious.mask))
-                    return true;
-
-                return false;
+                // BetterMoonscraper: a note the same as the one before can be forced too, so two HOPOs of one color can sit
+                // next to each other. Only the very first note has nothing to be forced against.
+                return seperatePrevious == null;
             }
         }
 
