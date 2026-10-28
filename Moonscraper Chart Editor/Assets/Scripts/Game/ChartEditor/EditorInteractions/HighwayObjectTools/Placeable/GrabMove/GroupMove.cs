@@ -106,6 +106,18 @@ public class GroupMove : ToolObject
 
     public void CompleteMoveAction()
     {
+        if (!MovedAnything())
+        {
+            // A click that nudged the mouse a pixel: put everything back and leave no edit behind. Otherwise the notes
+            // were deleted and added again, which in Collab Mode clashed with whoever was editing them (and the fresh
+            // copy that fixes a clash takes away their undo history).
+            editor.commandStack.Pop();
+            editor.commandStack.ResetTail();
+            editor.selectedObjectsManager.TryFindAndSelectSongObjects(originalSongObjects);
+            Reset();
+            return;
+        }
+
         SongEditAdd addAction = new SongEditAdd(movingSongObjects);
         fullCommands.Add(addAction);
 
@@ -117,6 +129,22 @@ public class GroupMove : ToolObject
         editor.selectedObjectsManager.TryFindAndSelectSongObjects(movingSongObjects);
 
         Reset();
+    }
+
+    bool MovedAnything()
+    {
+        for (int i = 0; i < movingSongObjects.Count && i < originalSongObjects.Count; ++i)
+        {
+            if (movingSongObjects[i].tick != originalSongObjects[i].tick)
+                return true;
+
+            Note moved = movingSongObjects[i] as Note;
+            Note original = originalSongObjects[i] as Note;
+            if (moved != null && original != null && moved.rawNote != original.rawNote)
+                return true;
+        }
+
+        return movingSongObjects.Count != originalSongObjects.Count;
     }
 
     void Reset()
