@@ -27,6 +27,7 @@ public class NoteFlames : MonoBehaviour
     const float HeldLooksLike = 0.3f;   // How far through a hit's burst a held flame looks
     const int MaxFlames = 48;
     const float LiftLanes = 0.25f;      // Starts just up the highway from the strikeline, in front of the strikers
+    const int FlameOrder = 1000, OpenFlameOrder = 1001;
     const float OpenScale = 0.7f;       // Open notes and kicks: a smaller flame on every lane
     const int FrameWidth = 64, FrameHeight = 128, FrameCount = 16;
     const int NoisePeriod = 4;
@@ -219,6 +220,8 @@ public class NoteFlames : MonoBehaviour
 
         flame.basePosition = position;
         flame.gameObject.layer = m_layer;
+        // An open note's smaller flame goes in front, so on a lane that's also holding a fret both show at once
+        flame.renderer.sortingOrder = key < 0 ? OpenFlameOrder : FlameOrder;
         flame.color = color;
         flame.width = laneSpacing * 0.95f * scale;
         flame.age = 0;
@@ -337,7 +340,7 @@ public class NoteFlames : MonoBehaviour
         SortingLayer[] sortingLayers = SortingLayer.layers;
         if (sortingLayers.Length > 0)
             renderer.sortingLayerID = sortingLayers[sortingLayers.Length - 1].id;
-        renderer.sortingOrder = 1000;
+        renderer.sortingOrder = FlameOrder;
         gameObject.SetActive(false);
 
         Flame created = new Flame { gameObject = gameObject, renderer = renderer };
