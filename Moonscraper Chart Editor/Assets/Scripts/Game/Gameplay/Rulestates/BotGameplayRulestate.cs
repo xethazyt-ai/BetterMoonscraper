@@ -22,7 +22,12 @@ public class BotGameplayRulestate : BaseGameplayRulestate
 
                 float visualOffset = Time.deltaTime / Globals.gameSettings.hyperspeed * Globals.gameSettings.gameSpeed;     // We want to hit it just before it crosses the strikeline. Looks a bit better. 
                 bool belowStrikeLine = notePosition.y <= strikelinePosition.y + visualOffset;
-                if (belowStrikeLine)
+
+                // Also hit once its time has come, even if it doesn't quite look it yet. A note right before another (an open
+                // note 5 ticks before a chord) only stays in the window for a few milliseconds, so a frame where its drawn
+                // position lagged its time was a miss, and the miss cut its sustain off.
+                bool due = nextNoteToHit.note.time <= time;
+                if (belowStrikeLine || due)
                 {
                     HitNote(time, nextNoteToHit);
                     nextNoteToHit = hitWindow.oldestUnhitNote;

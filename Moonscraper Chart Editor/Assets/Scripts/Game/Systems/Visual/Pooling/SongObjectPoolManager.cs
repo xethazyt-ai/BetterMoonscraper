@@ -441,6 +441,14 @@ public class SongObjectPoolManager : SystemManagerState.MonoBehaviourSystem
                 if (collectedNotesInRange[i].controller)
                     collectedNotesInRange[i].controller.Activate();
             }
+
+            // And any other note still on screen, such as a long sustain whose note went by long before
+            foreach (SongObjectController controller in notePool.activeControllers)
+            {
+                NoteController noteController = controller as NoteController;
+                if (noteController)
+                    noteController.Activate();
+            }
         }
     }
 }

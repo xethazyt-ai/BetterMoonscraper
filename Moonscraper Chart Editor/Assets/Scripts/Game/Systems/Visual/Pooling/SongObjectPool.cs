@@ -42,6 +42,21 @@ public abstract class SongObjectPool {
             controller.gameObject.SetActive(false);
     }
 
+    /// <summary>
+    /// The objects currently showing something
+    /// </summary>
+    public IEnumerable<SongObjectController> activeControllers
+    {
+        get
+        {
+            foreach (SongObjectController controller in pool)
+            {
+                if (controller && controller.gameObject.activeSelf)
+                    yield return controller;
+            }
+        }
+    }
+
     public void SetAllDirty()
     {
         for (int i = 0; i < pool.Length; ++i)
