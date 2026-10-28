@@ -9,6 +9,7 @@ using UnityEngine;
 [ExecuteInEditMode]
 public class SetLineRendererPoints : MonoBehaviour {
     const float MIN = -0.5f, MAX = 0.5f;
+    const int MaxPoints = 150;
     public int iterationsPerUnit = 1000;
 
     LineRenderer lineRen;
@@ -34,10 +35,13 @@ public class SetLineRendererPoints : MonoBehaviour {
                 iterationsPerUnit = 1;
 
             // Points are spaced by the line's width, so a wide open sustain gets the same shape as a fret sustain.
-            // Points much closer together than the line is wide made long open sustains vanish while held.
+            // A held sustain stopped being drawn at all once it had several hundred points, as on a long highway, so
+            // long sustains are capped at MaxPoints and the whammy wobble is just spread a little wider.
             int totalIterations = (int)(iterationsPerUnit * transform.localScale.y / width);
             if (totalIterations < 1)
                 totalIterations = 1;   // A single point draws nothing
+            else if (totalIterations > MaxPoints)
+                totalIterations = MaxPoints;
 
             SetPoints(totalIterations);
         }
