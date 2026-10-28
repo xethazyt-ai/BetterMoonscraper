@@ -1,4 +1,4 @@
-// See LICENSE in project root for license information.
+﻿// See LICENSE in project root for license information.
 
 using System.Collections.Generic;
 using System.Text;
@@ -23,6 +23,7 @@ public class DuetChat : MonoBehaviour
     ChartEditor m_editor;
     readonly DuetWindow m_window = new DuetWindow(WindowId, "Duet.Chat", new Rect(0, 0, Width, Height), new Vector2(220, 150), true, false);
     bool m_hidden = false;     // Put away with the hide chat key (F7 unless rebound in Controls)
+    bool m_shownInPreview;     // Brought out in Preview Mode, which starts with the chat put away
     Vector2 m_scroll;
     int m_seenChatCount = -1;
     string m_text = string.Empty;
@@ -49,7 +50,7 @@ public class DuetChat : MonoBehaviour
     {
         get
         {
-            return isInSession && !m_hidden && !DuetPanel.isHudHidden;
+            return isInSession && !m_hidden && !DuetPanel.IsHiddenUnlessShownInPreview(m_shownInPreview);
         }
     }
 
@@ -77,7 +78,21 @@ public class DuetChat : MonoBehaviour
 
     void Update()
     {
+        if (!PreviewMode.isActive)
+            m_shownInPreview = false;
+
         bool canUseKeys = isInSession && !m_writing && m_editor.currentState == ChartEditor.State.Editor && !Services.IsTyping;
+
+        // Preview Mode puts the chat away; its hide key or chat key brings it back over the preview
+        if (PreviewMode.isActive && !m_shownInPreview && isInSession && !m_writing && !Services.IsTyping
+            && (MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetHideChat)
+                || (canUseKeys && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetChat))))
+        {
+            m_shownInPreview = true;
+            if (m_hidden)
+                SetHidden(false);
+            return;     // Shown this frame; the chat key starts writing on the next press
+        }
 
         // Hiding works while previewing with Space too, like the Collab and Pattern Blueprints windows
         bool canHide = isInSession && !m_writing && !Services.IsTyping

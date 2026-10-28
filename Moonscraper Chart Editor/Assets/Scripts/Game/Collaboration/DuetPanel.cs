@@ -1,4 +1,4 @@
-// See LICENSE in project root for license information.
+﻿// See LICENSE in project root for license information.
 
 using System;
 using System.Collections.Generic;
@@ -108,15 +108,31 @@ public class DuetPanel : MonoBehaviour
     // markers should get out of the way
     public static bool isHudHidden
     {
-        get { return PreviewMode.isActive || (s_instance != null && s_instance.m_editor != null && s_instance.m_editor.currentState == ChartEditor.State.Menu); }
+        get { return PreviewMode.isActive || isMenuOpen; }
     }
+
+    static bool isMenuOpen
+    {
+        get { return s_instance != null && s_instance.m_editor != null && s_instance.m_editor.currentState == ChartEditor.State.Menu; }
+    }
+
+    /// <summary>
+    /// For the Collab window and chat: hidden while a menu is open, and in Preview Mode unless opened again there
+    /// with their own keys (Preview Mode always starts with them put away)
+    /// </summary>
+    public static bool IsHiddenUnlessShownInPreview(bool shownInPreview)
+    {
+        return isMenuOpen || (PreviewMode.isActive && !shownInPreview);
+    }
+
+    bool m_shownInPreview;  // The Collab window key was pressed in Preview Mode
 
     public static bool IsPointerOverPanel()
     {
         if (DuetChat.IsPointerOver() || PatternBlueprints.IsPointerOver() || AutoTempoMap.IsPointerOver() || s_quitPromptOpen)
             return true;
 
-        if (s_instance == null || !s_instance.m_visible || isHudHidden)
+        if (s_instance == null || !s_instance.m_visible || IsHiddenUnlessShownInPreview(s_instance.m_shownInPreview))
             return false;
 
         float scale = GuiScale;
@@ -363,11 +379,26 @@ public class DuetPanel : MonoBehaviour
 
     void Update()
     {
+        if (!PreviewMode.isActive)
+            m_shownInPreview = false;   // So Preview Mode starts with the window put away each time
+
         if (MSChartEditorInput.GetInputDown(MSChartEditorInputActions.DuetToggleWindow))
         {
-            m_visible = !m_visible;
-            if (!m_visible)
-                isTyping = false;
+            if (PreviewMode.isActive && !m_shownInPreview)
+            {
+                // Hidden by Preview Mode: bring it out over the preview
+                m_shownInPreview = true;
+                m_visible = true;
+            }
+            else
+            {
+                m_visible = !m_visible;
+                if (!m_visible)
+                {
+                    isTyping = false;
+                    m_shownInPreview = false;
+                }
+            }
         }
 
         if ((Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1)) && IsPointerOverPanel())
@@ -436,7 +467,7 @@ public class DuetPanel : MonoBehaviour
 
         DrawHostLostNotice();
 
-        if (!m_visible || isHudHidden)
+        if (!m_visible || IsHiddenUnlessShownInPreview(m_shownInPreview))
         {
             if (isTyping)
             {
