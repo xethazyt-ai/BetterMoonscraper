@@ -77,11 +77,13 @@ namespace UnityEngine
         public float x, y, width, height;
         public Rect(float x, float y, float width, float height) { this.x = x; this.y = y; this.width = width; this.height = height; }
         public bool Contains(Vector2 point) { return point.x >= x && point.x < x + width && point.y >= y && point.y < y + height; }
+        public float yMax { get { return y + height; } }
     }
     public static class Screen { public static int width = 1920, height = 1080; }
-    public enum EventType { MouseDown }
+    public enum EventType { MouseDown, Repaint }
     public class Event { public static Event current = new Event(); public EventType type; public Vector2 mousePosition; }
     public class GUILayoutOption { }
+    public static class GUILayoutUtility { public static Rect GetLastRect() { return new Rect(); } }
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
     public class GUIContent { public GUIContent(string text) { } }
     public class RectOffset { public int vertical; }
