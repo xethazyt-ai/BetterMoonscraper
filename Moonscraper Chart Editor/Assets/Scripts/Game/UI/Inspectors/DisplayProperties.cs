@@ -78,7 +78,7 @@ public class DisplayProperties : UpdateableService
 
     // The sliders go further than Moonscraper's own (hyperspeed 22, highway length 6). The label's 100% stays at
     // Moonscraper's old maximum, so the new top of the highway slider reads 200%.
-    const float MaxHyperspeed = 50;
+    const float MaxHyperspeed = 60;
     const float FullHighwayLength = 6;
     const float MaxHighwayLengthPercent = 300;
 
