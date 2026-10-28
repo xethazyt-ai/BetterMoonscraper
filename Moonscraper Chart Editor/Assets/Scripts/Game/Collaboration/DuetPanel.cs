@@ -587,15 +587,18 @@ public class DuetPanel : MonoBehaviour
         DuetInputBlocker.Block(WelcomeId, new Rect(0, 0, Screen.width / scale, Screen.height / scale), scale);
         GUISkin oldSkin = GUI.skin;
         GUI.skin = DuetSkin.skin;
-        Rect rect = new Rect((Screen.width / scale - WelcomeWidth) / 2, (Screen.height / scale - WelcomeHeight()) / 2, WelcomeWidth, WelcomeHeight());
+        Rect rect = new Rect((Screen.width / scale - WelcomeWidth) / 2, Mathf.Max(0, (Screen.height / scale - WelcomeHeight()) / 2), WelcomeWidth, WelcomeHeight());
         GUI.ModalWindow(WelcomeId, rect, DrawWelcomeWindow, string.Empty);
         GUI.skin = oldSkin;
     }
 
-    // Grows when the custom color sliders or the rainbow speed are showing
+    // Fits whatever was drawn above the Done button last frame (the text wraps, and the custom color sliders and
+    // rainbow speed come and go), so the button always has room
+    float m_welcomeContentBottom;
     float WelcomeHeight()
     {
-        return 250 + (m_showCustomColor ? 120 : 0) + (DuetPresence.IsRainbow(m_color) ? 30 : 0);
+        float guess = 250 + (m_showCustomColor ? 120 : 0) + (DuetPresence.IsRainbow(m_color) ? 30 : 0);
+        return Mathf.Max(guess, 30 + m_welcomeContentBottom + 60);
     }
 
     void DrawWelcomeWindow(int id)
@@ -622,6 +625,8 @@ public class DuetPanel : MonoBehaviour
         GUILayout.Label(shown.Length > 0 ? shown : "Your name");
         GUI.contentColor = oldContent;
         GUILayout.EndHorizontal();
+        if (Event.current.type == EventType.Repaint)
+            m_welcomeContentBottom = GUILayoutUtility.GetLastRect().yMax;
 
         GUILayout.FlexibleSpace();
         GUILayout.BeginHorizontal();
