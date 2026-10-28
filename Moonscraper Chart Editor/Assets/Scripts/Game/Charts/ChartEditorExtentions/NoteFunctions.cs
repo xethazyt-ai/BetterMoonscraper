@@ -44,7 +44,7 @@ public static class NoteFunctions {
         }
     }
 
-    public static void GetPreviousOfSustains(List<Note> list, Note startNote, bool extendedSustainsEnabled)
+    public static void GetPreviousOfSustains(List<Note> list, Note startNote, bool extendedSustainsEnabled, bool findHiddenOpenSustain = false)
     {
         list.Clear();
 
@@ -83,7 +83,25 @@ public static class NoteFunctions {
 
             previous = previous.previous;
         }
+
+        // With extended sustains, an open note's sustain can run on under later notes of every color (a chord of all five
+        // right after it). Once every fret has been seen the walk above stops, so look a little further for that open
+        // note, or its sustain is never brought back on screen once its head has scrolled away. Only the note pool asks
+        // for this, so placing notes caps sustains exactly as before.
+        if (findHiddenOpenSustain && extendedSustainsEnabled && previous != null && !list.Exists(note => note.IsOpenNote()))
+        {
+            for (int steps = 0; previous != null && steps < OpenSustainSearchNotes; ++steps, previous = previous.previous)
+            {
+                if (previous.IsOpenNote())
+                {
+                    list.Add(previous);
+                    break;
+                }
+            }
+        }
     }
+
+    const int OpenSustainSearchNotes = 256;
 
     public static Note[] GetPreviousOfSustains(Note startNote, bool extendedSustainsEnabled)
     {

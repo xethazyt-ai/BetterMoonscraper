@@ -42,6 +42,7 @@ namespace MoonscraperEngine
         }
 
         List<ISystem> registeredSystems = new List<ISystem>();
+        List<ISystem> updatingSystems = new List<ISystem>();
         bool hasEntered = false;
 
         public void AddSystem(ISystem system)
@@ -82,8 +83,18 @@ namespace MoonscraperEngine
 
         public virtual void Update()
         {
-            foreach (ISystem system in registeredSystems)
-                system.SystemUpdate();
+            // A system can change the state (open a menu) or add and remove systems while updating, so this goes
+            // through a copy, and stops once the state has been left
+            updatingSystems.Clear();
+            updatingSystems.AddRange(registeredSystems);
+            foreach (ISystem system in updatingSystems)
+            {
+                if (!hasEntered)
+                    break;
+                if (registeredSystems.Contains(system))
+                    system.SystemUpdate();
+            }
+            updatingSystems.Clear();
         }
     }
 }

@@ -96,7 +96,7 @@ public class AutoSaveSystem : SystemManagerState.System
 
         Debug.Log("Autosaving the chart to " + file);
         chartAutosaving = true;
-        editor._Save();
+        editor.AutoSaveChart();
     }
 
     async Task Autosave()

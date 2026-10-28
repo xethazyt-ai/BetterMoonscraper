@@ -773,6 +773,18 @@ public class ChartEditor : UnitySingleton<ChartEditor>
             return _SaveAs();
     }
 
+    // Chart autosave: a plain save to the open file, without the validation report. Validating a big chart takes a
+    // while, and its menu opening in the middle of the editor's update cut that update short (a crash).
+    public void AutoSaveChart()
+    {
+        if (BlockedSaveForDuetGuest() || lastLoadedFile == string.Empty)
+            return;
+
+        var exportOptions = currentSong.defaultExportOptions;
+        exportOptions.isGeneralSave = true;
+        Save(lastLoadedFile, exportOptions, false);
+    }
+
     public bool _SaveAs(bool forced = true)
     {
         if (BlockedSaveForDuetGuest())
@@ -815,7 +827,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         return true;
     }
 
-    void Save (string filename, ExportOptions exportOptions)
+    void Save (string filename, ExportOptions exportOptions, bool validate = true)
     {
         if (currentSong != null && !isSaving)
         {
@@ -829,7 +841,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
 
             isDirty = false;
 
-            if (Globals.gameSettings.autoValidateSongOnSave)
+            if (validate && Globals.gameSettings.autoValidateSongOnSave)
             {
                 bool hasErrors;
                 SongValidate.ValidationParameters validateParams = new SongValidate.ValidationParameters() { songLength = currentSongLength, checkMidiIssues = false, };
@@ -1512,10 +1524,12 @@ public class ChartEditor : UnitySingleton<ChartEditor>
             }
         }
 
+        // Cleared first: while it's set, the notes brought back on stopping start at the strikeline, which left out a
+        // long sustain that started below it (an extended open sustain stopped halfway vanished until scrolled away)
+        songObjectPoolManager.noteVisibilityRangeYPosOverride = null;
+
         ChangeState(State.Editor);
         events.playbackStoppedEvent.Fire();
-
-        songObjectPoolManager.noteVisibilityRangeYPosOverride = null;
     }
 #endregion
 
