@@ -42,6 +42,7 @@ public class NoteFlames : MonoBehaviour
         public float age;
         public float life;
         public bool held;
+        public int key;                 // The lane it's held for (flames are reused, so the lane's old flame may now be another's)
         public float seed;
         public bool active { get { return gameObject.activeSelf; } }
     }
@@ -205,7 +206,7 @@ public class NoteFlames : MonoBehaviour
         if (held)
         {
             Flame existing;
-            if (m_heldByLane.TryGetValue(key, out existing) && existing.active && existing.held)
+            if (m_heldByLane.TryGetValue(key, out existing) && existing.active && existing.held && existing.key == key)
             {
                 existing.age = 0;
                 return;
@@ -223,6 +224,7 @@ public class NoteFlames : MonoBehaviour
         flame.age = 0;
         flame.life = held ? HoldSeconds : BurstSeconds;
         flame.held = held;
+        flame.key = key;
         flame.seed = Random.value * 100;
         flame.gameObject.SetActive(true);
 
