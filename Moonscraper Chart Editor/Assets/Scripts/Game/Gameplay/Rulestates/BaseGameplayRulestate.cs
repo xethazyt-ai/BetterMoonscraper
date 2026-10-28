@@ -58,7 +58,7 @@ public class BaseGameplayRulestate {
                         if (controller != null)
                         {
                             if (chordNote.IsOpenNote() && chordNote.length > 0)
-                                Debug.Log("Open sustain at " + chordNote.tick + " cut off: the note was missed");
+                                UnityEngine.Debug.Log("Open sustain at " + chordNote.tick + " cut off: the note was missed");
                             controller.sustainBroken = true;
 
                             if (noteStreak > 0)
