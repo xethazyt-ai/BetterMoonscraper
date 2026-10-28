@@ -2451,7 +2451,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: .chart
+  m_Text: Whole Song
 --- !u!1 &1301899981555711001
 GameObject:
   m_ObjectHideFlags: 0
@@ -7576,6 +7576,8 @@ MonoBehaviour:
   m_Value: 0
   m_Options:
     m_Options:
+    - m_Text: Whole Song
+      m_Image: {fileID: 0}
     - m_Text: .chart
       m_Image: {fileID: 0}
     - m_Text: .mid

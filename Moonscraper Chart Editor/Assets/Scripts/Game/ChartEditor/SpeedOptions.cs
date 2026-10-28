@@ -47,7 +47,7 @@ public static class SpeedOptions
     /// </summary>
     public static bool exportSpeedSuffix
     {
-        get { return PlayerPrefs.GetInt(PrefExportSuffix, 1) != 0; }
+        get { return PlayerPrefs.GetInt(PrefExportSuffix, 0) != 0; }     // Off unless ticked in Export
         set { PlayerPrefs.SetInt(PrefExportSuffix, value ? 1 : 0); PlayerPrefs.Save(); }
     }
 

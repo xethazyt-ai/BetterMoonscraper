@@ -28,6 +28,10 @@ public class Export : DisplayMenu {
 
     ExportOptions exportOptions;
     float delayTime = 0;
+    bool m_wholeSong;   // The Format dropdown's Whole Song: the chart, audio, song.ini and art in a folder named after the song
+
+    // The Format dropdown's entries
+    const int FORMAT_WHOLE_SONG = 0, FORMAT_CHART = 1, FORMAT_MIDI = 2;
 
     // Exporting at the speed set on the left panel's Speed slider: rows added under the other options
     Text m_speedInfo;
@@ -37,6 +41,13 @@ public class Export : DisplayMenu {
     const string FILE_EXT_CHART = ".chart";
     const string FILE_EXT_MIDI = ".mid";
     readonly string[] COPY_IF_EXTENTION = { ".opus" };
+    static readonly string[] CH_AUDIO_EXTENSIONS = { ".ogg", ".mp3", ".opus", ".wav" };    // Clone Hero plays these as they are
+    static readonly string[] IMAGE_EXTENSIONS = { ".png", ".jpg", ".jpeg" };
+
+    string wholeSongInfoText = "Exports the whole song into a folder named after it: notes.chart, the audio, song.ini, and the album art, " +
+        "backgrounds, highway and video from the song's folder, ready to drop into Clone Hero's Songs folder.\n\n" +
+        "Audio Clone Hero can already play is copied as it is. When exporting at another speed the audio is changed to that speed " +
+        "and the video is left out, as it would no longer line up.";
 
     string chartInfoText = "Exports into the .chart format, as notes.chart inside a folder named after the song.";
     string chPackageText = "Will export and organise all chart and audio files into the selected folder to be compatible with Clone Hero's naming structure.\n" +
@@ -58,7 +69,7 @@ public class Export : DisplayMenu {
 
     void Start()
     {
-        setAsChartFile();
+        SetFile(fileTypeDropdown.value);
         BuildSpeedRows();
         RefreshSpeedRows();
     }
@@ -80,7 +91,9 @@ public class Export : DisplayMenu {
         base.OnEnable();
 
 
-        fileTypeDropdown.value = 0;
+        fileTypeDropdown.value = FORMAT_WHOLE_SONG;
+        SetFile(FORMAT_WHOLE_SONG);     // Setting the value it already has doesn't call SetFile
+        fileTypeDropdown.RefreshShownValue();
 
         exportOptions.forced = true;
         forcedToggle.isOn = exportOptions.forced;
@@ -99,6 +112,8 @@ public class Export : DisplayMenu {
 
         chPackageToggle.isOn = false;
         generateIniToggle.isOn = !editor.currentSong.iniProperties.IsEmpty;
+        if (m_wholeSong)
+            generateIniToggle.isOn = true;
 
         RefreshSpeedRows();
     }
@@ -235,13 +250,13 @@ public class Export : DisplayMenu {
         if (enabled)
         {
             generateIniToggle.isOn = enabled;
-            fileTypeDropdown.value = 0;
+            fileTypeDropdown.value = FORMAT_CHART;
         }
 
-        generateIniToggle.interactable = !enabled;        
+        generateIniToggle.interactable = !enabled && !m_wholeSong;
         fileTypeDropdown.interactable = !enabled;
         magmaButton.interactable = !enabled;
-        exportingInfo.text = chPackageToggle.isOn ? chPackageText : chartInfoText;
+        exportingInfo.text = chPackageToggle.isOn ? chPackageText : (m_wholeSong ? wholeSongInfoText : chartInfoText);
     }
 
     public void ExportSong()
@@ -249,7 +264,7 @@ public class Export : DisplayMenu {
         if (editor.BlockedSaveForDuetGuest())
             return;
 
-        if (chPackageToggle.isOn)
+        if (chPackageToggle.isOn || m_wholeSong)
         {
             ExportCHPackage();
         }
@@ -326,6 +341,8 @@ public class Export : DisplayMenu {
             Song song = editor.currentSong;
             float songLength = editor.currentSongLength;
             string folderName = song.name;
+            if (string.IsNullOrEmpty(FileExplorer.StripIllegalChars(folderName).Trim()))
+                folderName = "Untitled";
             if (exportSpeed != 1 && SpeedOptions.exportSpeedSuffix)
                 folderName += SpeedSuffix(exportSpeed);
 
@@ -343,7 +360,10 @@ public class Export : DisplayMenu {
                 }
             }
 
-            StartCoroutine(ExportCHPackage(saveDirectory, song, songLength, exportOptions));
+            bool wholeSong = m_wholeSong && !chPackageToggle.isOn;
+            if (wholeSong)
+                exportOptions.tickOffset = TickFunctions.TimeToDis(0, delayTime, exportOptions.targetResolution, 120);
+            StartCoroutine(ExportCHPackage(saveDirectory, song, songLength, exportOptions, wholeSong));
         }
     }
 
@@ -459,22 +479,29 @@ public class Export : DisplayMenu {
 
     public void SetFile(int value)
     {
+        m_wholeSong = value == FORMAT_WHOLE_SONG;
         switch (value)
         {
-            case 1:
+            case FORMAT_MIDI:
                 setAsMidFile();
                 break;
-            case 0:
+            case FORMAT_CHART:
+            case FORMAT_WHOLE_SONG:
             default:
                 setAsChartFile();
                 break;
         }
+
+        // Whole Song always writes a song.ini, as Clone Hero needs one
+        if (m_wholeSong)
+            generateIniToggle.isOn = true;
+        generateIniToggle.interactable = !chPackageToggle.isOn && !m_wholeSong;
     }
 
     void setAsChartFile()
     {
         exportOptions.format = ExportOptions.Format.Chart;
-        exportingInfo.text = chPackageToggle.isOn ? chPackageText : chartInfoText;
+        exportingInfo.text = chPackageToggle.isOn ? chPackageText : (m_wholeSong ? wholeSongInfoText : chartInfoText);
         midiSettings.gameObject.SetActive(false);
     }
 
@@ -570,7 +597,7 @@ public class Export : DisplayMenu {
 
     public void SetRBMagmaExport()
     {
-        fileTypeDropdown.value = 1;
+        fileTypeDropdown.value = FORMAT_MIDI;
         forcedToggle.isOn = false;
         copyDifficultiesToggle.isOn = true;
         targetResolution.text = "480";
@@ -622,6 +649,42 @@ public class Export : DisplayMenu {
 		{ Song.AudioInstrument.Crowd, "crowd" },
     };
 
+    // Clone Hero's album.*, background*.* and highway.* images in the song's folder (the chart's folder, or its audio's),
+    // and its video if wanted
+    static List<string> FindSongExtras(bool withVideo)
+    {
+        List<string> extras = new List<string>();
+        HashSet<string> names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string folder in SongVideoBackground.SongFolders())
+        {
+            string[] files;
+            try { files = Directory.GetFiles(folder); }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Couldn't look for album art in " + folder + ": " + e.Message);
+                continue;
+            }
+
+            Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+            foreach (string file in files)
+            {
+                string stem = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
+                bool art = stem == "album" || stem == "highway" || stem.StartsWith("background");
+                if (art && Array.IndexOf(IMAGE_EXTENSIONS, Path.GetExtension(file).ToLowerInvariant()) >= 0 && names.Add(Path.GetFileName(file)))
+                    extras.Add(file);
+            }
+        }
+
+        if (withVideo)
+        {
+            string video = SongVideoBackground.FindVideo();
+            if (!string.IsNullOrEmpty(video) && File.Exists(video))
+                extras.Add(video);
+        }
+
+        return extras;
+    }
+
     static string GetCHOggFilename(Song.AudioInstrument audio)
     {
         const string audioFormat = ".ogg";
@@ -639,7 +702,7 @@ public class Export : DisplayMenu {
         return newAudioName;
     }
 
-    IEnumerator ExportCHPackage(string destFolderPath, Song song, float songLengthSeconds, ExportOptions exportOptions)
+    IEnumerator ExportCHPackage(string destFolderPath, Song song, float songLengthSeconds, ExportOptions exportOptions, bool wholeSong = false)
     {
         float speed = exportSpeed;
         bool pitched = SpeedOptions.pitchedSpeedups;
@@ -653,6 +716,10 @@ public class Export : DisplayMenu {
         Directory.CreateDirectory(destFolderPath);
 
         List<LoadingTask> tasks = new List<LoadingTask>();
+        Dictionary<Song.AudioInstrument, string> exportedAudio = new Dictionary<Song.AudioInstrument, string>();
+
+        // Album art, backgrounds, highway and video are found now, as finding them needs the editor
+        List<string> extras = wholeSong ? FindSongExtras(speed == 1) : new List<string>();
 
         // Determine how many actions ahead of time so that we can display progress of how many songs it has re-encoded, eg "(1/2)"
         List<Action> songEncodeActions = new List<Action>();
@@ -677,6 +744,7 @@ public class Export : DisplayMenu {
             }
 
             string outputFile = Path.Combine(destFolderPath, newAudioName);
+            Song.AudioInstrument instrument = audio;
 
             songEncodeActions.Add(() =>
             {
@@ -687,6 +755,22 @@ public class Export : DisplayMenu {
                         errorMessageList += "Didn't write " + newAudioName + " because it would replace the original audio. Export into a different folder.\n";
                     else if (!AudioManager.ConvertToOggAtSpeed(audioLocation, outputFile, speed, pitched))
                         errorMessageList += "Couldn't change the speed of " + Path.GetFileName(audioLocation) + ".\n";
+                    else
+                        exportedAudio[instrument] = outputFile;
+                    return;
+                }
+
+                // Whole Song keeps audio Clone Hero can already play as it is, just renamed
+                string extension = Path.GetExtension(audioLocation).ToLowerInvariant();
+                if (wholeSong && Array.IndexOf(CH_AUDIO_EXTENSIONS, extension) >= 0)
+                {
+                    string copyPath = Path.ChangeExtension(outputFile, extension);
+                    if (!string.Equals(Path.GetFullPath(copyPath), Path.GetFullPath(audioLocation), StringComparison.OrdinalIgnoreCase))
+                    {
+                        Debug.LogFormat("Copying {0} to {1}", audioLocation, copyPath);
+                        File.Copy(audioLocation, copyPath, true);
+                    }
+                    exportedAudio[instrument] = copyPath;
                     return;
                 }
 
@@ -714,7 +798,10 @@ public class Export : DisplayMenu {
 
                     Debug.LogFormat("Unable to re-encode file, copying {0} to {1}", audioLocation, destPath);
                     File.Copy(audioLocation, destPath, true);
+                    exportedAudio[instrument] = destPath;
                 }
+                else
+                    exportedAudio[instrument] = outputFile;
             });         
         }
 
@@ -730,12 +817,9 @@ public class Export : DisplayMenu {
             // Set audio location after audio files have already been created as set won't won't if the files don't exist
             foreach (Song.AudioInstrument audio in EnumX<Song.AudioInstrument>.Values)
             {
-                if (song.GetAudioLocation(audio) != string.Empty)
-                {
-                    string audioFilename = GetCHOggFilename(audio);
-                    string audioPath = Path.Combine(destFolderPath, audioFilename);
+                string audioPath;
+                if (exportedAudio.TryGetValue(audio, out audioPath))
                     newSong.SetAudioLocation(audio, audioPath);
-                }
             }
 
             ChartWriter.ErrorReport errorReport;
@@ -748,6 +832,33 @@ public class Export : DisplayMenu {
                 errorMessageList += errorReport.GetFullReport().ToString();
             }
         }));
+
+        if (extras.Count > 0)
+        {
+            tasks.Add(new LoadingTask("Copying album art, backgrounds and video", () =>
+            {
+                foreach (string extra in extras)
+                {
+                    string name = Path.GetFileName(extra);
+                    string extension = Path.GetExtension(extra).ToLowerInvariant();
+                    if (Array.IndexOf(IMAGE_EXTENSIONS, extension) < 0)
+                        name = "video" + extension;     // The song's video, whatever it was called
+                    string dest = Path.Combine(destFolderPath, name);
+                    try
+                    {
+                        if (!string.Equals(Path.GetFullPath(dest), Path.GetFullPath(extra), StringComparison.OrdinalIgnoreCase))
+                        {
+                            Debug.LogFormat("Copying {0} to {1}", extra, dest);
+                            File.Copy(extra, dest, true);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        errorMessageList += "Couldn't copy " + Path.GetFileName(extra) + ": " + e.Message + "\n";
+                    }
+                }
+            }));
+        }
 
         tasksManager.KickTasks(tasks);
 

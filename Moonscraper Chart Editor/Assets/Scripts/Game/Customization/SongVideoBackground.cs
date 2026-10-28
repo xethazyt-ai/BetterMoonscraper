@@ -429,7 +429,7 @@ public class SongVideoBackground : MonoBehaviour
 
     // The chart's folder, or for a .mid chart, a joiner or a song not saved yet, the folder its audio is in. video.*
     // first, as Clone Hero names it, else any one video file there.
-    static string FindVideo()
+    public static string FindVideo()
     {
         if (!ChartEditor.InstanceExists || ChartEditor.Instance.currentSong == null)
             return null;
@@ -468,7 +468,7 @@ public class SongVideoBackground : MonoBehaviour
         return null;
     }
 
-    static System.Collections.Generic.List<string> SongFolders()
+    public static System.Collections.Generic.List<string> SongFolders()
     {
         System.Collections.Generic.List<string> folders = new System.Collections.Generic.List<string>();
         ChartEditor editor = ChartEditor.Instance;
