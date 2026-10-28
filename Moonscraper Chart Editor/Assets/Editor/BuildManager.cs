@@ -287,6 +287,10 @@ public class BuildManager  {
         {
             // Duet Mode online rooms load the EOS DLL and credentials from an EOS folder beside the game
             FileUtil.CopyFileOrDirectory("EOS", Path.Combine(path, "EOS"));
+#if DUET_EOS_EMBEDDED
+            // The keys are compiled in, so don't ship them as a readable file too
+            FileUtil.DeleteFileOrDirectory(Path.Combine(path, Path.Combine("EOS", "credentials.txt")));
+#endif
         }
 #endif
 

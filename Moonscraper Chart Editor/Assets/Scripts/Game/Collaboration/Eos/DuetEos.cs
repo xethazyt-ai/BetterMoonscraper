@@ -860,10 +860,38 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
 
     #region Credentials and native loading
 
-    // EOS/credentials.txt holds lines of Name=Value for the five values from the Epic Developer Portal
+    static readonly string[] s_credentialNames = { "ProductId", "SandboxId", "DeploymentId", "ClientId", "ClientSecret" };
+
+    // GitHub builds compile the keys in (DuetEosKeys.cs, made by CI and never committed) so no credentials.txt ships.
+    // Each value is XORed with a mask that changes every build, so the keys aren't plain text in the DLL.
+    static bool TryReadEmbeddedCredentials(Dictionary<string, string> credentials)
+    {
+#if DUET_EOS_EMBEDDED
+        byte[] mask = DuetEosKeys.Mask;
+        for (int n = 0; n < s_credentialNames.Length; ++n)
+        {
+            byte[] value = DuetEosKeys.Values[n];
+            char[] chars = new char[value.Length];
+            for (int i = 0; i < value.Length; ++i)
+                chars[i] = (char)(value[i] ^ mask[(i + n * 7) % mask.Length]);
+            credentials[s_credentialNames[n]] = new string(chars);
+        }
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    // Otherwise EOS/credentials.txt holds lines of Name=Value for the five values from the Epic Developer Portal
     static bool TryReadCredentials(out Dictionary<string, string> credentials, out string error)
     {
         credentials = new Dictionary<string, string>();
+        if (TryReadEmbeddedCredentials(credentials))
+        {
+            error = null;
+            return true;
+        }
+
         string path = Path.Combine(EosFolder, "credentials.txt");
         if (!File.Exists(path))
         {
@@ -878,7 +906,7 @@ public class DuetEos : MonoBehaviour, IDuetRoomProvider
                 credentials[line.Substring(0, split).Trim()] = line.Substring(split + 1).Trim();
         }
 
-        foreach (string name in new[] { "ProductId", "SandboxId", "DeploymentId", "ClientId", "ClientSecret" })
+        foreach (string name in s_credentialNames)
         {
             string value;
             if (!credentials.TryGetValue(name, out value) || value.Length == 0)

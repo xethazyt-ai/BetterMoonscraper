@@ -57,3 +57,7 @@ Moonscraper Chart Editor/Assets/csc.rsp.meta
 # Written by the build workflow
 Moonscraper Chart Editor/Assets/Resources/BuildId.txt
 Moonscraper Chart Editor/Assets/Resources/BuildId.txt.meta
+
+# Epic keys the GitHub build compiles in
+Moonscraper Chart Editor/Assets/Scripts/Game/Collaboration/Eos/DuetEosKeys.cs
+Moonscraper Chart Editor/Assets/Scripts/Game/Collaboration/Eos/DuetEosKeys.cs.meta

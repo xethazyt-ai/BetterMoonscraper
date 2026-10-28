@@ -104,9 +104,23 @@ jobs:
           test -f "$PROJECT_PATH/EOS/EOSSDK-Win64-Shipping.dll"
           test -d "$PROJECT_PATH/Assets/Plugins/EOS/Source"
 
-          printf 'ProductId=%s\nSandboxId=%s\nDeploymentId=%s\nClientId=%s\nClientSecret=%s\n' \
-            "$EOS_PRODUCT_ID" "$EOS_SANDBOX_ID" "$EOS_DEPLOYMENT_ID" "$EOS_CLIENT_ID" "$EOS_CLIENT_SECRET" > "$PROJECT_PATH/EOS/credentials.txt"
-          printf -- '-define:DUET_EOS\n-define:EOS_DYNAMIC_BINDINGS\n' > "$PROJECT_PATH/Assets/csc.rsp"
+          # Compile the keys into the game, masked with fresh random bytes each build, instead of shipping credentials.txt
+          python3 - "$PROJECT_PATH/Assets/Scripts/Game/Collaboration/Eos/DuetEosKeys.cs" <<'PY'
+          import os, sys
+          names = ["EOS_PRODUCT_ID", "EOS_SANDBOX_ID", "EOS_DEPLOYMENT_ID", "EOS_CLIENT_ID", "EOS_CLIENT_SECRET"]
+          mask = os.urandom(61)
+          def masked(n, text):
+              data = text.encode("ascii")
+              return ", ".join(str(b ^ mask[(i + n * 7) % len(mask)]) for i, b in enumerate(data))
+          rows = ",\n        ".join("new byte[] { %s }" % masked(n, os.environ[name]) for n, name in enumerate(names))
+          with open(sys.argv[1], "w") as f:
+              f.write("// Made by the GitHub build, never committed\n#if DUET_EOS && DUET_EOS_EMBEDDED\n")
+              f.write("static class DuetEosKeys\n{\n")
+              f.write("    public static readonly byte[] Mask = { %s };\n" % ", ".join(str(b) for b in mask))
+              f.write("    public static readonly byte[][] Values =\n    {\n        %s\n    };\n}\n#endif\n" % rows)
+          PY
+          printf -- '-define:DUET_EOS\n-define:EOS_DYNAMIC_BINDINGS\n-define:DUET_EOS_EMBEDDED\n' > "$PROJECT_PATH/Assets/csc.rsp"
+          rm -f "$PROJECT_PATH/EOS/credentials.txt"
           echo "Room codes enabled"
 
       # Lets Collab Mode tell people when they're on different builds
