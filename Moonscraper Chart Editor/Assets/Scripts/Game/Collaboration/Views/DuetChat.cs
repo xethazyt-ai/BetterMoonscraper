@@ -157,6 +157,11 @@ public class DuetChat : MonoBehaviour
         m_window.Draw("Chat", DrawWindow, scale);  // Remembers where it was put
     }
 
+    readonly List<string> m_lineTexts = new List<string>();
+    int m_lineTextsCount = -1;
+    float m_lineTextsAt;
+    const float LineTextsRefreshSeconds = 1;
+
     void DrawWindow(int id)
     {
         DuetSession session = DuetPanel.activeSession;
@@ -170,10 +175,20 @@ public class DuetChat : MonoBehaviour
         }
 
         m_scroll = GUILayout.BeginScrollView(m_scroll, GUILayout.ExpandHeight(true));
-        if (session.chat.Count == 0)
+        // The lines' text is made again only when a message arrives, or every so often for name colors and styles,
+        // not for every GUI event of every frame. Only changed on Layout, so Layout and Repaint draw the same lines.
+        if (e.type == EventType.Layout && (session.chatCount != m_lineTextsCount || Time.unscaledTime - m_lineTextsAt > LineTextsRefreshSeconds))
+        {
+            m_lineTextsCount = session.chatCount;
+            m_lineTextsAt = Time.unscaledTime;
+            m_lineTexts.Clear();
+            foreach (DuetChatLine line in session.chat)
+                m_lineTexts.Add(FormatLine(session, line));
+        }
+        if (m_lineTexts.Count == 0)
             GUILayout.Label("No messages yet.", m_typingStyle);
-        foreach (DuetChatLine line in session.chat)
-            GUILayout.Label(FormatLine(session, line), m_lineStyle);
+        foreach (string lineText in m_lineTexts)
+            GUILayout.Label(lineText, m_lineStyle);
         GUILayout.EndScrollView();
 
         string typing = TypingText(session);

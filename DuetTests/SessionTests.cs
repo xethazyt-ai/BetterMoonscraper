@@ -62,6 +62,7 @@ public static class SessionTests
         public List<string> sharedFiles = new List<string>();
         public Dictionary<string, string> receivedFiles;
         public List<string> GetSongFilePaths() { return sharedFiles; }
+        public void GetSongFileSources(out string chartFolder, out List<string> audioPaths) { chartFolder = null; audioPaths = sharedFiles; }
         public void UseSongFiles(Dictionary<string, string> localPaths) { receivedFiles = new Dictionary<string, string>(localPaths); ++filesUsed; }
         public int filesUsed = 0;
         public Dictionary<Song.AudioInstrument, string> audioFileNames = new Dictionary<Song.AudioInstrument, string>();

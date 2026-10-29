@@ -37,6 +37,10 @@ public interface IDuetSongHost
     // Hosting: the song's files to send each joiner (audio, images, video, song.ini). See DuetFiles.
     List<string> GetSongFilePaths();
 
+    // Where those files are looked for: the chart's folder and the audio files wherever they are. Quick, with no disk
+    // access, so the background check for changed files can be started from it every frame it's due.
+    void GetSongFileSources(out string chartFolder, out List<string> audioPaths);
+
     // Joining: the host's files have arrived, by file name, at these paths on this computer
     void UseSongFiles(Dictionary<string, string> localPaths);
 
@@ -611,6 +615,8 @@ public class DuetSession
 
         m_songNumber = m_song.songNumber;
         m_knownSongInfo = null;
+        m_songFilesSignature = null;    // The new song's files are sent with it; only later changes need sending again
+        ++m_songFilesScanNumber;
 
         // Edits made before this were made to the old song. Numbering moves on so they're recognised and turned away.
         // Not for the chart recovered after a crash: those who brought it back joined with it, and edit it already.
@@ -639,17 +645,37 @@ public class DuetSession
 
     // The host added, swapped or removed audio (or other song files) with people already in: send them the new set,
     // as when joining, rather than only to whoever joins next
+    // Looking through the song's folder means reading the disk, which can take a while (a slow drive, OneDrive), so it's
+    // done on another thread and the editor never waits for it
     string m_songFilesSignature;
     double m_songFilesCheckedAt = double.MinValue;
     const double SongFilesCheckSeconds = 1.5;
+    readonly object m_scanLock = new object();
+    string m_scannedSignature;      // Finished by the background scan, waiting to be compared
+    int m_scannedNumber;
+    bool m_scanning;
+    int m_songFilesScanNumber;      // Moves on with each new song, so a scan of the old one is ignored
 
     void SendSongFilesIfChanged()
     {
-        if (m_song.isBusy || clockSeconds - m_songFilesCheckedAt < SongFilesCheckSeconds)
+        if (m_song.isBusy)
             return;
-        m_songFilesCheckedAt = clockSeconds;
 
-        string signature = SongFilesSignature();
+        string signature = null;
+        bool scanning;
+        lock (m_scanLock)
+        {
+            if (m_scannedSignature != null && m_scannedNumber == m_songFilesScanNumber)
+                signature = m_scannedSignature;
+            m_scannedSignature = null;
+            scanning = m_scanning;
+        }
+
+        if (!scanning && clockSeconds - m_songFilesCheckedAt >= SongFilesCheckSeconds)
+            StartSongFilesScan();
+
+        if (signature == null)
+            return;
         if (m_songFilesSignature == null || signature == m_songFilesSignature)
         {
             m_songFilesSignature = signature;
@@ -671,12 +697,42 @@ public class DuetSession
             Log("The song's audio or files changed, so they were sent to everyone again");
     }
 
-    string SongFilesSignature()
+    void StartSongFilesScan()
     {
+        m_songFilesCheckedAt = clockSeconds;
+
+        // Read from the song here, on the main thread; only the disk work happens on the other one
         List<string> parts = new List<string>();
         foreach (KeyValuePair<Song.AudioInstrument, string> pair in m_song.GetAudioFileNames())
             parts.Add(pair.Key + "=" + pair.Value);
-        foreach (string path in m_song.GetSongFilePaths())
+        string folder;
+        List<string> audio;
+        m_song.GetSongFileSources(out folder, out audio);
+        audio = audio != null ? new List<string>(audio) : new List<string>();
+        int number = m_songFilesScanNumber;
+
+        lock (m_scanLock)
+            m_scanning = true;
+        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+        {
+            string signature = null;
+            try
+            {
+                signature = SongFilesSignature(parts, DuetFiles.FindSongFiles(folder, audio));
+            }
+            catch (Exception) { }
+            lock (m_scanLock)
+            {
+                m_scanning = false;
+                m_scannedSignature = signature;
+                m_scannedNumber = number;
+            }
+        });
+    }
+
+    static string SongFilesSignature(List<string> parts, List<string> paths)
+    {
+        foreach (string path in paths)
         {
             string part = path;
             try

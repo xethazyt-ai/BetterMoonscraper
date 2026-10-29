@@ -150,13 +150,21 @@ public class DuetEditorSong : IDuetSongHost, ISongEditChangeTarget
 
     public List<string> GetSongFilePaths()
     {
+        string folder;
+        List<string> audio;
+        GetSongFileSources(out folder, out audio);
+        return DuetFiles.FindSongFiles(folder, audio);
+    }
+
+    public void GetSongFileSources(out string chartFolder, out List<string> audioPaths)
+    {
         Song song = m_editor.currentSong;
-        List<string> audio = new List<string>();
+        audioPaths = new List<string>();
         foreach (Song.AudioInstrument instrument in EnumX<Song.AudioInstrument>.Values)
-            audio.Add(song.GetAudioLocation(instrument));
+            audioPaths.Add(song.GetAudioLocation(instrument));
 
         string chartFile = m_editor.currentChartFile;
-        return DuetFiles.FindSongFiles(string.IsNullOrEmpty(chartFile) ? null : Path.GetDirectoryName(chartFile), audio);
+        chartFolder = string.IsNullOrEmpty(chartFile) ? null : Path.GetDirectoryName(chartFile);
     }
 
     public Dictionary<Song.AudioInstrument, string> GetAudioFileNames()
