@@ -55,6 +55,10 @@ public class Services : MonoBehaviour
             if (DuetPanel.isMouseHeldOnPanel)
                 return false;
 
+            // Nor should a drag that started on a menu (a scroll bar, a slider) and wandered over the highway
+            if (m_pressBeganOnUI && (Input.GetMouseButton(0) || Input.GetMouseButton(1)))
+                return false;
+
             Vector2 mousePosition = uiServices.GetUIMousePosition();
 
             if (mousePosition.x < toolScreenArea.xMin ||
@@ -245,8 +249,15 @@ public class Services : MonoBehaviour
     }
 
     // Update is called once per frame
+    bool m_pressBeganOnUI;
+
     void Update()
     {
+        if (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1))
+            m_pressBeganOnUI = mouseMonitorSystem != null && mouseMonitorSystem.GetUIRaycastableUnderPointer() != null;
+        else if (!Input.GetMouseButton(0) && !Input.GetMouseButton(1))
+            m_pressBeganOnUI = false;
+
         IsInDropDown = _IsInDropDown;
         IsTyping = _IsTyping;
 
