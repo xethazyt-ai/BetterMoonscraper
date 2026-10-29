@@ -48,7 +48,11 @@ public class SongIconPicker : MonoBehaviour
         picker.m_currentText = Instantiate(labelTemplate, content);
         picker.m_currentText.fontSize = Mathf.Min(picker.m_currentText.fontSize, 16);
         picker.m_currentText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        picker.m_currentText.resizeTextForBestFit = false;
+        picker.m_currentText.resizeTextForBestFit = true;
+        picker.m_currentText.resizeTextMinSize = 10;
+        picker.m_currentText.resizeTextMaxSize = 16;
+        picker.m_currentText.verticalOverflow = VerticalWrapMode.Truncate;
+        picker.m_currentText.alignment = TextAnchor.MiddleLeft;
         SongPropertiesFormatBar.Place(picker.m_currentText.rectTransform, Left + 110, y, right - 70 - (Left + 110), RowHeight);
 
         Button none = Instantiate(buttonTemplate, content);
@@ -84,7 +88,10 @@ public class SongIconPicker : MonoBehaviour
 
         picker.m_status = Instantiate(labelTemplate, content);
         picker.m_status.fontSize = Mathf.Min(picker.m_status.fontSize, 14);
-        picker.m_status.resizeTextForBestFit = false;
+        picker.m_status.resizeTextForBestFit = true;
+        picker.m_status.resizeTextMinSize = 10;
+        picker.m_status.resizeTextMaxSize = 14;
+        picker.m_status.verticalOverflow = VerticalWrapMode.Truncate;
         picker.m_status.horizontalOverflow = HorizontalWrapMode.Wrap;
         picker.m_status.alignment = TextAnchor.UpperLeft;
         SongPropertiesFormatBar.Place(picker.m_status.rectTransform, Left, y, right - Left, 40);
@@ -181,7 +188,7 @@ public class SongIconPicker : MonoBehaviour
         string id = m_getIcon();
         SongIcons.Icon icon = SongIcons.Find(id);
         if (string.IsNullOrEmpty(id))
-            m_currentText.text = "None";
+            m_currentText.text = "No icon";
         else
             m_currentText.text = id + (icon != null && icon.source != null ? "  (" + icon.source + ")" : icon == null && SongIcons.icons != null ? "  (not in Clone Hero's list)" : string.Empty);
 

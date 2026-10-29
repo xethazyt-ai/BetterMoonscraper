@@ -17,7 +17,8 @@ public class SongPropertiesFormatBar : MonoBehaviour
     public const float Right = 381.3f;
     const float RowHeight = 30;
     const float RowGap = 10;         // Between rows of buttons
-    const float SectionGap = 20;     // Around the color sliders and the help text
+    const float SectionGap = 20;
+    const float PreviewHeight = 110;     // Around the color sliders and the help text
 
     static readonly string[] s_swatches = { "#FF0000", "#FFA500", "#FFFF00", "#00FF00", "#0000FF", "#800080", "#FFFFFF" };
 
@@ -131,10 +132,14 @@ public class SongPropertiesFormatBar : MonoBehaviour
         bar.m_preview.supportRichText = true;
         bar.m_preview.alignment = TextAnchor.UpperLeft;
         bar.m_preview.horizontalOverflow = HorizontalWrapMode.Wrap;
-        bar.m_preview.verticalOverflow = VerticalWrapMode.Overflow;
-        Place(bar.m_preview.GetComponent<RectTransform>(), Left, y, Right - Left, 64);
+        // Shrinks to fit its box, so long help or look up messages never run over the Icon row below
+        bar.m_preview.verticalOverflow = VerticalWrapMode.Truncate;
+        bar.m_preview.resizeTextForBestFit = true;
+        bar.m_preview.resizeTextMinSize = 10;
+        bar.m_preview.resizeTextMaxSize = 16;
+        Place(bar.m_preview.GetComponent<RectTransform>(), Left, y, Right - Left, PreviewHeight);
 
-        bottom = y - 64 - SectionGap;
+        bottom = y - PreviewHeight - SectionGap;
         return bar;
     }
 
@@ -177,7 +182,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format. For any color, set it with the sliders (or type it) and press Color, or set two and press Gradient to fade the letters from one to the other. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
+            m_preview.text = "Select text in a field above, then pick a format. Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient. Underline and strikethrough only show in Clone Hero.";
         }
     }
 
