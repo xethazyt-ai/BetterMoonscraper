@@ -445,6 +445,130 @@ public class SongPropertiesPanelController : TabMenu
         field.ForceLabelUpdate();
     }
 
+    // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo and redo changes made here. A burst of typing is one step: a change
+    // becomes a step once nothing has changed for a moment. Kept while the same song is open.
+    const float UndoPollSeconds = 0.2f;
+    const float UndoSettleSeconds = 0.8f;
+    const int MaxUndoSteps = 100;
+    readonly List<Dictionary<string, string>> undoSteps = new List<Dictionary<string, string>>();
+    readonly List<Dictionary<string, string>> redoSteps = new List<Dictionary<string, string>>();
+    Dictionary<string, string> undoCommitted, undoLastSeen;
+    Song undoSong;
+    float undoPolledAt, undoChangedAt;
+
+    protected override void Update()
+    {
+        base.Update();
+
+        Song song = editor.currentSong;
+        if (song == null)
+            return;
+        if (song != undoSong)
+        {
+            undoSong = song;
+            undoSteps.Clear();
+            redoSteps.Clear();
+            undoCommitted = undoLastSeen = DuetSongInfo.Read(song);
+            undoChangedAt = Time.unscaledTime;
+        }
+
+        bool ctrl = UnityEngine.Input.GetKey(KeyCode.LeftControl) || UnityEngine.Input.GetKey(KeyCode.RightControl);
+        bool shift = UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift);
+        if (ctrl && UnityEngine.Input.GetKeyDown(KeyCode.Z) && !shift)
+            UndoSongProperties();
+        else if (ctrl && (UnityEngine.Input.GetKeyDown(KeyCode.Y) || (shift && UnityEngine.Input.GetKeyDown(KeyCode.Z))))
+            RedoSongProperties();
+        else if (Time.unscaledTime - undoPolledAt >= UndoPollSeconds)
+            PollSongProperties(false);
+    }
+
+    void PollSongProperties(bool commitNow)
+    {
+        undoPolledAt = Time.unscaledTime;
+        Dictionary<string, string> current = DuetSongInfo.Read(undoSong);
+        if (!SameInfo(current, undoLastSeen))
+        {
+            undoLastSeen = current;
+            undoChangedAt = Time.unscaledTime;
+        }
+
+        if (!SameInfo(undoLastSeen, undoCommitted) && (commitNow || Time.unscaledTime - undoChangedAt >= UndoSettleSeconds))
+        {
+            undoSteps.Add(undoCommitted);
+            if (undoSteps.Count > MaxUndoSteps)
+                undoSteps.RemoveAt(0);
+            undoCommitted = undoLastSeen;
+            redoSteps.Clear();
+        }
+    }
+
+    void UndoSongProperties()
+    {
+        PollSongProperties(true);
+        if (undoSteps.Count == 0)
+            return;
+
+        redoSteps.Add(undoCommitted);
+        Dictionary<string, string> previous = undoSteps[undoSteps.Count - 1];
+        undoSteps.RemoveAt(undoSteps.Count - 1);
+        RestoreSongProperties(previous);
+    }
+
+    void RedoSongProperties()
+    {
+        PollSongProperties(true);
+        if (redoSteps.Count == 0)
+            return;
+
+        undoSteps.Add(undoCommitted);
+        Dictionary<string, string> next = redoSteps[redoSteps.Count - 1];
+        redoSteps.RemoveAt(redoSteps.Count - 1);
+        RestoreSongProperties(next);
+    }
+
+    void RestoreSongProperties(Dictionary<string, string> info)
+    {
+        Song song = undoSong;
+        DuetSongInfo.Apply(song, new Dictionary<string, string>(info));
+        ChartEditor.isDirty = true;
+
+        // Every box shows it, even the one being typed in
+        init = true;
+        Metadata metaData = song.metaData;
+        INIParser ini = song.iniProperties;
+        SetRich(songName, RichTextIni.DisplayValue(ini, "name", song.name));
+        SetRich(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
+        SetRich(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
+        SetRich(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
+        year.text = metaData.year;
+        offset.text = OffsetText(song.offset);
+        difficulty.text = metaData.difficulty.ToString();
+        SetRich(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
+        mediaType.text = metaData.mediatype;
+        if (loadingPhrase)
+            SetRich(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
+        init = false;
+        UpdateIniTextFromSongProperties();
+        if (iconPicker)
+            iconPicker.Refresh();
+
+        undoCommitted = undoLastSeen = DuetSongInfo.Read(song);
+        undoChangedAt = undoPolledAt = Time.unscaledTime;
+    }
+
+    static bool SameInfo(Dictionary<string, string> a, Dictionary<string, string> b)
+    {
+        if (a == null || b == null || a.Count != b.Count)
+            return a == b;
+        foreach (KeyValuePair<string, string> pair in a)
+        {
+            string other;
+            if (!b.TryGetValue(pair.Key, out other) || other != pair.Value)
+                return false;
+        }
+        return true;
+    }
+
     // The source or charter icon Clone Hero shows for the song: song.ini's "icon"
     string GetIcon()
     {
