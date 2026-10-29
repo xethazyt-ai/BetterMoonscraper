@@ -202,6 +202,8 @@ public class NoteFlames : MonoBehaviour
         }
     }
 
+    const float OuterLaneNudge = 0.025f;   // Of a lane, for the outermost lanes; about 3 px at a normal window size
+
     void SpawnAt(int key, Vector3 position, float laneSpacing, float scale, Color color, bool held)
     {
         if (held)
@@ -305,7 +307,16 @@ public class NoteFlames : MonoBehaviour
             // closer together. Spread it out so it lines up on screen with the fret itself (outer lanes the most).
             Vector3 fret = basePosition;
             fret.y = editor.visibleStrikeline.position.y;
-            basePosition.y = fret.y + LaneSpacing(editor) * LiftLanes;
+            float laneSpacing = LaneSpacing(editor);
+            basePosition.y = fret.y + laneSpacing * LiftLanes;
+
+            // And the outermost lanes a touch further out still (green left, orange right), as their strikers sit;
+            // the middle three hardly move
+            if (laneSpacing > 0)
+            {
+                float lanesOut = Mathf.Clamp((basePosition.x - camera.transform.position.x) / (2 * laneSpacing), -1, 1);
+                basePosition.x += laneSpacing * OuterLaneNudge * lanesOut * lanesOut * lanesOut;
+            }
             if (!camera.orthographic)
             {
                 Vector3 forward = camera.transform.forward;
