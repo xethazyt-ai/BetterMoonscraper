@@ -21,6 +21,8 @@ public class DuetPresence
     }
 
     public int color;
+    public int gradient = NoGradient;   // A color the name fades to, letter by letter (not with a rainbow)
+    public int style;                   // NameBold, NameItalic
     public uint viewTick;           // The tick at the strikeline
     public string instrument = string.Empty;
     public string difficulty = string.Empty;
@@ -73,6 +75,64 @@ public class DuetPresence
     static readonly System.Diagnostics.Stopwatch s_rainbowClock = System.Diagnostics.Stopwatch.StartNew();
 
     public static bool IsRainbow(int color) { return (color & RainbowFlag) != 0; }
+
+    public const int NoGradient = -1;
+    public const int NameBold = 1;
+    public const int NameItalic = 2;
+    public const int NameStyles = NameBold | NameItalic;
+
+    public static bool IsValidGradient(int gradient)
+    {
+        return gradient == NoGradient || (IsValidColor(gradient) && !IsRainbow(gradient));
+    }
+
+    public static bool HasGradient(int color, int gradient)
+    {
+        return gradient != NoGradient && !IsRainbow(color) && IsValidGradient(gradient);
+    }
+
+    // A name in its color, or fading from its color to the gradient's, bold and italic as picked, as rich text tags.
+    // For the charter credit, name lists, cursor tags and chat.
+    public static string ToRichText(int color, int gradient, int style, string text)
+    {
+        text = (text ?? string.Empty).Replace("<", string.Empty).Replace(">", string.Empty);
+        string rich;
+        if (HasGradient(color, gradient))
+        {
+            Color from = GetColor(color), to = GetColor(gradient);
+            int letters = 0;
+            foreach (char c in text)
+            {
+                if (!char.IsWhiteSpace(c))
+                    ++letters;
+            }
+
+            System.Text.StringBuilder builder = new System.Text.StringBuilder();
+            int letter = 0;
+            foreach (char c in text)
+            {
+                if (char.IsWhiteSpace(c))
+                {
+                    builder.Append(c);
+                    continue;
+                }
+                float t = letters > 1 ? letter / (float)(letters - 1) : 0;
+                ++letter;
+                builder.Append("<color=#").Append(Hex(Color.Lerp(from, to, t))).Append(">").Append(c).Append("</color>");
+            }
+            rich = builder.ToString();
+        }
+        else
+        {
+            rich = ToRichText(color, text);
+        }
+
+        if ((style & NameItalic) != 0)
+            rich = "<i>" + rich + "</i>";
+        if ((style & NameBold) != 0)
+            rich = "<b>" + rich + "</b>";
+        return rich;
+    }
     public static int RainbowSpeed(int color) { return Mathf.Clamp(color & 0xFF, 1, MaxRainbowSpeed); }
     public static int MakeRainbow(int speed) { return RainbowFlag | Mathf.Clamp(speed, 1, MaxRainbowSpeed); }
 
@@ -179,6 +239,11 @@ public class DuetPresence
         if (isTyping)
             json["typing"] = true;
 
+        if (gradient != NoGradient)
+            json["gradient"] = (double)gradient;
+        if (style != 0)
+            json["style"] = (double)style;
+
         if (hasPointer)
             json["pointer"] = new List<object> { (double)pointerX, (double)pointerTick };
 
@@ -208,6 +273,12 @@ public class DuetPresence
         presence.difficulty = Short(DuetJson.GetString(json, "difficulty", string.Empty));
         if (!IsValidColor(presence.color))
             presence.color = 0;
+
+        double gradient = DuetJson.GetNumber(json, "gradient", NoGradient);
+        presence.gradient = gradient >= NoGradient && gradient <= int.MaxValue ? (int)gradient : NoGradient;
+        if (!IsValidGradient(presence.gradient))
+            presence.gradient = NoGradient;
+        presence.style = ToSmallInt(DuetJson.GetNumber(json, "style", 0)) & NameStyles;
 
         object typing;
         presence.isTyping = json.TryGetValue("typing", out typing) && typing is bool && (bool)typing;

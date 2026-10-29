@@ -239,14 +239,8 @@ public class DuetChat : MonoBehaviour
 
     static string FormatLine(DuetSession session, DuetChatLine line)
     {
-        Color color = Color.white;
-        DuetPresence presence;
-        if (line.userId == session.localUserId)
-            color = DuetPresence.GetColor(DuetPanel.localColor);
-        else if (session.presences.TryGetValue(line.userId, out presence))
-            color = DuetPresence.GetColor(presence.color);
-
-        return "<b><color=#" + ColorUtility.ToHtmlStringRGB(color) + ">" + Escape(line.name) + "</color></b>: " + Escape(line.text);
+        // In their color (or gradient) and name style; names are always bold here
+        return "<b>" + DuetPanel.RichName(session, line.userId, line.name) + "</b>: " + Escape(line.text);
     }
 
     // Stops anything typed from being read as formatting

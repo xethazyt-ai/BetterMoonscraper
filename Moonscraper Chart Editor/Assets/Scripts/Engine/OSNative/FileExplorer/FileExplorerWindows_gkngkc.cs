@@ -46,10 +46,18 @@ public class FileExplorerWindows_gkngkc : IFileExplorer
         public IntPtr Handle { get { return _hwnd; } }
     }
 
+    public static string initialDirectory;   // Set by FileExplorer for one open file window
+
     public bool OpenFilePanel(ExtensionFilter filter, string defExt, out string resultPath)
     {
         var fd = new VistaOpenFileDialog();
         fd.Title = "Open file";
+        if (!string.IsNullOrEmpty(initialDirectory) && Directory.Exists(initialDirectory))
+        {
+            // A file name inside the folder makes the window open there, even if another folder was used last
+            fd.InitialDirectory = initialDirectory;
+            fd.FileName = initialDirectory.TrimEnd('\\', '/') + "\\";
+        }
         fd.Filter = GetFilterFromFileExtensionList(filter);
         fd.FilterIndex = 1;
         fd.Multiselect = false;

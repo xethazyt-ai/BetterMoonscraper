@@ -301,16 +301,20 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddLabel("Clap sound");
         float textWidth = ControlWidth - ButtonWidth - Gap;
         m_clapText = AddText(ControlLeft, textWidth, RowHeight, TextAnchor.MiddleLeft, 14);
-        AddButton("Default", ControlLeft + textWidth + Gap, () =>
+        // Opens the Clap Sounds folder (next to BetterMoonscraper.exe, default clap included) in Explorer, to drop
+        // sounds into
+        AddButton("Folder", ControlLeft + textWidth + Gap, () =>
         {
-            ClapSound.ClearCustom();
-            m_statusText.text = string.Empty;
-            RefreshClapSound();
+            string folder = ClapSound.soundsFolder;
+            if (folder != null)
+                Application.OpenURL("file:///" + folder.Replace('\\', '/'));
+            m_statusText.text = folder != null ? "Clap sounds folder: " + folder : "Couldn't make the Clap Sounds folder.";
         });
+        // Picks a clap from that folder (or anywhere); "Default clap.wav" goes back to the default
         AddButton("Browse", ControlLeft + ControlWidth + Gap, () =>
         {
             string path;
-            if (FileExplorer.OpenFilePanel(s_soundFilter, "wav", out path))
+            if (FileExplorer.OpenFilePanel(s_soundFilter, "wav", ClapSound.soundsFolder, out path))
             {
                 m_statusText.text = ClapSound.SetCustom(path) ?? string.Empty;
                 RefreshClapSound();

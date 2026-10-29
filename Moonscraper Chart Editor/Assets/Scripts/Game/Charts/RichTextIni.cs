@@ -66,6 +66,55 @@ public static class RichTextIni
         return Normalise(tagged.Substring(0, openAt) + open + tagged.Substring(openAt, closeAt - openAt) + close + tagged.Substring(closeAt));
     }
 
+    // Fades the visible characters [start, end) from one color to another, a color tag per letter (spaces are
+    // skipped). Colors are hex like #FF0000. Nothing selected fades all of it.
+    public static string GradientVisible(string tagged, int start, int end, string fromHex, string toHex)
+    {
+        tagged = tagged ?? string.Empty;
+        int count = VisiblePositions(tagged).Count;
+        ClampSelection(count, ref start, ref end);
+        int from, to;
+        if (count == 0 || !TryParseRgb(fromHex, out from) || !TryParseRgb(toHex, out to))
+            return tagged;
+
+        int letters = 0;
+        for (int i = start; i < end; ++i)
+        {
+            if (!char.IsWhiteSpace(tagged[VisiblePositions(tagged)[i]]))
+                ++letters;
+        }
+
+        int letter = 0;
+        for (int i = start; i < end; ++i)
+        {
+            if (char.IsWhiteSpace(tagged[VisiblePositions(tagged)[i]]))
+                continue;
+            double t = letters > 1 ? letter / (double)(letters - 1) : 0;
+            ++letter;
+            tagged = WrapVisible(tagged, i, i + 1, "<color=" + LerpHex(from, to, t) + ">", "</color>");
+        }
+        return tagged;
+    }
+
+    public static bool TryParseRgb(string hex, out int rgb)
+    {
+        rgb = 0;
+        string normalised;
+        return TryParseColor(hex, out normalised) && int.TryParse(normalised.Substring(1, 6), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out rgb);
+    }
+
+    // Between two 0xRRGGBB colors, t from 0 (from) to 1 (to), as #RRGGBB
+    public static string LerpHex(int from, int to, double t)
+    {
+        int rgb = 0;
+        for (int shift = 16; shift >= 0; shift -= 8)
+        {
+            int a = (from >> shift) & 0xFF, b = (to >> shift) & 0xFF;
+            rgb |= Math.Max(0, Math.Min(255, (int)Math.Round(a + (b - a) * t))) << shift;
+        }
+        return "#" + rgb.ToString("X6");
+    }
+
     // Removes the formatting from the visible characters [start, end). Nothing selected clears all of it.
     public static string ClearVisible(string tagged, int start, int end)
     {

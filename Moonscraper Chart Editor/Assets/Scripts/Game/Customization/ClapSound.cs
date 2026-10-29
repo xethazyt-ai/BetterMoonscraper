@@ -9,11 +9,15 @@ using MoonscraperEngine.Audio;
 /// The clap's own volume (Clap Settings menu, can go past 100% to make it louder) and a clap sound of your own
 /// (Settings > Customize). Both only change this computer. The sample is rebuilt with the volume baked in, since a
 /// sample's own volume can't go above full.
+/// Clap sounds are picked from the "Clap Sounds" folder next to BetterMoonscraper.exe, which starts with the default
+/// clap in it, and stay there: the clap is played from the picked file itself.
 /// </summary>
 public static class ClapSound
 {
     const string PrefVolume = "Audio.ClapVolumePercent";
     const string PrefCustomName = "Customize.ClapSoundName";
+    const string PrefCustomPath = "Customize.ClapSoundPath";
+    public const string DefaultClapName = "Default clap.wav";
     public const int MinVolumePercent = 0, MaxVolumePercent = 400, DefaultVolumePercent = 100;
     public static readonly string[] Extensions = { "wav", "ogg", "mp3", "opus" };
 
@@ -39,15 +43,55 @@ public static class ClapSound
         }
     }
 
-    static string customFolder { get { return Path.Combine(CustomizationPrefs.storageFolder, "Clap"); } }
+    static string customFolder { get { return Path.Combine(CustomizationPrefs.storageFolder, "Clap"); } }   // Copies made by older builds
+
+    static string s_soundsFolder;
 
     /// <summary>
-    /// The copy of the picked clap sound, or null for the default (or Custom Resources) one
+    /// The "Clap Sounds" folder next to BetterMoonscraper.exe, made with the default clap in it the first time it's
+    /// asked for. If the program's folder can't be written to, it goes in Moonscraper's own data folder instead.
+    /// </summary>
+    public static string soundsFolder
+    {
+        get
+        {
+            if (s_soundsFolder != null && Directory.Exists(s_soundsFolder))
+                return s_soundsFolder;
+
+            string appFolder = Path.GetDirectoryName(Application.dataPath);     // dataPath is <app>/<name>_Data
+            foreach (string folder in new[] { Path.Combine(appFolder, "Clap Sounds"), Path.Combine(CustomizationPrefs.storageFolder, "Clap Sounds") })
+            {
+                try
+                {
+                    Directory.CreateDirectory(folder);
+                    string defaultCopy = Path.Combine(folder, DefaultClapName);
+                    if (!File.Exists(defaultCopy) && File.Exists(defaultClapPath))
+                        File.Copy(defaultClapPath, defaultCopy);
+                    s_soundsFolder = folder;
+                    return folder;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("Couldn't make the clap sounds folder " + folder + ". " + e.Message);
+                }
+            }
+            return null;
+        }
+    }
+
+    static string defaultClapPath { get { return Path.Combine(Application.streamingAssetsPath, "SFX/clap.wav"); } }
+
+    /// <summary>
+    /// The picked clap sound, or null for the default (or Custom Resources) one
     /// </summary>
     public static string customPath
     {
         get
         {
+            string picked = PlayerPrefs.GetString(PrefCustomPath, string.Empty);
+            if (picked.Length > 0 && File.Exists(picked))
+                return picked;
+
             try
             {
                 if (!Directory.Exists(customFolder))
@@ -63,14 +107,15 @@ public static class ClapSound
         }
     }
 
-    // The name of the file it was picked from, to show in Settings
+    // The name of the picked file, to show in Settings
     public static string customName
     {
         get { return customPath != null ? PlayerPrefs.GetString(PrefCustomName, "Custom") : null; }
     }
 
     /// <summary>
-    /// Copies the file in (so it keeps working if the original moves) and uses it. Returns an error, or null.
+    /// Uses this sound file for the clap, played from where it is. Picking the folder's default clap goes back to
+    /// the default (so Custom Resources still apply). Returns an error, or null.
     /// </summary>
     public static string SetCustom(string sourcePath)
     {
@@ -80,14 +125,19 @@ public static class ClapSound
             if (Array.IndexOf(Extensions, extension.TrimStart('.')) < 0)
                 return Path.GetFileName(sourcePath) + " isn't a sound file Moonscraper can play.";
 
+            if (soundsFolder != null && string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(Path.Combine(soundsFolder, DefaultClapName)), StringComparison.OrdinalIgnoreCase))
+            {
+                ClearCustom();
+                return null;
+            }
+
             int sampleRate;
             float[] check = AudioManager.DecodeMono(sourcePath, out sampleRate);
             if (check == null || check.Length == 0)
                 return "Couldn't read " + Path.GetFileName(sourcePath) + " as a sound.";
 
             RemoveCustomFiles();
-            Directory.CreateDirectory(customFolder);
-            File.Copy(sourcePath, Path.Combine(customFolder, "clap" + extension), true);
+            PlayerPrefs.SetString(PrefCustomPath, Path.GetFullPath(sourcePath));
             PlayerPrefs.SetString(PrefCustomName, Path.GetFileName(sourcePath));
             PlayerPrefs.Save();
         }
@@ -111,6 +161,7 @@ public static class ClapSound
             Debug.LogWarning("Couldn't remove the custom clap sound. " + e.Message);
         }
         PlayerPrefs.DeleteKey(PrefCustomName);
+        PlayerPrefs.DeleteKey(PrefCustomPath);
         PlayerPrefs.Save();
         Reload();
     }
@@ -129,6 +180,8 @@ public static class ClapSound
     /// </summary>
     public static OneShotSampleStream LoadSample(string skinPath, int maxSimultaneousPlaybacks)
     {
+        if (s_soundsFolder == null && soundsFolder == null)
+            Debug.LogWarning("No Clap Sounds folder");     // Made at launch, so it's there to drop sounds into
         string path = customPath ?? skinPath;
         if (volumePercent == DefaultVolumePercent && path == skinPath)
             return AudioManager.LoadSampleStream(path, maxSimultaneousPlaybacks);

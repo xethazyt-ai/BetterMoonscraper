@@ -31,6 +31,24 @@ public static class FileExplorer  {
             return m_platformWrapper.OpenFilePanel(filter, defExt, out resultPath);
     }
 
+    // The same, opening in this folder (Windows only; elsewhere the picker opens where it likes)
+    public static bool OpenFilePanel(ExtensionFilter filter, string defExt, string initialDirectory, out string resultPath)
+    {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        FileExplorerWindows_gkngkc.initialDirectory = initialDirectory;
+        try
+        {
+            return OpenFilePanel(filter, defExt, out resultPath);
+        }
+        finally
+        {
+            FileExplorerWindows_gkngkc.initialDirectory = null;
+        }
+#else
+        return OpenFilePanel(filter, defExt, out resultPath);
+#endif
+    }
+
     public static bool SaveFilePanel(ExtensionFilter filter, string defaultFileName, string defExt, out string resultPath)
     {
         using (DuetKeepAlive.WhileBlocked())

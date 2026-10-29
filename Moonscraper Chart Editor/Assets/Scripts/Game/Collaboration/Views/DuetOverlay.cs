@@ -179,6 +179,8 @@ public class DuetOverlay : MonoBehaviour
     {
         DuetPresence presence = new DuetPresence();
         presence.color = DuetPanel.localColor;
+        presence.gradient = DuetPanel.localGradient;
+        presence.style = DuetPanel.localNameStyle;
         presence.viewTick = m_editor.currentTickPos;
         presence.instrument = MenuBar.currentInstrument.ToString();
         presence.difficulty = MenuBar.currentDifficulty.ToString();
@@ -231,11 +233,11 @@ public class DuetOverlay : MonoBehaviour
         {
             DuetPresence presence = pair.Value;
             DuetUser user = session.users.Find(u => u.id == pair.Key);
-            string name = user != null ? user.name : "Someone";
+            string name = DuetPresence.ToRichText(presence.color, presence.gradient, presence.style, user != null ? user.name : "Someone");
             bool sameChart = m_localPresence == null || m_localPresence.IsOnSameChart(presence);
 
             if (presence.hasPointer)
-                DrawPointer(camera, presence, sameChart ? name : name + " (" + presence.difficulty + " " + presence.instrument + ")");
+                DrawPointer(camera, presence, sameChart ? name : name + DuetPresence.ToRichText(presence.color, " (" + presence.difficulty + " " + presence.instrument + ")"));
         }
 
         DrawSongBarMarkers(session);
@@ -301,7 +303,7 @@ public class DuetOverlay : MonoBehaviour
         foreach (KeyValuePair<int, DuetPresence> pair in session.presences)
         {
             DuetUser user = session.users.Find(u => u.id == pair.Key);
-            everyone.Add(new KeyValuePair<string, DuetPresence>(user != null ? user.name : "Someone", pair.Value));
+            everyone.Add(new KeyValuePair<string, DuetPresence>(DuetPresence.ToRichText(pair.Value.color, pair.Value.gradient, pair.Value.style, user != null ? user.name : "Someone"), pair.Value));
         }
 
         Song song = m_editor.currentSong;
@@ -342,6 +344,7 @@ public class DuetOverlay : MonoBehaviour
         background.Apply();
 
         GUIStyle style = new GUIStyle(GUI.skin.label);
+        style.richText = true;      // Names come in their gradient, bold or italic
         Font font = DuetSkin.font;     // Moonscraper's own
         if (font != null)
             style.font = font;

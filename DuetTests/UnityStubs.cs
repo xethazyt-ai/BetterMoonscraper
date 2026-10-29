@@ -20,6 +20,7 @@ namespace UnityEngine
         public float r, g, b, a;
         public Color(float r, float g, float b, float a = 1f) { this.r = r; this.g = g; this.b = b; this.a = a; }
         public static Color white { get { return new Color(1, 1, 1); } }
+        public static Color Lerp(Color a, Color b, float t) { return new Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t); }
     }
     public enum KeyCode { F9, F10 }
     public static class ColorUtility
@@ -87,7 +88,7 @@ namespace UnityEngine
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }
     public class GUIContent { public GUIContent(string text) { } }
     public class RectOffset { public int vertical; }
-    public class GUIStyle { public RectOffset margin = new RectOffset(); public float CalcHeight(GUIContent content, float width) { return 20; } }
+    public class GUIStyle { public RectOffset margin = new RectOffset(); public bool richText; public GUIStyle() { } public GUIStyle(GUIStyle other) { } public float CalcHeight(GUIContent content, float width) { return 20; } }
     public class GUISkin { public GUIStyle button = new GUIStyle(); public GUIStyle label = new GUIStyle(); }
     public static class GUI { public delegate void WindowFunction(int id); public static GUISkin skin = new GUISkin(); public static Matrix4x4 matrix; public static Color backgroundColor; public static Color contentColor; public static bool enabled = true; public static void DragWindow() { } public static Rect ModalWindow(int id, Rect rect, WindowFunction func, string text) { return rect; } }
     public static class GUILayout
@@ -97,6 +98,7 @@ namespace UnityEngine
         public static void BeginArea(Rect rect) { }
         public static void EndArea() { }
         public static void Label(string text, params GUILayoutOption[] options) { }
+        public static void Label(string text, GUIStyle style, params GUILayoutOption[] options) { }
         public static float HorizontalSlider(float value, float left, float right) { return value; }
         public static string TextField(string text, int maxLength) { return text; }
         public static string PasswordField(string text, char mask, int maxLength) { return text; }
@@ -223,7 +225,7 @@ public static class DuetChat
 }
 
 public static class DuetInputBlocker { public static void Block(int id, UnityEngine.Rect guiRect, float scale) { } }
-public static class DuetSkin { public static UnityEngine.GUISkin skin = new UnityEngine.GUISkin(); public static UnityEngine.GUIStyle swatch = new UnityEngine.GUIStyle(); public static void DrawTitle(string text, float windowWidth) { } }
+public static class DuetSkin { public static UnityEngine.GUISkin skin = new UnityEngine.GUISkin(); public static UnityEngine.GUIStyle swatch = new UnityEngine.GUIStyle(); public static UnityEngine.GUIStyle richLabel = new UnityEngine.GUIStyle(); public static void DrawTitle(string text, float windowWidth) { } }
 public static class DuetHostLostNotice { public static void Draw(double waitedSeconds, float scale) { } }
 
 public static class DuetMenuCover

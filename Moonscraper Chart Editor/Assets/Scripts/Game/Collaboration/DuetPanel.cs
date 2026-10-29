@@ -21,6 +21,8 @@ public class DuetPanel : MonoBehaviour
     const string PrefColor = "Duet.Color";
     const string PrefShowGhosts = "Duet.ShowGhostNotes";
     const string PrefRainbowSpeed = "Duet.RainbowSpeed";
+    const string PrefGradient = "Duet.Gradient";        // The color the name fades to, or none
+    const string PrefNameStyle = "Duet.NameStyle";      // Bold, italic
     const string PrefWelcomeDone = "Welcome.Done";     // The first-launch name and color box has been answered
 
     static DuetPanel s_instance;
@@ -51,21 +53,24 @@ public class DuetPanel : MonoBehaviour
         if (session == null)
         {
             string name = s_instance.m_username.Trim();
-            return DuetPresence.ToRichText(s_instance.m_color, name.Length > 0 ? name : Environment.UserName);
+            return DuetPresence.ToRichText(s_instance.m_color, s_instance.m_gradient, s_instance.m_nameStyle, name.Length > 0 ? name : Environment.UserName);
         }
 
         List<string> names = new List<string>();
         foreach (DuetUser user in session.users)
-        {
-            DuetPresence presence;
-            int color = 0;
-            if (user.id == session.localUserId)
-                color = s_instance.m_color;
-            else if (session.presences.TryGetValue(user.id, out presence))
-                color = presence.color;
-            names.Add(DuetPresence.ToRichText(color, user.name));
-        }
+            names.Add(RichName(session, user.id, user.name));
         return string.Join(" & ", names.ToArray());
+    }
+
+    // Someone's name in their color (or gradient), bold and italic as they picked, as rich text
+    public static string RichName(DuetSession session, int userId, string name)
+    {
+        DuetPresence presence;
+        if (s_instance != null && session != null && userId == session.localUserId)
+            return DuetPresence.ToRichText(s_instance.m_color, s_instance.m_gradient, s_instance.m_nameStyle, name);
+        if (session != null && session.presences.TryGetValue(userId, out presence))
+            return DuetPresence.ToRichText(presence.color, presence.gradient, presence.style, name);
+        return DuetPresence.ToRichText(0, DuetPresence.NoGradient, 0, name);
     }
 
     // True from a mouse press on this window until the button is let go, even once the mouse leaves the window
@@ -102,6 +107,8 @@ public class DuetPanel : MonoBehaviour
     }
 
     public static int localColor { get { return s_instance != null ? s_instance.m_color : 0; } }
+    public static int localGradient { get { return s_instance != null ? s_instance.m_gradient : DuetPresence.NoGradient; } }
+    public static int localNameStyle { get { return s_instance != null ? s_instance.m_nameStyle : 0; } }
     public static bool showGhostNotes { get { return s_instance == null || s_instance.m_showGhosts; } }
 
     // True while a Moonscraper menu such as Settings is open, or in Preview Mode, and the Duet windows, cursors and
@@ -174,6 +181,9 @@ public class DuetPanel : MonoBehaviour
     string m_hexInput = string.Empty;
     bool m_showCustomColor = false;
     int m_rainbowSpeed = 5;
+    int m_gradient = DuetPresence.NoGradient;
+    int m_nameStyle = 0;
+    string m_gradientHex = "#0000FF";
     bool m_showGhosts = true;
     string m_error = null;
     List<string> m_localAddresses = null;
@@ -199,6 +209,12 @@ public class DuetPanel : MonoBehaviour
             m_color = 0;
         m_hexInput = SliderHexOf(m_color);
         m_rainbowSpeed = Mathf.Clamp(PlayerPrefs.GetInt(PrefRainbowSpeed, 5), 1, DuetPresence.MaxRainbowSpeed);
+        m_gradient = PlayerPrefs.GetInt(PrefGradient, DuetPresence.NoGradient);
+        if (!DuetPresence.IsValidGradient(m_gradient))
+            m_gradient = DuetPresence.NoGradient;
+        if (m_gradient != DuetPresence.NoGradient)
+            m_gradientHex = HexOf(m_gradient);
+        m_nameStyle = PlayerPrefs.GetInt(PrefNameStyle, 0) & DuetPresence.NameStyles;
 
         m_rejoinPending = PlayerPrefs.HasKey(PrefRejoin);
         m_rehostPending = PlayerPrefs.HasKey(PrefRehost);
@@ -598,7 +614,7 @@ public class DuetPanel : MonoBehaviour
     float m_welcomeContentBottom;
     float WelcomeHeight()
     {
-        float guess = 250 + (m_showCustomColor ? 120 : 0) + (DuetPresence.IsRainbow(m_color) ? 30 : 0);
+        float guess = 280 + (m_showCustomColor ? 120 : 0) + (DuetPresence.IsRainbow(m_color) ? 30 : 0) + (m_gradient != DuetPresence.NoGradient ? 60 : 0);
         return Mathf.Max(guess, 30 + m_welcomeContentBottom + 60);
     }
 
@@ -621,10 +637,7 @@ public class DuetPanel : MonoBehaviour
         string shown = m_username.Trim();
         GUILayout.BeginHorizontal();
         GUILayout.Label("Looks like:", GUILayout.Width(90));
-        Color oldContent = GUI.contentColor;
-        GUI.contentColor = DuetPresence.GetColor(m_color);
-        GUILayout.Label(shown.Length > 0 ? shown : "Your name");
-        GUI.contentColor = oldContent;
+        GUILayout.Label(DuetPresence.ToRichText(m_color, m_gradient, m_nameStyle, shown.Length > 0 ? shown : "Your name"), DuetSkin.richLabel);
         GUILayout.EndHorizontal();
         if (Event.current.type == EventType.Repaint)
             m_welcomeContentBottom = GUILayoutUtility.GetLastRect().yMax;
@@ -874,17 +887,9 @@ public class DuetPanel : MonoBehaviour
         int kick = -1;
         foreach (DuetUser user in m_session.users)
         {
-            // In each person's own color, as on their cursor
-            DuetPresence presence;
-            Color content = GUI.contentColor;
-            if (user.id == m_session.localUserId)
-                GUI.contentColor = DuetPresence.GetColor(m_color);
-            else if (m_session.presences.TryGetValue(user.id, out presence))
-                GUI.contentColor = DuetPresence.GetColor(presence.color);
-
+            // In each person's own color (or gradient) and style, as on their cursor
             GUILayout.BeginHorizontal();
-            GUILayout.Label("    " + user.name + (user.id == 0 ? " (host)" : string.Empty));
-            GUI.contentColor = content;
+            GUILayout.Label("    " + RichName(m_session, user.id, user.name) + (user.id == 0 ? " (host)" : string.Empty), DuetSkin.richLabel);
             if (isHost && user.id != 0 && GUILayout.Button("Kick", GUILayout.Width(50)))
                 kick = user.id;
             GUILayout.EndHorizontal();
@@ -962,6 +967,29 @@ public class DuetPanel : MonoBehaviour
             m_hexInput = SliderHexOf(m_color);
     }
 
+    void SetGradient(int gradient, bool updateHex = true)
+    {
+        m_gradient = gradient;
+        PlayerPrefs.SetInt(PrefGradient, m_gradient);
+        if (updateHex && gradient != DuetPresence.NoGradient)
+            m_gradientHex = HexOf(gradient);
+    }
+
+    // A button that shows bold or italic text, lit while on
+    GUIStyle m_richButton, m_richButtonOn, m_richButtonSource;
+    GUIStyle RichButton(bool on)
+    {
+        if (m_richButton == null || m_richButtonSource != GUI.skin.button)     // Made again when the skin changes
+        {
+            m_richButtonSource = GUI.skin.button;
+            m_richButton = new GUIStyle(GUI.skin.button);
+            m_richButton.richText = true;
+            m_richButtonOn = new GUIStyle(DuetSkin.swatch);
+            m_richButtonOn.richText = true;
+        }
+        return on ? m_richButtonOn : m_richButton;
+    }
+
     // Where the custom color sliders start: a rainbow has no one color, so it starts them on white
     static Color SliderColorOf(int color)
     {
@@ -1016,9 +1044,62 @@ public class DuetPanel : MonoBehaviour
         m_showCustomColor = showCustomColor;
         GUI.backgroundColor = rainbow ? DuetPresence.GetColor(m_color) : background;
         if (GUILayout.Toggle(rainbow, rainbow ? "* Rainbow" : "Rainbow", rainbow ? DuetSkin.swatch : GUI.skin.button) && !rainbow)
+        {
             SetColor(DuetPresence.MakeRainbow(m_rainbowSpeed));
+            SetGradient(DuetPresence.NoGradient);   // A rainbow already has every color
+        }
+
+        // A gradient: the name fades from your color to a second one, letter by letter
+        bool gradient = m_gradient != DuetPresence.NoGradient;
+        GUI.backgroundColor = gradient ? DuetPresence.GetColor(m_gradient) : background;
+        bool wantGradient = GUILayout.Toggle(gradient, gradient ? "* Gradient" : "Gradient", gradient ? DuetSkin.swatch : GUI.skin.button);
+        if (wantGradient != gradient)
+        {
+            if (wantGradient && DuetPresence.IsRainbow(m_color))
+                SetColor(0);
+            Color end;
+            SetGradient(!wantGradient ? DuetPresence.NoGradient
+                : ColorUtility.TryParseHtmlString(m_gradientHex, out end) ? DuetPresence.MakeCustomColor(end) : DuetPresence.ColorCount - 3);
+        }
         GUI.backgroundColor = background;
         GUILayout.EndHorizontal();
+
+        if (m_gradient != DuetPresence.NoGradient)
+        {
+            GUILayout.Label("Fades to: " + DuetPresence.GetColorName(m_gradient));
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < DuetPresence.ColorCount; ++i)
+            {
+                GUI.backgroundColor = DuetPresence.GetColor(i);
+                if (GUILayout.Toggle(i == m_gradient, i == m_gradient ? "*" : " ", DuetSkin.swatch, GUILayout.MinWidth(16), GUILayout.ExpandWidth(true)) && i != m_gradient)
+                    SetGradient(i);
+            }
+            GUI.backgroundColor = background;
+            GUILayout.Label("Hex", GUILayout.Width(36));
+            string hex = GUILayout.TextField(m_gradientHex, 7);
+            GUILayout.EndHorizontal();
+            if (hex != m_gradientHex)
+            {
+                m_gradientHex = hex;
+                Color typed;
+                if (ColorUtility.TryParseHtmlString(hex.StartsWith("#") ? hex : "#" + hex, out typed) && hex.TrimStart('#').Length == 6)
+                    SetGradient(DuetPresence.MakeCustomColor(typed), false);
+            }
+        }
+
+        // Bold and italic, for your name everywhere it shows (list, cursor tag, chat, charter credit)
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Name style", GUILayout.Width(85));
+        bool bold = (m_nameStyle & DuetPresence.NameBold) != 0;
+        bool italic = (m_nameStyle & DuetPresence.NameItalic) != 0;
+        bool newBold = GUILayout.Toggle(bold, "<b>Bold</b>", RichButton(bold));
+        bool newItalic = GUILayout.Toggle(italic, "<i>Italic</i>", RichButton(italic));
+        GUILayout.EndHorizontal();
+        if (newBold != bold || newItalic != italic)
+        {
+            m_nameStyle = (newBold ? DuetPresence.NameBold : 0) | (newItalic ? DuetPresence.NameItalic : 0);
+            PlayerPrefs.SetInt(PrefNameStyle, m_nameStyle);
+        }
 
         if (rainbow)
         {

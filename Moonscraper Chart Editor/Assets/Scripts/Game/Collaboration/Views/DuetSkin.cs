@@ -41,6 +41,7 @@ public static class DuetSkin
     static GUISkin s_skin;
     static GUIStyle s_swatch;
     static GUIStyle s_title;
+    static GUIStyle s_richLabel;
     static Font s_font;
 
     public static GUISkin skin
@@ -78,6 +79,20 @@ public static class DuetSkin
                 s_swatch.onNormal.textColor = s_swatch.onHover.textColor = s_swatch.onActive.textColor = Color.black;
             }
             return s_swatch;
+        }
+    }
+
+    // A label that reads color, bold and italic tags, for names drawn in their gradient and style
+    public static GUIStyle richLabel
+    {
+        get
+        {
+            if (s_richLabel == null)
+            {
+                s_richLabel = new GUIStyle(skin.label);
+                s_richLabel.richText = true;
+            }
+            return s_richLabel;
         }
     }
 
@@ -120,6 +135,7 @@ public static class DuetSkin
         s_skin = null;
         s_swatch = null;
         s_title = null;
+        s_richLabel = null;
     }
 
     // A white image in a color, keeping its alpha
