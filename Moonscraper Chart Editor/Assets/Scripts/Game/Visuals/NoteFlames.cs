@@ -300,7 +300,21 @@ public class NoteFlames : MonoBehaviour
         Vector3 basePosition = flame.basePosition;
         ChartEditor editor = ChartEditor.Instance;
         if (editor && editor.visibleStrikeline)
-            basePosition.y = editor.visibleStrikeline.position.y + LaneSpacing(editor) * LiftLanes;
+        {
+            // The flame sits a little up the highway from its fret, further from the camera, where the lanes look
+            // closer together. Spread it out so it lines up on screen with the fret itself (outer lanes the most).
+            Vector3 fret = basePosition;
+            fret.y = editor.visibleStrikeline.position.y;
+            basePosition.y = fret.y + LaneSpacing(editor) * LiftLanes;
+            if (!camera.orthographic)
+            {
+                Vector3 forward = camera.transform.forward;
+                float fretDepth = Vector3.Dot(fret - camera.transform.position, forward);
+                float flameDepth = Vector3.Dot(basePosition - camera.transform.position, forward);
+                if (fretDepth > 0.01f && flameDepth > 0.01f)
+                    basePosition.x = camera.transform.position.x + (basePosition.x - camera.transform.position.x) * flameDepth / fretDepth;
+            }
+        }
         transform.position = basePosition + camera.transform.up * (size.y * 0.42f);    // Rises from the fret
 
         Color color = flame.color;
