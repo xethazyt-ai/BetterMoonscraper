@@ -35,6 +35,7 @@ public class CustomizationSettingsTab : MonoBehaviour
 
     Text m_folderText;
     Text m_statusText;
+    Text m_clapText;
     readonly Dictionary<CustomizationPrefs.Kind, Choice> m_choices = new Dictionary<CustomizationPrefs.Kind, Choice>();
 
     bool m_built = false;
@@ -129,6 +130,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         AddChoiceRow("Color profile", CustomizationPrefs.Kind.ColorProfile, BrowseColorProfile);
         AddChoiceRow("Highway", CustomizationPrefs.Kind.Highway, () => BrowseImage(CustomizationPrefs.Kind.Highway));
         AddChoiceRow("Background", CustomizationPrefs.Kind.Background, () => BrowseImage(CustomizationPrefs.Kind.Background));
+        AddClapSoundRow();
         AddThemeRow();
         AddMenuColorRow();
 
@@ -291,6 +293,38 @@ public class CustomizationSettingsTab : MonoBehaviour
             label.offsetMin = new Vector2(26, label.offsetMin.y);
     }
 
+    // Your own clap sound, used in place of Moonscraper's (its volume is in the Clap Settings menu)
+    static readonly ExtensionFilter s_soundFilter = new ExtensionFilter("Sounds", ClapSound.Extensions);
+
+    void AddClapSoundRow()
+    {
+        AddLabel("Clap sound");
+        float textWidth = ControlWidth - ButtonWidth - Gap;
+        m_clapText = AddText(ControlLeft, textWidth, RowHeight, TextAnchor.MiddleLeft, 14);
+        AddButton("Default", ControlLeft + textWidth + Gap, () =>
+        {
+            ClapSound.ClearCustom();
+            m_statusText.text = string.Empty;
+            RefreshClapSound();
+        });
+        AddButton("Browse", ControlLeft + ControlWidth + Gap, () =>
+        {
+            string path;
+            if (FileExplorer.OpenFilePanel(s_soundFilter, "wav", out path))
+            {
+                m_statusText.text = ClapSound.SetCustom(path) ?? string.Empty;
+                RefreshClapSound();
+            }
+        });
+        ++m_rows;
+    }
+
+    void RefreshClapSound()
+    {
+        if (m_clapText)
+            m_clapText.text = ClapSound.customName ?? "Default clap";
+    }
+
     // Light (Moonscraper's own look) or Dark for the menus and panels
     void AddThemeRow()
     {
@@ -424,6 +458,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         Populate(m_choices[CustomizationPrefs.Kind.ColorProfile], CloneHeroFolders.ListColorProfiles(folder), "Default colors");
         Populate(m_choices[CustomizationPrefs.Kind.Highway], CloneHeroFolders.ListHighways(folder), "Default highway");
         Populate(m_choices[CustomizationPrefs.Kind.Background], CloneHeroFolders.ListBackgrounds(folder), "Default background");
+        RefreshClapSound();
     }
 
     void Populate(Choice choice, List<CloneHeroFolders.Item> items, string defaultName)

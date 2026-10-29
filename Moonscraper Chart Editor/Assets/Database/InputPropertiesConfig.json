@@ -1187,6 +1187,17 @@
                 "category": 0,
                 "allowSameFrameMultiInput": false
             }
+        },
+        {
+            "mSChartEditorInputAction": "EqualSpacing",
+            "properties": {
+                "displayName": "Equal Spacing (Selected Notes)",
+                "rebindable": true,
+                "hiddenInLists": false,
+                "anyDirectionAxis": false,
+                "category": 1,
+                "allowSameFrameMultiInput": false
+            }
         }
     ]
 }

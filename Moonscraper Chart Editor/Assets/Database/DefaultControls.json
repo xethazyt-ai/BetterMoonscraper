@@ -2472,6 +2472,30 @@
                 ],
                 "jsMaps": []
             }
+        },
+        {
+            "action": "EqualSpacing",
+            "input": {
+                "kbMaps": [
+                    {
+                        "modifiers": 2,
+                        "keys": [
+                            101
+                        ]
+                    },
+                    {
+                        "modifiers": 0,
+                        "keys": []
+                    }
+                ],
+                "gpButtonMaps": [
+                    {
+                        "buttons": [],
+                        "axes": []
+                    }
+                ],
+                "jsMaps": []
+            }
         }
     ]
 }

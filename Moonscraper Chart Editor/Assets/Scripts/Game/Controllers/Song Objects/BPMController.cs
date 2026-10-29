@@ -114,6 +114,11 @@ public class BPMController : SongObjectController {
     {
         base.OnSelectableMouseDown();
 
+        // Right click held on a marker and dragged onto the next one: a gradual tempo change between them
+        if (!MoonscraperEngine.Input.KeyboardDevice.ctrlKeyBeingPressed && Input.GetMouseButtonDown(1) && !Input.GetMouseButton(0)
+            && editor.currentState == ChartEditor.State.Editor && editor.toolManager.currentToolId != EditorObjectToolManager.ToolID.Eraser)
+            BpmRamp.Begin(bpm, gameObject);
+
         if (MoonscraperEngine.Input.KeyboardDevice.ctrlKeyBeingPressed && Input.GetMouseButtonDown(1))
         {
             hasPushed = false;

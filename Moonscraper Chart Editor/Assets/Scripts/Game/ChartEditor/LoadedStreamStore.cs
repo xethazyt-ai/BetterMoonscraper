@@ -48,6 +48,18 @@ public class LoadedStreamStore
         }
     }
 
+    // Loads one sound again, for example the clap after its volume or sound changes in the settings
+    public void ReloadSound(string key, Skin skin)
+    {
+        StreamConfig config;
+        if (!soundMapConfig.TryGetValue(key, out config))
+            return;
+
+        if (config.stream != null)
+            config.stream.Dispose();
+        config.stream = LoadSoundClip(key, skin, config.defaultPath);
+    }
+
     public void DisposeSounds()
     {
         foreach (var soundConfigKV in soundMapConfig)
@@ -62,6 +74,9 @@ public class LoadedStreamStore
     {
         string customPath = customSkin.GetSkinItemFilepath(customSkinKey);
         string currentSFX = string.IsNullOrEmpty(customPath) ? defaultPath : customPath;
+
+        if (customSkinKey == SkinKeys.clap)
+            return ClapSound.LoadSample(currentSFX, 15);     // At the clap volume, or the clap sound picked in Customize
 
         return AudioManager.LoadSampleStream(currentSFX, 15);
     }

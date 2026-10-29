@@ -94,6 +94,7 @@ public class GroupSelectPanelController : MonoBehaviour
         }
 
         editor = ChartEditor.Instance;
+        BuildStepInfo();
         editor.events.chartReloadedEvent.Register(UpdateUIActiveness);
         editor.events.lanesChangedEvent.Register(OnLanesChanged);
         editor.events.drumsModeOptionChangedEvent.Register(UpdateUIActiveness);
@@ -120,6 +121,121 @@ public class GroupSelectPanelController : MonoBehaviour
     {
         if (!Services.IsTyping && !Globals.modifierInputActive)
             UpdateShortcuts();
+
+        UpdateStepInfo();
+
+        // Its own key (Ctrl+E by default), which holds a modifier, so it's checked outside the shortcuts above
+        if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.EqualSpacing))
+            EqualiseNoteSpacing();
+    }
+
+    // "Step- 16" and "NPS- 13.33" above Flags-, for the selected notes
+    Text m_stepText;
+    Text m_npsText;
+    int m_stepInfoCount = -1;
+    uint m_stepInfoFirst, m_stepInfoLast;
+    float m_stepInfoCheckedAt;
+
+    void BuildStepInfo()
+    {
+        Text flags = null;
+        foreach (Text text in GetComponentsInChildren<Text>(true))
+        {
+            if (text.text.Trim() == "Flags-")
+                flags = text;
+        }
+        if (!flags)
+        {
+            Debug.LogWarning("Selection panel layout has changed, so the step and notes per second weren't added");
+            return;
+        }
+
+        int index = flags.transform.GetSiblingIndex();
+        m_stepText = MakeInfoText(flags, "Step Info", index);
+        m_npsText = MakeInfoText(flags, "NPS Info", index + 1);
+    }
+
+    static Text MakeInfoText(Text template, string name, int siblingIndex)
+    {
+        Text text = Instantiate(template, template.transform.parent);
+        text.name = name;
+        text.text = string.Empty;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.transform.SetSiblingIndex(siblingIndex);
+        return text;
+    }
+
+    void UpdateStepInfo()
+    {
+        if (!m_stepText || !editor)
+            return;
+
+        // Only worked out again when the selection looks different, or every half second (the BPM may change)
+        IList<SongObject> selected = editor.selectedObjectsManager.currentSelectedObjects;
+        uint first = selected.Count > 0 ? selected[0].tick : 0;
+        uint last = selected.Count > 0 ? selected[selected.Count - 1].tick : 0;
+        if (selected.Count == m_stepInfoCount && first == m_stepInfoFirst && last == m_stepInfoLast && Time.unscaledTime - m_stepInfoCheckedAt < 0.5f)
+            return;
+        m_stepInfoCount = selected.Count;
+        m_stepInfoFirst = first;
+        m_stepInfoLast = last;
+        m_stepInfoCheckedAt = Time.unscaledTime;
+
+        // Chords count once, as in Clone Hero
+        List<Note> positions = new List<Note>();
+        foreach (SongObject songObject in selected)
+        {
+            Note note = songObject as Note;
+            if (note != null && (positions.Count == 0 || positions[positions.Count - 1].tick != note.tick))
+                positions.Add(note);
+        }
+        positions.Sort((a, b) => a.tick.CompareTo(b.tick));
+        for (int i = positions.Count - 1; i > 0; --i)
+        {
+            if (positions[i].tick == positions[i - 1].tick)
+                positions.RemoveAt(i);
+        }
+
+        m_stepText.text = "Step- " + StepText(positions);
+        m_npsText.text = "NPS- " + NpsText(positions);
+    }
+
+    // The step the notes are spaced at, like the Step box: notes per four beats. Gaps may be a tick out from rounding
+    // (sevenths and the like), but anything more and the notes aren't all on one step.
+    string StepText(List<Note> positions)
+    {
+        if (positions.Count < 2)
+            return "Unavailable";
+
+        uint smallest = uint.MaxValue, largest = 0;
+        for (int i = 1; i < positions.Count; ++i)
+        {
+            uint gap = positions[i].tick - positions[i - 1].tick;
+            smallest = System.Math.Min(smallest, gap);
+            largest = System.Math.Max(largest, gap);
+        }
+        if (largest - smallest > 1 || smallest == 0)
+            return "Unavailable";
+
+        double averageGap = (double)(positions[positions.Count - 1].tick - positions[0].tick) / (positions.Count - 1);
+        double step = editor.currentSong.resolution * 4 / averageGap;
+        double rounded = System.Math.Round(step);
+        if (System.Math.Abs(step - rounded) < 0.02)
+            return ((int)rounded).ToString();
+        return step.ToString("0.##");
+    }
+
+    // Notes per second through the selection: how many notes follow the first, over the time from the first to the
+    // last, so even 16ths at 200 BPM read 13.33. Chords count as one note.
+    static string NpsText(List<Note> positions)
+    {
+        if (positions.Count < 2)
+            return "Unavailable";
+
+        double seconds = positions[positions.Count - 1].time - positions[0].time;
+        if (seconds <= 0)
+            return "Unavailable";
+        return ((positions.Count - 1) / seconds).ToString("0.##");
     }
 
     void OnLanesChanged(in int laneCount)

@@ -157,6 +157,8 @@ public enum MSChartEditorInputActions
 
     PreviewMode,
     ResetMenuPositions,
+
+    EqualSpacing,
 }
 
 public static class MSChartEditorInput
