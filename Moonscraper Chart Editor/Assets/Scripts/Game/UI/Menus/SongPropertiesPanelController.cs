@@ -283,39 +283,6 @@ public class SongPropertiesPanelController : TabMenu
         }
     }
 
-    const float PhraseHeight = 72;    // Four lines
-
-    const int FieldFontSize = 18;     // As big as the labels; the boxes used 14
-    const float FieldRightMargin = 14;
-
-    // The General text boxes reach out to the panel's right edge, with bigger text, so more of what's in them shows
-    void WidenFields(RectTransform content, Text labelTemplate)
-    {
-        float right = content.rect.width - FieldRightMargin;
-        RectTransform genreRect = (RectTransform)genre.transform;
-        float oldRight = genreRect.anchoredPosition.x + genreRect.sizeDelta.x * (1 - genreRect.pivot.x);
-        if (right <= oldRight)
-            return;     // Not laid out yet, or no room: leave them as they are
-
-        foreach (InputField field in content.GetComponentsInChildren<InputField>(true))
-        {
-            if (field.transform.parent != content)
-                continue;
-            RectTransform rect = (RectTransform)field.transform;
-            if (rect.anchorMin.x != 0 || rect.anchorMax.x != 0)
-                continue;   // Only the column of boxes laid out from the left
-            float left = rect.anchoredPosition.x - rect.sizeDelta.x * rect.pivot.x;
-            rect.sizeDelta = new Vector2(right - left, rect.sizeDelta.y);
-            rect.anchoredPosition = new Vector2(left + rect.sizeDelta.x * rect.pivot.x, rect.anchoredPosition.y);
-            if (field.textComponent)
-                field.textComponent.fontSize = Mathf.Max(field.textComponent.fontSize, FieldFontSize);
-            Text placeholder = field.placeholder as Text;
-            if (placeholder)
-                placeholder.fontSize = Mathf.Max(placeholder.fontSize, FieldFontSize);
-        }
-        SongPropertiesFormatBar.Right = right;
-    }
-
     // Adds a Loading phrase field and the formatting buttons under the General settings, the first time the menu opens
     void BuildFormatting()
     {
@@ -341,8 +308,6 @@ public class SongPropertiesPanelController : TabMenu
             return;
         }
 
-        WidenFields(content, labelTemplate);
-
         RectTransform lastLabel = (RectTransform)mediaType.transform;
         float rowY = lastLabel.anchoredPosition.y - 35;
 
@@ -358,23 +323,7 @@ public class SongPropertiesPanelController : TabMenu
         loadingPhrase.onEndEdit = new InputField.SubmitEvent();
         loadingPhrase.onValueChanged.AddListener(value => setSongProperties());
         loadingPhrase.onValidateInput = ValidateStringMetadataInput;
-        // Loading phrases run long, so the box gets its own row under the label, as wide as the labels and fields
-        // together, and wraps over a few lines instead of shrinking the text to fit
-        RectTransform phraseRect = (RectTransform)loadingPhrase.transform;
-        RectTransform genreRect = (RectTransform)genre.transform;
-        RectTransform labelRect = labelTemplate.rectTransform;
-        float left = labelRect.anchoredPosition.x - labelRect.sizeDelta.x * labelRect.pivot.x;
-        float right = genreRect.anchoredPosition.x + genreRect.sizeDelta.x * (1 - genreRect.pivot.x);
-        rowY -= genreRect.sizeDelta.y + 4;
-        phraseRect.pivot = new Vector2(0, 1);
-        phraseRect.sizeDelta = new Vector2(right - left, PhraseHeight);
-        phraseRect.anchoredPosition = new Vector2(left, rowY + genreRect.sizeDelta.y / 2);
-        loadingPhrase.lineType = InputField.LineType.MultiLineSubmit;    // Wraps; Enter still finishes, since song.ini is one line
-        if (loadingPhrase.textComponent)
-            loadingPhrase.textComponent.horizontalOverflow = HorizontalWrapMode.Wrap;
-        if (loadingPhrase.placeholder is Text)
-            ((Text)loadingPhrase.placeholder).horizontalOverflow = HorizontalWrapMode.Wrap;
-        rowY -= PhraseHeight - genreRect.sizeDelta.y;
+        ((RectTransform)loadingPhrase.transform).anchoredPosition = new Vector2(((RectTransform)genre.transform).anchoredPosition.x, rowY);
 
         InputField[] richFields = { songName, artist, charter, album, genre, loadingPhrase };
         foreach (InputField field in richFields)
