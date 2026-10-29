@@ -133,6 +133,7 @@ public class SongPropertiesPanelController : TabMenu
 
     protected override void OnDisable()
     {
+        CollapseExtended();
         DuetEditorSong.onRemoteSongInfoApplied -= RefreshFromSong;
         UpdateIni();
         base.OnDisable();
@@ -329,10 +330,119 @@ public class SongPropertiesPanelController : TabMenu
         foreach (InputField field in richFields)
             field.characterLimit = 0;   // Tags make the text longer than it looks
 
+        AddExtendButtons(content, buttonTemplate, new[] { songName, artist, charter, album, genre, mediaType, loadingPhrase });
+
         float bottom;
-        formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpSongInfo, setSongProperties, out bottom);
-        iconPicker = SongIconPicker.Build(content, bottom - 6, SongPropertiesFormatBar.Right, genre, labelTemplate, buttonTemplate, GetIcon, SetIcon, out bottom);
+        formatBar = SongPropertiesFormatBar.Build(content, rowY - 30, richFields, genre, labelTemplate, buttonTemplate, LookUpSongInfo, setSongProperties, out bottom);
+        iconPicker = SongIconPicker.Build(content, bottom - 10, SongPropertiesFormatBar.Right, genre, labelTemplate, buttonTemplate, GetIcon, SetIcon, out bottom);
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
+    }
+
+    // A small + button beside each text box. It makes that box wider and several lines tall, over the rows under it,
+    // so long text can be seen whole; - (or opening another one, or closing the menu) puts it back.
+    class Extendable
+    {
+        public InputField field;
+        public Button button;
+        public Text buttonText;
+        public Vector2 position, size, pivot;
+        public int siblingIndex;
+        public InputField.LineType lineType;
+        public HorizontalWrapMode wrap, placeholderWrap;
+    }
+    readonly List<Extendable> extendables = new List<Extendable>();
+    Extendable extended;
+    float extendButtonX;
+    const float ExtendButtonSize = 24;
+    const float ExtendedHeight = 96;    // About five lines
+
+    void AddExtendButtons(RectTransform content, Button buttonTemplate, InputField[] fields)
+    {
+        extendButtonX = Mathf.Max(SongPropertiesFormatBar.Right + 6, content.rect.width - ExtendButtonSize - 10);
+        foreach (InputField field in fields)
+        {
+            if (!field)
+                continue;
+
+            Extendable entry = new Extendable { field = field };
+            RectTransform rect = (RectTransform)field.transform;
+            entry.button = Instantiate(buttonTemplate, content);
+            entry.button.name = field.name + " Extend Button";
+            entry.button.onClick = new Button.ButtonClickedEvent();
+            entry.button.onClick.AddListener(() => ToggleExtended(entry));
+            foreach (Text text in entry.button.GetComponentsInChildren<Text>(true))
+            {
+                text.text = "+";
+                entry.buttonText = text;
+            }
+            RectTransform buttonRect = (RectTransform)entry.button.transform;
+            buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0, 1);
+            buttonRect.pivot = new Vector2(0, 0.5f);
+            buttonRect.sizeDelta = new Vector2(ExtendButtonSize, ExtendButtonSize);
+            buttonRect.anchoredPosition = new Vector2(extendButtonX, rect.anchoredPosition.y + rect.sizeDelta.y * (0.5f - rect.pivot.y));
+            extendables.Add(entry);
+        }
+    }
+
+    void ToggleExtended(Extendable entry)
+    {
+        bool wasExtended = extended == entry;
+        CollapseExtended();
+        if (wasExtended)
+            return;
+
+        extended = entry;
+        InputField field = entry.field;
+        RectTransform rect = (RectTransform)field.transform;
+        entry.position = rect.anchoredPosition;
+        entry.size = rect.sizeDelta;
+        entry.pivot = rect.pivot;
+        entry.siblingIndex = rect.GetSiblingIndex();
+        entry.lineType = field.lineType;
+        entry.wrap = field.textComponent ? field.textComponent.horizontalOverflow : HorizontalWrapMode.Overflow;
+        Text placeholder = field.placeholder as Text;
+        entry.placeholderWrap = placeholder ? placeholder.horizontalOverflow : HorizontalWrapMode.Overflow;
+
+        // Same top left corner, out to just before the + buttons and down over the rows below
+        float left = entry.position.x - entry.size.x * entry.pivot.x;
+        float top = entry.position.y + entry.size.y * (1 - entry.pivot.y);
+        rect.pivot = new Vector2(0, 1);
+        rect.sizeDelta = new Vector2(Mathf.Max(entry.size.x, extendButtonX - 4 - left), Mathf.Max(entry.size.y, ExtendedHeight));
+        rect.anchoredPosition = new Vector2(left, top);
+        field.lineType = InputField.LineType.MultiLineSubmit;     // Wraps; Enter still finishes, as song.ini is one line
+        if (field.textComponent)
+            field.textComponent.horizontalOverflow = HorizontalWrapMode.Wrap;
+        if (placeholder)
+            placeholder.horizontalOverflow = HorizontalWrapMode.Wrap;
+        rect.SetAsLastSibling();     // Drawn over the rows it covers
+        entry.button.transform.SetAsLastSibling();
+        if (entry.buttonText)
+            entry.buttonText.text = "-";
+        field.ForceLabelUpdate();
+    }
+
+    void CollapseExtended()
+    {
+        Extendable entry = extended;
+        extended = null;
+        if (entry == null || !entry.field)
+            return;
+
+        InputField field = entry.field;
+        RectTransform rect = (RectTransform)field.transform;
+        rect.pivot = entry.pivot;
+        rect.sizeDelta = entry.size;
+        rect.anchoredPosition = entry.position;
+        rect.SetSiblingIndex(entry.siblingIndex);
+        field.lineType = entry.lineType;
+        if (field.textComponent)
+            field.textComponent.horizontalOverflow = entry.wrap;
+        Text placeholder = field.placeholder as Text;
+        if (placeholder)
+            placeholder.horizontalOverflow = entry.placeholderWrap;
+        if (entry.buttonText)
+            entry.buttonText.text = "+";
+        field.ForceLabelUpdate();
     }
 
     // The source or charter icon Clone Hero shows for the song: song.ini's "icon"

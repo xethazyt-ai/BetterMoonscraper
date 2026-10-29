@@ -14,7 +14,7 @@ public class SongIconPicker : MonoBehaviour
     const float Left = 52;
     const float RowHeight = 30;
     const float CellSize = 64;
-    const float CellGap = 4;
+    const float CellGap = 8;
     const float ImageSize = 40;
     const int ResultRows = 2;
 
@@ -58,7 +58,7 @@ public class SongIconPicker : MonoBehaviour
         foreach (Text text in none.GetComponentsInChildren<Text>(true))
             text.text = "None";
         SongPropertiesFormatBar.Place(none.GetComponent<RectTransform>(), right - 66, y, 66, RowHeight);
-        y -= RowHeight + 4;
+        y -= RowHeight + 10;
 
         picker.m_search = Instantiate(fieldTemplate, content);
         picker.m_search.name = "Icon Search InputField";
@@ -72,7 +72,7 @@ public class SongIconPicker : MonoBehaviour
             placeholder.text = "Search icons (charter, setlist or source)";
         picker.m_search.onValueChanged.AddListener(query => picker.ShowResults());
         SongPropertiesFormatBar.Place(picker.m_search.GetComponent<RectTransform>(), Left, y, right - Left, RowHeight);
-        y -= RowHeight + 6;
+        y -= RowHeight + 10;
 
         int columns = Mathf.Max(1, Mathf.FloorToInt((right - Left + CellGap) / (CellSize + CellGap)));
         for (int row = 0; row < ResultRows; ++row)
@@ -89,7 +89,7 @@ public class SongIconPicker : MonoBehaviour
         picker.m_status.alignment = TextAnchor.UpperLeft;
         SongPropertiesFormatBar.Place(picker.m_status.rectTransform, Left, y, right - Left, 40);
 
-        bottom = y - 44;
+        bottom = y - 60;
         return picker;
     }
 
