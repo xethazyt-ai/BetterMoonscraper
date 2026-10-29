@@ -14,7 +14,7 @@ using UnityEngine.UI;
 public class SongPropertiesFormatBar : MonoBehaviour
 {
     const float Left = 52;
-    public static float Right = 381.3f;     // Moved out to the panel's edge when the text boxes are widened
+    public const float Right = 381.3f;
     const float RowHeight = 30;
 
     static readonly string[] s_swatches = { "#FF0000", "#FFA500", "#FFFF00", "#00FF00", "#0000FF", "#800080", "#FFFFFF" };
@@ -24,8 +24,6 @@ public class SongPropertiesFormatBar : MonoBehaviour
     int m_selectionStart, m_selectionEnd;
     InputField m_sizeField;
     InputField m_colorField;
-    InputField m_gradientField;
-    InputField m_wheelTarget;       // Which color box the sliders set: Color's, or the gradient's end
     RgbSliderPicker m_wheel;
     Text m_preview;
     string m_previewSource;
@@ -94,32 +92,16 @@ public class SongPropertiesFormatBar : MonoBehaviour
         }
         y -= RowHeight + 4;
 
-        // A gradient: each letter fades from the Color box's color to this one
-        x = Left;
-        Label(labelTemplate, content, "Fade to", x, y, 76);
-        x += 80;
-        bar.m_gradientField = MakeField(fieldTemplate, content, "#0000FF", x, y, 76);
-        bar.m_gradientField.characterLimit = 9;
-        x += 80;
-        MakeButton(buttonTemplate, content, "Gradient", x, y, 90, bar.ApplyGradient);
-        y -= RowHeight + 4;
-
-        // Any color: pick it with the sliders (as in Collab Mode), then press Color. The sliders set whichever of the
-        // two color boxes was clicked last.
-        bar.m_wheelTarget = bar.m_colorField;
+        // Any color: pick it with the sliders (as in Collab Mode), then press Color
         bar.m_wheel = RgbSliderPicker.Build(content, Left, y, Right - Left, labelTemplate.font, labelTemplate.color, null, false);
-        bar.m_wheel.onPicked = picked => bar.m_wheelTarget.text = "#" + ColorUtility.ToHtmlStringRGB(picked);
-        foreach (InputField colorField in new[] { bar.m_colorField, bar.m_gradientField })
+        bar.m_wheel.onPicked = picked => bar.m_colorField.text = "#" + ColorUtility.ToHtmlStringRGB(picked);
+        bar.m_colorField.onValueChanged.AddListener(typed =>
         {
-            InputField field = colorField;
-            field.onValueChanged.AddListener(typed =>
-            {
-                Color parsed;
-                string hex;
-                if (field == bar.m_wheelTarget && RichTextIni.TryParseColor(typed, out hex) && ColorUtility.TryParseHtmlString(hex, out parsed) && !ColorsMatch(parsed, bar.m_wheel.color))
-                    bar.m_wheel.SetColor(parsed);
-            });
-        }
+            Color parsed;
+            string hex;
+            if (RichTextIni.TryParseColor(typed, out hex) && ColorUtility.TryParseHtmlString(hex, out parsed) && !ColorsMatch(parsed, bar.m_wheel.color))
+                bar.m_wheel.SetColor(parsed);
+        });
         Color start;
         if (ColorUtility.TryParseHtmlString(bar.m_colorField.text, out start))
             bar.m_wheel.SetColor(start);
@@ -138,18 +120,6 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
     void Update()
     {
-        foreach (InputField colorField in new[] { m_colorField, m_gradientField })
-        {
-            Color parsed;
-            string hex;
-            if (colorField && colorField.isFocused && colorField != m_wheelTarget)
-            {
-                m_wheelTarget = colorField;
-                if (RichTextIni.TryParseColor(colorField.text, out hex) && ColorUtility.TryParseHtmlString(hex, out parsed))
-                    m_wheel.SetColor(parsed);
-            }
-        }
-
         foreach (InputField field in m_fields)
         {
             if (field && field.isFocused)
@@ -175,7 +145,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format. For any color, set it with the sliders (or type it) and press Color, or set two and press Gradient to fade the letters from one to the other. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
+            m_preview.text = "Select text in a field above, then pick a format. For any color, set it with the sliders (or type it) and press Color. Underline and strikethrough only show in Clone Hero. The codes are in the Advanced tab.";
         }
     }
 
@@ -194,7 +164,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         formatted.overlay.name = "Formatted Text";
         formatted.overlay.supportRichText = true;
         formatted.overlay.raycastTarget = false;
-        formatted.overlay.horizontalOverflow = field.multiLine ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
+        formatted.overlay.horizontalOverflow = HorizontalWrapMode.Overflow;
         formatted.overlay.verticalOverflow = VerticalWrapMode.Overflow;
         formatted.overlay.enabled = false;
 
@@ -223,11 +193,9 @@ public class SongPropertiesFormatBar : MonoBehaviour
             formatted.shownWidth = width;
             int size = formatted.overlay.fontSize;
             formatted.overlay.text = RichTextIni.ToPreview(formatted.tagged, size, size * 3 / 2);
-            // A multi-line box (the Loading phrase) wraps, and only shrinks if even that runs out of lines
-            float room = field.multiLine ? rect.rect.height : width;
-            float needed = field.multiLine ? formatted.overlay.preferredHeight : formatted.overlay.preferredWidth;
-            formatted.overflows = room > 0 && needed > room;
-            float scale = formatted.overflows ? room / needed : 1;
+            float needed = formatted.overlay.preferredWidth;
+            formatted.overflows = width > 0 && needed > width;
+            float scale = formatted.overflows ? width / needed : 1;
             rect.localScale = new Vector3(scale, scale, 1);
         }
 
@@ -329,18 +297,6 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
         m_colorField.text = hex;
         Wrap("<color=" + hex + ">", "</color>");
-    }
-
-    void ApplyGradient()
-    {
-        string from, to;
-        if (!RichTextIni.TryParseColor(m_colorField.text, out from))
-            m_colorField.text = from = "#FFA500";
-        if (!RichTextIni.TryParseColor(m_gradientField.text, out to))
-            m_gradientField.text = to = "#0000FF";
-
-        InputField field = target;
-        SetFormatted(field, RichTextIni.GradientVisible(GetTagged(field), m_selectionStart, m_selectionEnd, from, to));
     }
 
     static bool ColorsMatch(Color a, Color b)
