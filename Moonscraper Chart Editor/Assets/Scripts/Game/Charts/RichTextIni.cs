@@ -341,6 +341,13 @@ public static class RichTextIni
         ini.WriteValue(section, realKey, " " + (value ?? string.Empty).Trim());
     }
 
+    public static void DeleteIni(INIParser ini, string key)
+    {
+        string section, realKey;
+        for (int tries = 0; tries < 8 && FindKey(ini, key, out section, out realKey); ++tries)
+            ini.KeyDelete(section, realKey);
+    }
+
     static bool FindKey(INIParser ini, string key, out string section, out string realKey)
     {
         section = null;

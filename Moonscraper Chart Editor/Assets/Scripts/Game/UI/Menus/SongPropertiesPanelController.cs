@@ -46,6 +46,8 @@ public class SongPropertiesPanelController : TabMenu
 
     // Clone Hero can show these formatted (bold, colors and so on). The formatting is kept in song.ini only.
     InputField loadingPhrase;
+    SongIconPicker iconPicker;
+    const string IconKey = "icon";
     SongPropertiesFormatBar formatBar;
     const string LoadingPhraseKey = "loading_phrase";
     bool lookingUp = false;
@@ -94,6 +96,8 @@ public class SongPropertiesPanelController : TabMenu
         base.OnEnable();
 
         BuildFormatting();
+        if (iconPicker)
+            iconPicker.Refresh();
         lookingUp = false;      // A look up still going when the menu closed was stopped
 
         init = true;
@@ -154,6 +158,8 @@ public class SongPropertiesPanelController : TabMenu
         if (loadingPhrase)
             SetRichUnlessTyping(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
         init = false;
+        if (iconPicker)
+            iconPicker.Refresh();
 
         if (!customIniSettings.isFocused)
             UpdateIniTextFromSongProperties();
@@ -376,7 +382,25 @@ public class SongPropertiesPanelController : TabMenu
 
         float bottom;
         formatBar = SongPropertiesFormatBar.Build(content, rowY - 20, richFields, genre, labelTemplate, buttonTemplate, LookUpSongInfo, setSongProperties, out bottom);
+        iconPicker = SongIconPicker.Build(content, bottom - 6, SongPropertiesFormatBar.Right, genre, labelTemplate, buttonTemplate, GetIcon, SetIcon, out bottom);
         content.sizeDelta = new Vector2(content.sizeDelta.x, Mathf.Max(content.sizeDelta.y, -bottom + 10));
+    }
+
+    // The source or charter icon Clone Hero shows for the song: song.ini's "icon"
+    string GetIcon()
+    {
+        return RichTextIni.ReadIni(editor.currentSong.iniProperties, IconKey) ?? string.Empty;
+    }
+
+    void SetIcon(string id)
+    {
+        INIParser ini = editor.currentSong.iniProperties;
+        if (string.IsNullOrEmpty(id))
+            RichTextIni.DeleteIni(ini, IconKey);
+        else
+            RichTextIni.WriteIni(ini, IconKey, id);
+        UpdateIniTextFromSongProperties();
+        ChartEditor.isDirty = true;
     }
 
     // Looks the typed name and artist up on iTunes and fills in the name and artist as iTunes spells them, the album,
