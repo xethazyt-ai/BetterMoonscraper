@@ -134,6 +134,7 @@ public class DuetOverlay : MonoBehaviour
             {
                 if (m_localPresence.IsOnSameChart(pair.Value))
                     m_highlights.ShowDrag(pair.Value);
+                m_highlights.ShowRamp(pair.Key, pair.Value);    // Tempo is the same on every chart
             }
         }
         m_highlights.End();
@@ -187,6 +188,8 @@ public class DuetOverlay : MonoBehaviour
         {
             presence.hasDrag = m_cursorSelect.TryGetDragArea(out presence.dragX1, out presence.dragTick1, out presence.dragX2, out presence.dragTick2, out presence.dragRemoving);
         }
+        if (m_editor.currentState == ChartEditor.State.Editor)
+            presence.hasRamp = BpmRamp.TryGetDrag(out presence.rampFromTick, out presence.rampEndTick, out presence.rampReady);
 
         Vector2? mouse = m_editor.services.mouseMonitorSystem.world2DPosition;
         if (mouse != null && m_editor.currentState == ChartEditor.State.Editor)

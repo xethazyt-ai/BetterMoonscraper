@@ -108,6 +108,15 @@ public static class PresenceTests
         Expect("everyone sees a deselect drag box", bob.presences[1].hasDrag && bob.presences[1].dragRemoving
             && bob.presences[1].dragX1 == -1.5f && bob.presences[1].dragTick2 == 960);
 
+        DuetPresence ramping = new DuetPresence { viewTick = 1536, instrument = "Drums", difficulty = "Hard",
+            hasRamp = true, rampFromTick = 768, rampEndTick = 1200, rampReady = true };
+        alice.SetLocalPresence(ramping);
+        SessionTests.Pump(all, () => bob.presences.ContainsKey(1) && bob.presences[1].hasRamp);
+        Expect("everyone sees a BPM ramp being dragged", bob.presences[1].hasRamp && bob.presences[1].rampFromTick == 768
+            && bob.presences[1].rampEndTick == 1200 && bob.presences[1].rampReady && host.presences[1].hasRamp);
+        DuetPresence backwards = DuetPresence.FromJson(new Dictionary<string, object> { { "ramp", new List<object> { 900.0, 100.0, false } } });
+        Expect("a ramp that runs backwards is ignored", !backwards.hasRamp);
+
         // When Alex leaves, their cursor goes away for everyone
         alice.Leave();
         SessionTests.Pump(all, () => !host.presences.ContainsKey(1) && !bob.presences.ContainsKey(1));

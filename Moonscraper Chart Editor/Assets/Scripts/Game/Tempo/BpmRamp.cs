@@ -10,6 +10,7 @@ using MoonscraperChartEditor.Song;
 /// slides from the first marker's BPM to the next one's, as BPM markers every 16th note in between (one undo).
 /// A wavy line follows the mouse while dragging, and turns gold once it's over the next marker.
 /// The marker itself never moves, and with no BPM marker after it nothing happens.
+/// In Collab Mode everyone else sees the line too, in the dragger's color (DuetHighlights.ShowRamp).
 /// </summary>
 public class BpmRamp : MonoBehaviour
 {
@@ -29,6 +30,8 @@ public class BpmRamp : MonoBehaviour
     BPM m_from, m_to;
     LineRenderer m_line;
     float m_phase;
+    uint m_endTick;
+    bool m_ready;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -83,6 +86,22 @@ public class BpmRamp : MonoBehaviour
 
     public static bool isDragging { get { return s_instance && s_instance.m_from != null; } }
 
+    /// <summary>
+    /// The ramp being dragged right now, for Collab Mode to show everyone: from the first marker to where the
+    /// line ends, and whether it's over the next marker.
+    /// </summary>
+    public static bool TryGetDrag(out uint fromTick, out uint endTick, out bool ready)
+    {
+        fromTick = endTick = 0;
+        ready = false;
+        if (!isDragging)
+            return false;
+        fromTick = s_instance.m_from.tick;
+        endTick = s_instance.m_endTick;
+        ready = s_instance.m_ready;
+        return true;
+    }
+
     void Update()
     {
         if (m_from == null)
@@ -112,7 +131,11 @@ public class BpmRamp : MonoBehaviour
             return;
         }
 
-        DrawLine(fromY, Mathf.Clamp(mouseY, fromY, toY), onNext);
+        float endY = Mathf.Clamp(mouseY, fromY, toY);
+        m_ready = onNext;
+        m_endTick = onNext ? m_to.tick : (uint)Mathf.Clamp(song.WorldYPositionToTick(endY), m_from.tick, m_to.tick);
+        m_phase += Time.deltaTime * WaveSpeed;
+        DrawWave(m_line, fromY, endY, m_phase, onNext ? ReadyColor : DragColor);
     }
 
     void Apply()
@@ -167,46 +190,58 @@ public class BpmRamp : MonoBehaviour
     void ShowLine(int layer)
     {
         if (!m_line)
-        {
-            GameObject lineObject = new GameObject("BPM Ramp Line");
-            lineObject.transform.SetParent(transform, false);
-            m_line = lineObject.AddComponent<LineRenderer>();
-            m_line.useWorldSpace = true;
-            m_line.positionCount = LinePoints;
-            m_line.widthMultiplier = 0.06f;
-            m_line.numCapVertices = 2;
-            m_line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            m_line.receiveShadows = false;
-            m_line.sharedMaterial = new Material(Shader.Find("Sprites/Default"));
-            SortingLayer[] sortingLayers = SortingLayer.layers;
-            if (sortingLayers.Length > 0)
-                m_line.sortingLayerID = sortingLayers[sortingLayers.Length - 1].id;
-            m_line.sortingOrder = 900;
-        }
+            m_line = MakeLine(transform, "BPM Ramp Line");
 
         m_line.gameObject.layer = layer;
         m_line.gameObject.SetActive(true);
         m_phase = 0;
+        m_endTick = m_from.tick;
+        m_ready = false;
     }
 
-    // A sine wave down the BPM lane from the first marker to the mouse, rolling along as it's held
-    void DrawLine(float fromY, float toY, bool ready)
+    // An empty squiggle; DrawWave shapes it. Used for your own ramp and, in Collab Mode, other people's.
+    public static LineRenderer MakeLine(Transform parent, string name)
     {
-        if (!m_line)
+        GameObject lineObject = new GameObject(name);
+        lineObject.transform.SetParent(parent, false);
+        LineRenderer line = lineObject.AddComponent<LineRenderer>();
+        line.useWorldSpace = true;
+        line.positionCount = LinePoints;
+        line.widthMultiplier = 0.06f;
+        line.numCapVertices = 2;
+        line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        line.receiveShadows = false;
+        line.sharedMaterial = new Material(Shader.Find("Sprites/Default"));
+        SortingLayer[] sortingLayers = SortingLayer.layers;
+        if (sortingLayers.Length > 0)
+            line.sortingLayerID = sortingLayers[sortingLayers.Length - 1].id;
+        line.sortingOrder = 900;
+        return line;
+    }
+
+    public static Color readyColor { get { return ReadyColor; } }
+
+    public static float NextPhase(float phase)
+    {
+        return phase + Time.deltaTime * WaveSpeed;
+    }
+
+    // A sine wave down the BPM lane from the first marker to the mouse, rolling along (by phase) as it's held
+    public static void DrawWave(LineRenderer line, float fromY, float toY, float phase, Color color)
+    {
+        if (!line)
             return;
 
-        m_phase += Time.deltaTime * WaveSpeed;
         float x = SongObjectController.CHART_CENTER_POS + BPMController.position;
         for (int i = 0; i < LinePoints; ++i)
         {
             float t = i / (float)(LinePoints - 1);
             float y = Mathf.Lerp(fromY, toY, t);
-            float wave = Mathf.Sin((y - fromY) * Waves * Mathf.PI * 2 - m_phase) * Amplitude;
-            m_line.SetPosition(i, new Vector3(x + wave, y, -0.05f));
+            float wave = Mathf.Sin((y - fromY) * Waves * Mathf.PI * 2 - phase) * Amplitude;
+            line.SetPosition(i, new Vector3(x + wave, y, -0.05f));
         }
 
-        Color color = ready ? ReadyColor : DragColor;
-        m_line.startColor = color;
-        m_line.endColor = color;
+        line.startColor = color;
+        line.endColor = color;
     }
 }

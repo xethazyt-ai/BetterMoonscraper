@@ -593,6 +593,10 @@ public class DuetSession
         List<DuetFileEntry> entries = DuetFiles.Describe(m_song.GetSongFilePaths(), offered);
         // Videos last, so the audio and everything else arrive first and charting can start
         entries.Sort((a, b) => DuetFiles.IsVideoName(a.name).CompareTo(DuetFiles.IsVideoName(b.name)));
+        List<string> tooBig = new List<string>();
+        entries = DuetFiles.WithinLimits(entries, DuetFiles.MaxSongBytes, tooBig);
+        if (tooBig.Count > 0)
+            Log("Not sharing " + string.Join(", ", tooBig.ToArray()) + ": a song's files can't add up to more than 4 GB");
         foreach (DuetFileEntry entry in entries)
             files.Add(DuetFiles.ToJson(entry));
         m_offeredFiles[client] = offered;
@@ -1472,12 +1476,19 @@ public class DuetSession
                             entries.Add(entry);
                     }
 
+                    // Zip bomb guard: no more than 4 GB per song, nor downloaded over the whole session
+                    List<string> refused = new List<string>();
+                    entries = DuetFiles.WithinLimits(entries, DuetFiles.MaxSongBytes - m_downloadedBytes, refused);
+                    if (refused.Count > 0)
+                        Log("Didn't download " + string.Join(", ", refused.ToArray()) + ": over the 4 GB limit for song files");
+
                     if (songFiles != null)
                         songFiles.Close();
                     songFiles = new DuetFileReceiver();
                     m_songFilesUsed = false;    // A new set (on joining, a new song, or the host changing the audio)
                     m_songVideoUsed = false;
                     List<string> wanted = songFiles.Start(entries);
+                    m_downloadedBytes += songFiles.totalBytes;
 
                     List<object> names = new List<object>();
                     foreach (string name in wanted)
@@ -1525,6 +1536,7 @@ public class DuetSession
     }
 
     bool m_songFilesUsed = false;
+    long m_downloadedBytes = 0;     // Asked of the host so far this session, held to DuetFiles.MaxSongBytes
     bool m_songVideoUsed = false;
 
     /// <summary>

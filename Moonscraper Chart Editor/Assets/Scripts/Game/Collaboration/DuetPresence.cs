@@ -37,6 +37,12 @@ public class DuetPresence
     public uint dragTick1, dragTick2;
     public bool dragRemoving;
 
+    // A BPM ramp they're dragging (right click from one BPM marker towards the next): the squiggle runs from
+    // rampFromTick to rampEndTick, and rampReady is when it's over the next marker
+    public bool hasRamp;
+    public uint rampFromTick, rampEndTick;
+    public bool rampReady;
+
     public bool isTyping;   // Writing a chat message
 
     public static readonly string[] ColorNames = { "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink" };
@@ -179,6 +185,9 @@ public class DuetPresence
         if (hasDrag)
             json["drag"] = new List<object> { (double)dragX1, (double)dragTick1, (double)dragX2, (double)dragTick2, dragRemoving };
 
+        if (hasRamp)
+            json["ramp"] = new List<object> { (double)rampFromTick, (double)rampEndTick, rampReady };
+
         if (ghosts.Count > 0)
         {
             List<object> list = new List<object>();
@@ -221,6 +230,17 @@ public class DuetPresence
             presence.dragX2 = (float)(double)drag[2];
             presence.dragTick2 = ToTick((double)drag[3]);
             presence.dragRemoving = (bool)drag[4];
+        }
+
+        List<object> ramp = DuetJson.GetArray(json, "ramp");
+        if (ramp != null && ramp.Count >= 3 && ramp[0] is double && ramp[1] is double && ramp[2] is bool)
+        {
+            presence.hasRamp = true;
+            presence.rampFromTick = ToTick((double)ramp[0]);
+            presence.rampEndTick = ToTick((double)ramp[1]);
+            presence.rampReady = (bool)ramp[2];
+            if (presence.rampEndTick < presence.rampFromTick)
+                presence.hasRamp = false;
         }
 
         List<object> ghosts = DuetJson.GetArray(json, "ghosts");

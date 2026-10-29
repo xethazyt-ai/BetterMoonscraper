@@ -205,7 +205,7 @@ public class GroupSelectPanelController : MonoBehaviour
     string StepText(List<Note> positions)
     {
         if (positions.Count < 2)
-            return "Unavailable";
+            return "N/A";
 
         uint smallest = uint.MaxValue, largest = 0;
         for (int i = 1; i < positions.Count; ++i)
@@ -215,7 +215,7 @@ public class GroupSelectPanelController : MonoBehaviour
             largest = System.Math.Max(largest, gap);
         }
         if (largest - smallest > 1 || smallest == 0)
-            return "Unavailable";
+            return "N/A";
 
         double averageGap = (double)(positions[positions.Count - 1].tick - positions[0].tick) / (positions.Count - 1);
         double step = editor.currentSong.resolution * 4 / averageGap;
@@ -230,11 +230,11 @@ public class GroupSelectPanelController : MonoBehaviour
     static string NpsText(List<Note> positions)
     {
         if (positions.Count < 2)
-            return "Unavailable";
+            return "N/A";
 
         double seconds = positions[positions.Count - 1].time - positions[0].time;
         if (seconds <= 0)
-            return "Unavailable";
+            return "N/A";
         return ((positions.Count - 1) / seconds).ToString("0.##");
     }
 

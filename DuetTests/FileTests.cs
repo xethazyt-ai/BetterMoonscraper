@@ -77,6 +77,19 @@ public static class FileTests
         Expect("a file name can't point outside the download folder", sneaky != null && sneaky.name == "evil.ogg");
         Expect("a bad hash is refused", DuetFiles.FromJson(new Dictionary<string, object> { { "name", "a.ogg" }, { "size", 1.0 }, { "sha1", "../x" } }) == null);
 
+        const long GB = 1024L * 1024 * 1024;
+        List<DuetFileEntry> huge = new List<DuetFileEntry>
+        {
+            new DuetFileEntry { name = "song.ogg", size = 3 * GB, sha1 = new string('a', 40) },
+            new DuetFileEntry { name = "guitar.ogg", size = 2 * GB, sha1 = new string('b', 40) },
+            new DuetFileEntry { name = "album.png", size = GB / 2, sha1 = new string('c', 40) },
+        };
+        List<string> skipped = new List<string>();
+        List<DuetFileEntry> kept = DuetFiles.WithinLimits(huge, DuetFiles.MaxSongBytes, skipped);
+        Expect("a song's files can't add up to more than 4 GB", kept.Count == 2 && skipped.Count == 1 && skipped[0] == "guitar.ogg");
+        skipped.Clear();
+        Expect("nor past what's left of the session's 4 GB", DuetFiles.WithinLimits(huge, GB, skipped).Count == 1 && skipped.Count == 2);
+
         try { Directory.Delete(root, true); } catch (Exception) { }
         return s_failures;
     }

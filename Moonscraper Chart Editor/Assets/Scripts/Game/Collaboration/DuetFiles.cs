@@ -100,6 +100,30 @@ public static class DuetFiles
     }
 
     public const long MaxFileBytes = 4L * 1024 * 1024 * 1024;
+    public const long MaxSongBytes = 4L * 1024 * 1024 * 1024;   // All of a song's files together, so a host can't fill a joiner's disk
+    public const int MaxSongFiles = 64;
+
+    /// <summary>
+    /// Keeps the entries, in order, while they add up to no more than MaxSongBytes and MaxSongFiles (and
+    /// allowedBytes, what's left of the session's allowance); the names of the rest go in skipped.
+    /// </summary>
+    public static List<DuetFileEntry> WithinLimits(List<DuetFileEntry> entries, long allowedBytes, List<string> skipped)
+    {
+        long limit = Math.Min(MaxSongBytes, allowedBytes);
+        List<DuetFileEntry> kept = new List<DuetFileEntry>();
+        long total = 0;
+        foreach (DuetFileEntry entry in entries)
+        {
+            if (kept.Count >= MaxSongFiles || entry.size > limit - total)
+            {
+                skipped.Add(entry.name);
+                continue;
+            }
+            kept.Add(entry);
+            total += entry.size;
+        }
+        return kept;
+    }
 
     public static List<DuetFileEntry> Describe(List<string> paths, Dictionary<string, string> nameToPath)
     {

@@ -364,7 +364,9 @@ public class DisplayProperties : UpdateableService
 
     public void SetGameSpeed(float value)
     {
-        value = Mathf.Round(value / 5.0f) * 5;
+        // Steps of x0.05, or x0.01 while Ctrl is held
+        float step = MoonscraperEngine.Input.KeyboardDevice.ctrlKeyBeingPressed ? 1 : 5;
+        value = Mathf.Round(value / step) * step;
         float playTime = PlayTime();
         bool changed = !Mathf.Approximately(Globals.gameSettings.gameSpeed, value / 100.0f);
         Globals.gameSettings.gameSpeed = value / 100.0f;
@@ -418,8 +420,8 @@ public class DisplayProperties : UpdateableService
             editor.events.hyperspeedChangeEvent.Fire();
             KeepPlayTime(playTime);
         });
-        MakeSpeedToggle("Note Flames:", y - 64, NoteFlames.isEnabled, (on) => NoteFlames.isEnabled = on);
-        MakeSpeedToggle("Song Video:", y - 98, SongVideoBackground.isEnabled, (on) =>
+        MakeSpeedToggle("Note Flames:", y - 76, NoteFlames.isEnabled, (on) => NoteFlames.isEnabled = on);
+        MakeSpeedToggle("Song Video:", y - 110, SongVideoBackground.isEnabled, (on) =>
         {
             SongVideoBackground.isEnabled = on;
             if (on && !string.IsNullOrEmpty(SongVideoBackground.status) && !SongVideoBackground.status.StartsWith("Loading")
@@ -427,7 +429,7 @@ public class DisplayProperties : UpdateableService
                 editor.services.notificationBar.PushNotification(SongVideoBackground.status.TrimEnd('.').ToUpperInvariant(), 3, true);
         });
 
-        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 153);
+        content.sizeDelta = new Vector2(content.sizeDelta.x, content.sizeDelta.y + 165);
     }
 
     // "Gem Size", right under Highway Length, copied from its label and slider. Returns how far down it went.

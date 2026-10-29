@@ -7,7 +7,8 @@ using MoonscraperChartEditor.Song;
 /// <summary>
 /// Other people's selections, drawn with the same yellow boxes Moonscraper puts around your own selected notes, and the
 /// box they're dragging with the cursor tool: blue while selecting, red while deselecting (a Ctrl drag).
-/// The same colors for everyone, like Moonscraper's own.
+/// The same colors for everyone, like Moonscraper's own. Also the squiggle of a BPM ramp someone is dragging, in
+/// their own color, gold once it's over the next marker, as BpmRamp draws yours.
 /// </summary>
 public class DuetHighlights
 {
@@ -25,6 +26,9 @@ public class DuetHighlights
     int m_highlightsUsed = 0;
     int m_dragBoxesUsed = 0;
 
+    class RampLine { public LineRenderer line; public float phase; public bool used; }
+    readonly Dictionary<int, RampLine> m_rampLines = new Dictionary<int, RampLine>();   // By user
+
     public DuetHighlights(GameObject highlightTemplate, SpriteRenderer dragTemplate, Color selectingColor)
     {
         m_highlightTemplate = highlightTemplate;
@@ -37,6 +41,34 @@ public class DuetHighlights
     {
         m_highlightsUsed = 0;
         m_dragBoxesUsed = 0;
+        foreach (RampLine ramp in m_rampLines.Values)
+            ramp.used = false;
+    }
+
+    public void ShowRamp(int userId, DuetPresence presence)
+    {
+        ChartEditor editor = ChartEditor.Instance;
+        Song song = editor.currentSong;
+        if (!presence.hasRamp || song == null)
+            return;
+
+        RampLine ramp;
+        if (!m_rampLines.TryGetValue(userId, out ramp))
+        {
+            if (m_rampLines.Count >= DuetRooms.MaxMembers)
+                return;
+            ramp = new RampLine { line = BpmRamp.MakeLine(m_root, "Duet BPM Ramp Line") };
+            if (editor.assets.bpmPrefab != null)
+                ramp.line.gameObject.layer = editor.assets.bpmPrefab.layer;
+            m_rampLines[userId] = ramp;
+        }
+        ramp.used = true;
+        ramp.phase = BpmRamp.NextPhase(ramp.phase);
+
+        Color color = presence.rampReady ? BpmRamp.readyColor : DuetPresence.GetColor(presence.color);
+        BpmRamp.DrawWave(ramp.line, song.TickToWorldYPosition(presence.rampFromTick), song.TickToWorldYPosition(presence.rampEndTick), ramp.phase, color);
+        if (!ramp.line.gameObject.activeSelf)
+            ramp.line.gameObject.SetActive(true);
     }
 
     // Highlights whatever in this selection is on screen. Call between Begin and End.
@@ -108,6 +140,15 @@ public class DuetHighlights
             if (m_dragBoxes[i] != null && m_dragBoxes[i].gameObject.activeSelf)
                 m_dragBoxes[i].gameObject.SetActive(false);
         }
+
+        foreach (RampLine ramp in m_rampLines.Values)
+        {
+            if (!ramp.used && ramp.line != null && ramp.line.gameObject.activeSelf)
+            {
+                ramp.line.gameObject.SetActive(false);
+                ramp.phase = 0;
+            }
+        }
     }
 
     public void HideAll()
@@ -125,8 +166,14 @@ public class DuetHighlights
             if (box != null)
                 Object.Destroy(box.gameObject);
         }
+        foreach (RampLine ramp in m_rampLines.Values)
+        {
+            if (ramp.line != null)
+                Object.Destroy(ramp.line.sharedMaterial);
+        }
         m_highlights.Clear();
         m_dragBoxes.Clear();
+        m_rampLines.Clear();
     }
 
     static SongObject Find<T>(DuetSelection selection, DuetSelection.Item item, IList<T> objects) where T : SongObject
