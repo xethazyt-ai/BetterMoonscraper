@@ -4,7 +4,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -17,6 +16,11 @@ using UnityEngine.Networking;
 public static class SongIcons
 {
     static readonly string[] s_sites = { "https://sources-ca135f.gitlab.io/", "https://clonehero.gitlab.io/sources/" };
+    // The pictures: the site's copies, else the originals in the repository
+    static readonly string[] s_iconSites =
+    {
+        "https://sources-ca135f.gitlab.io/icons/", "https://clonehero.gitlab.io/sources/icons/", "https://gitlab.com/clonehero/sources/-/raw/master/public/icons/",
+    };
     const int TimeoutSeconds = 20;
     const int MaxIconBytes = 1024 * 1024;   // The guidelines ask for 64x64 or 128x128, so anything this big isn't an icon
 
@@ -218,11 +222,13 @@ public static class SongIcons
             yield break;
         }
 
-        string path = Path.Combine(Path.Combine(folder, "icons"), icon.file);
+        // Kept under the list's hash, so an icon that's changed is fetched again. The hash is of the original in the
+        // repository; the site's copies are shrunk with pngquant, so a download is only checked for being a PNG.
+        string path = Path.Combine(Path.Combine(folder, "icons"), icon.sha1.Length == 40 ? icon.sha1 + ".png" : icon.file);
         byte[] bytes = null;
         try
         {
-            if (File.Exists(path) && (icon.sha1.Length == 0 || Sha1(File.ReadAllBytes(path)) == icon.sha1))
+            if (File.Exists(path))
                 bytes = File.ReadAllBytes(path);
         }
         catch (Exception e)
@@ -233,11 +239,12 @@ public static class SongIcons
         if (bytes == null)
         {
             s_downloading.Add(icon.file);
-            foreach (string site in s_sites)
+            string escaped = UnityWebRequest.EscapeURL(icon.file).Replace("+", "%20");
+            foreach (string site in s_iconSites)
             {
                 byte[] got = null;
-                yield return DownloadBytes(site + "icons/" + UnityWebRequest.EscapeURL(icon.file).Replace("+", "%20"), data => got = data);
-                if (got != null && (icon.sha1.Length == 0 || Sha1(got) == icon.sha1))
+                yield return DownloadBytes(site + escaped, data => got = data);
+                if (IsPng(got))
                 {
                     bytes = got;
                     break;
@@ -306,9 +313,8 @@ public static class SongIcons
         }
     }
 
-    static string Sha1(byte[] data)
+    static bool IsPng(byte[] data)
     {
-        using (SHA1 hasher = SHA1.Create())
-            return BitConverter.ToString(hasher.ComputeHash(data)).Replace("-", string.Empty).ToLowerInvariant();
+        return data != null && data.Length > 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G';
     }
 }
