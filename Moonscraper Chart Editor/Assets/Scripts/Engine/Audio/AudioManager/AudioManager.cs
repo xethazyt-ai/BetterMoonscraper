@@ -41,6 +41,14 @@ namespace MoonscraperEngine.Audio
                     UnityEngine.Debug.LogWarning($"BASS_SetConfig dev default {Bass.BASS_ErrorGetCode()}");
                 }
 
+                // BetterMoonscraper: keep the sound device running while nothing plays. Otherwise Windows lets it go to
+                // sleep after a pause, and on many devices (Bluetooth and HDMI especially) the first second or so of
+                // audio after pressing play again is lost while it wakes up.
+                if (!Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_DEV_NONSTOP, 1))
+                {
+                    UnityEngine.Debug.LogWarning($"BASS_SetConfig dev nonstop {Bass.BASS_ErrorGetCode()}");
+                }
+
                 if (!Bass.BASS_SetConfig(BASSConfig.BASS_CONFIG_UPDATETHREADS, 1))
                 {
                     UnityEngine.Debug.LogError($"BASS_SetConfig update threads {Bass.BASS_ErrorGetCode()}");

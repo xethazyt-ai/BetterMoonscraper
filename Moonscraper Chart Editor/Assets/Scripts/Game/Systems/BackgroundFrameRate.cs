@@ -12,6 +12,9 @@ public class BackgroundFrameRate : MonoBehaviour
 {
     const int BackgroundFps = 30;
 
+    /// <summary>The saved frame rate meaning VSync: frames in step with the monitor, with no cap of its own.</summary>
+    public const int VSync = 0;
+
     static int? s_userFrameRate;
 
     /// <summary>
@@ -20,7 +23,34 @@ public class BackgroundFrameRate : MonoBehaviour
     /// </summary>
     public static int userFrameRate
     {
-        get { return s_userFrameRate ?? Application.targetFrameRate; }
+        get { return s_userFrameRate ?? (QualitySettings.vSyncCount > 0 ? VSync : Application.targetFrameRate); }
+    }
+
+    /// <summary>
+    /// Uses the frame rate picked in Settings: 60, 120 or 240, VSync, or anything else for no limit
+    /// </summary>
+    public static void ApplyUserFrameRate(int frameRate)
+    {
+        if (s_userFrameRate.HasValue)
+        {
+            s_userFrameRate = frameRate;    // Picked while throttled in the background; used once focused again
+            return;
+        }
+        Set(frameRate);
+    }
+
+    static void Set(int frameRate)
+    {
+        if (frameRate == VSync)
+        {
+            QualitySettings.vSyncCount = 1;
+            Application.targetFrameRate = -1;
+        }
+        else
+        {
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = frameRate == 60 || frameRate == 120 || frameRate == 240 ? frameRate : -1;
+        }
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -58,11 +88,12 @@ public class BackgroundFrameRate : MonoBehaviour
         if (s_userFrameRate.HasValue || IsPlaying())
             return;
 
-        int current = Application.targetFrameRate;
+        int current = userFrameRate;
         if (current > 0 && current <= BackgroundFps)
             return;     // Already as slow or slower
 
         s_userFrameRate = current;
+        QualitySettings.vSyncCount = 0;     // VSync would ignore the slower rate
         Application.targetFrameRate = BackgroundFps;
     }
 
@@ -71,8 +102,9 @@ public class BackgroundFrameRate : MonoBehaviour
         if (!s_userFrameRate.HasValue)
             return;
 
-        Application.targetFrameRate = s_userFrameRate.Value;
+        int frameRate = s_userFrameRate.Value;
         s_userFrameRate = null;
+        Set(frameRate);
     }
 
     static bool IsPlaying()

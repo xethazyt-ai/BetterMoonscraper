@@ -118,11 +118,7 @@ public class Globals : MonoBehaviour {
         gameSettings.Load(GetConfigPath(), GetInputBindingsPath());
 
         // Check for valid fps values
-        int fps = gameSettings.targetFramerate;
-        if (fps != 60 && fps != 120 && fps != 240)
-            Application.targetFrameRate = -1;
-        else
-            Application.targetFrameRate = fps;
+        BackgroundFrameRate.ApplyUserFrameRate(gameSettings.targetFramerate);
 
         AudioListener.volume = gameSettings.vol_master;
     }

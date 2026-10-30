@@ -142,8 +142,15 @@ public class SettingsController : TabMenu
 
         leftyFlipToggle.isOn = Globals.gameSettings.notePlacementMode == GameSettings.NotePlacementMode.LeftyFlip;
 
+        // BetterMoonscraper: VSync, in step with the monitor, is the smoothest, as frames are never shown unevenly
+        if (fpsSelectDropdown.options.Count <= VSyncDropdownIndex)
+            fpsSelectDropdown.options.Add(new Dropdown.OptionData("VSync (smoothest)"));
+
         switch(BackgroundFrameRate.userFrameRate)
         {
+            case (BackgroundFrameRate.VSync):
+                fpsSelectDropdown.value = VSyncDropdownIndex;
+                break;
             case (60):
                 fpsSelectDropdown.value = 0;
                 break;
@@ -245,13 +252,18 @@ public class SettingsController : TabMenu
         Update();
     }  
 
+    const int VSyncDropdownIndex = 4;
+
     public void SetFPS(int dropdownValue)
     {
+        if (dropdownValue == VSyncDropdownIndex)
+        {
+            BackgroundFrameRate.ApplyUserFrameRate(BackgroundFrameRate.VSync);
+            return;
+        }
+
         int fps = 60 * (int)(Mathf.Pow(2, dropdownValue));
-        if (fps > 240)
-            Application.targetFrameRate = -1;
-        else
-            Application.targetFrameRate = fps;
+        BackgroundFrameRate.ApplyUserFrameRate(fps > 240 ? -1 : fps);
     }
 
     public void SetClapStrum(bool value)
