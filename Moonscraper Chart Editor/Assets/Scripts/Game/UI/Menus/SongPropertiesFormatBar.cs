@@ -43,7 +43,12 @@ public class SongPropertiesFormatBar : MonoBehaviour
         public float shownWidth;
         public bool overflows;
         public bool shownFocused;
+        // The highlight and caret drawn where the formatted letters are, and the underline and strikethrough lines
+        public FormattedTextMarks behind, front;
+        public Color selectionColor, caretColor;
+        public bool customCaret;
     }
+    readonly List<bool> m_underline = new List<bool>(), m_strike = new List<bool>();
     readonly Dictionary<InputField, Formatted> m_formatted = new Dictionary<InputField, Formatted>();
 
     // Builds the bar below the last row of content. Returns how far down it goes.
@@ -185,7 +190,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format (Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+G gradient, Ctrl+R rainbow, Ctrl+C clear). Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient. Underline and strikethrough only show in Clone Hero.";
+            m_preview.text = "Select text in a field above, then pick a format (Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+G gradient, Ctrl+R rainbow, Ctrl+C clear). Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient.";
         }
     }
 
@@ -214,6 +219,12 @@ public class SongPropertiesFormatBar : MonoBehaviour
         rect.pivot = new Vector2(0, 0.5f);
         rect.offsetMin = offsetMin;
         rect.offsetMax = offsetMax;
+
+        formatted.selectionColor = field.selectionColor;
+        formatted.caretColor = field.caretColor;
+        formatted.customCaret = field.customCaretColor;
+        formatted.behind = FormattedTextMarks.Make(formatted.overlay, "Formatted Selection", true);
+        formatted.front = FormattedTextMarks.Make(formatted.overlay, "Formatted Caret and Lines", false);
 
         if (!field.GetComponent<RectMask2D>())
             field.gameObject.AddComponent<RectMask2D>();    // Long or big text stays inside the box
@@ -258,6 +269,90 @@ public class SongPropertiesFormatBar : MonoBehaviour
                 color.a = 0;    // The field's own plain text hides behind the formatted one
             field.textComponent.color = color;
         }
+
+        UpdateMarks(field, formatted, show);
+    }
+
+    // While the formatted copy is shown, the highlight, caret, underline and strikethrough are drawn on it, at its own
+    // letters: the field measures its plain letters, so its own highlight fell short of bold or bigger text
+    void UpdateMarks(InputField field, Formatted formatted, bool show)
+    {
+        if (!formatted.behind || !formatted.front)
+            return;
+
+        bool ownMarks = show && field.isFocused;
+        Color selection = formatted.selectionColor;
+        if (ownMarks)
+            selection.a = 0;
+        if (field.selectionColor != selection)
+            field.selectionColor = selection;
+        field.customCaretColor = ownMarks || formatted.customCaret;
+        field.caretColor = ownMarks ? Color.clear : formatted.caretColor;
+
+        formatted.behind.Clear();
+        formatted.front.Clear();
+        formatted.behind.Follow(formatted.overlay);
+        formatted.front.Follow(formatted.overlay);
+
+        Text text = formatted.overlay;
+        TextGenerator generator = text.cachedTextGenerator;
+        if (!show || generator.characterCount == 0 || generator.lineCount == 0)
+            return;
+
+        string preview = text.text;
+        List<int> visible = RichTextIni.VisibleIndices(preview);
+        IList<UICharInfo> characters = generator.characters;
+        IList<UILineInfo> lines = generator.lines;
+        bool tagsCounted = characters.Count >= preview.Length;     // Unity 2018 keeps the tags' own characters, at no width
+        float perUnit = text.pixelsPerUnit > 0 ? text.pixelsPerUnit : 1;
+
+        // Where visible character v is: its left edge, width and line
+        Func<int, int> indexOf = v => tagsCounted ? visible[v] : v;
+        Func<int, Rect> box = v =>
+        {
+            int index = indexOf(v);
+            if (index >= characters.Count)
+                return new Rect();
+            int line = 0;
+            while (line + 1 < lines.Count && lines[line + 1].startCharIdx <= index)
+                ++line;
+            float top = lines[line].topY / perUnit, height = lines[line].height / perUnit;
+            return new Rect(characters[index].cursorPos.x / perUnit, top - height, characters[index].charWidth / perUnit, height);
+        };
+
+        RichTextIni.Decorations(formatted.tagged, m_underline, m_strike);
+        for (int v = 0; v < visible.Count && v < m_underline.Count; ++v)
+        {
+            if (!m_underline[v] && !m_strike[v])
+                continue;
+            Rect letter = box(v);
+            float thickness = Mathf.Max(1, letter.height * 0.07f);
+            if (m_underline[v])
+                formatted.front.Add(new Rect(letter.x, letter.y + letter.height * 0.12f, letter.width, thickness), text.color);
+            if (m_strike[v])
+                formatted.front.Add(new Rect(letter.x, letter.y + letter.height * 0.45f, letter.width, thickness), text.color);
+        }
+
+        if (ownMarks && visible.Count > 0)
+        {
+            int start = Mathf.Clamp(Math.Min(field.selectionAnchorPosition, field.selectionFocusPosition), 0, visible.Count);
+            int end = Mathf.Clamp(Math.Max(field.selectionAnchorPosition, field.selectionFocusPosition), 0, visible.Count);
+            for (int v = start; v < end; ++v)
+                formatted.behind.Add(box(v), formatted.selectionColor);
+
+            float blinkRate = field.caretBlinkRate > 0 ? field.caretBlinkRate : 1;
+            if (start == end && Mathf.Repeat(Time.unscaledTime * blinkRate, 1) < 0.5f)
+            {
+                int caret = Mathf.Clamp(field.caretPosition, 0, visible.Count);
+                Rect at = caret < visible.Count ? box(caret) : box(visible.Count - 1);
+                float x = caret < visible.Count ? at.x : at.xMax;
+                Color caretColor = formatted.customCaret ? formatted.caretColor : formatted.textColor;
+                formatted.front.Add(new Rect(x, at.y, Mathf.Max(1, field.caretWidth), at.height), caretColor);
+            }
+        }
+
+        formatted.behind.Done();
+        formatted.front.Done();
     }
 
     // The field's text with its formatting, as it goes in song.ini

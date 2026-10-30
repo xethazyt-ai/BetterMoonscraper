@@ -52,6 +52,40 @@ public static class RichTextIni
         return positions;
     }
 
+    /// <summary>Where each visible character of tagged (or preview) text is in the string</summary>
+    public static List<int> VisibleIndices(string tagged)
+    {
+        return VisiblePositions(tagged ?? string.Empty);
+    }
+
+    /// <summary>Whether each visible character of tagged text is underlined and struck through</summary>
+    public static void Decorations(string tagged, List<bool> underline, List<bool> strike)
+    {
+        underline.Clear();
+        strike.Clear();
+        tagged = tagged ?? string.Empty;
+        int underlines = 0, strikes = 0;
+        int i = 0;
+        while (i < tagged.Length)
+        {
+            Match tag = s_tagHere.Match(tagged, i);
+            if (tag.Success)
+            {
+                string name = tag.Groups[1].Value.ToLowerInvariant();
+                int step = tag.Value.StartsWith("</") ? -1 : 1;
+                if (name == "u")
+                    underlines = Math.Max(0, underlines + step);
+                else if (name == "s")
+                    strikes = Math.Max(0, strikes + step);
+                i += tag.Length;
+                continue;
+            }
+            underline.Add(underlines > 0);
+            strike.Add(strikes > 0);
+            ++i;
+        }
+    }
+
     // Wraps the visible characters [start, end) in open and close. Nothing selected wraps all of it.
     public static string WrapVisible(string tagged, int start, int end, string open, string close)
     {
