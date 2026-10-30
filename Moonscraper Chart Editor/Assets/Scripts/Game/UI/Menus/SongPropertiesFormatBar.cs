@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
@@ -25,6 +26,9 @@ public class SongPropertiesFormatBar : MonoBehaviour
     InputField[] m_fields;
     InputField m_target;
     int m_selectionStart, m_selectionEnd;
+    // A button takes the focus away from the box being formatted. It's given back with the same letters selected, so
+    // you can see what the next button will change.
+    InputField m_refocus;
     InputField m_sizeField;
     InputField m_colorField;
     InputField m_gradientField;
@@ -42,6 +46,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         public string shown;
         public float shownWidth;
         public bool overflows;
+        public bool plainFits;          // The field itself isn't scrolling its text
         public bool shownFocused;
         // The highlight and caret drawn where the formatted letters are, and the underline and strikethrough lines
         public FormattedTextMarks behind, front;
@@ -163,6 +168,16 @@ public class SongPropertiesFormatBar : MonoBehaviour
             }
         }
 
+        if (m_refocus && m_refocus.isFocused)
+        {
+            // Unity selects all of it on the way back in, so put back the letters that were selected
+            m_refocus.selectionAnchorPosition = m_selectionStart;
+            m_refocus.selectionFocusPosition = m_selectionEnd;
+            m_refocus.ForceLabelUpdate();
+            m_refocus = null;
+        }
+
+        bool typingInOtherBox = false;
         foreach (InputField field in m_fields)
         {
             if (field && field.isFocused)
@@ -174,7 +189,20 @@ public class SongPropertiesFormatBar : MonoBehaviour
             }
         }
 
-        UpdateHotkeys();
+        // Typing in a box that can't be formatted means the buttons no longer belong to the last one.
+        // The bar's own size and color boxes keep it, as they're how a format is picked.
+        GameObject selected = EventSystem.current ? EventSystem.current.currentSelectedGameObject : null;
+        InputField selectedField = selected ? selected.GetComponent<InputField>() : null;
+        if (selectedField && selectedField.isFocused && Array.IndexOf(m_fields, selectedField) < 0
+            && selectedField != m_sizeField && selectedField != m_colorField && selectedField != m_gradientField
+            && !(m_wheel && selectedField.transform.IsChildOf(m_wheel.transform)))
+        {
+            typingInOtherBox = true;
+            m_target = null;
+        }
+
+        if (!typingInOtherBox)
+            UpdateHotkeys();
 
         foreach (InputField field in m_fields)
         {
@@ -253,13 +281,16 @@ public class SongPropertiesFormatBar : MonoBehaviour
             float room = field.multiLine ? rect.rect.height : width;
             float needed = field.multiLine ? formatted.overlay.preferredHeight : formatted.overlay.preferredWidth;
             formatted.overflows = room > 0 && needed > room;
+            float plainNeeded = PlainSize(formatted.overlay, RichTextIni.Strip(formatted.tagged), field.multiLine, width);
+            formatted.plainFits = room <= 0 || plainNeeded <= room;
             float scale = formatted.overflows ? room / needed : 1;
             rect.localScale = new Vector3(scale, scale, 1);
         }
 
-        // Plain text that fits is left to the field itself. While typing the formatting shows live too, unless the text
-        // runs past the box (the field scrolls it then, and the formatted copy can't follow)
-        bool show = focused ? !formatted.overflows && RichTextIni.HasTags(formatted.tagged)
+        // Plain text that fits is left to the field itself. While typing the formatting shows live too, shrunk to fit
+        // if bold or bigger letters make it too wide, unless the plain text itself runs past the box (the field
+        // scrolls it then, and the formatted copy can't follow)
+        bool show = focused ? formatted.plainFits && RichTextIni.HasTags(formatted.tagged)
             : formatted.overflows || RichTextIni.HasTags(formatted.tagged);
         if (formatted.overlay.enabled != show)
         {
@@ -271,6 +302,16 @@ public class SongPropertiesFormatBar : MonoBehaviour
         }
 
         UpdateMarks(field, formatted, show);
+    }
+
+    // How wide (or, wrapped, how tall) the field's own plain text is
+    static float PlainSize(Text text, string plain, bool multiLine, float width)
+    {
+        TextGenerator generator = text.cachedTextGeneratorForLayout;
+        float perUnit = text.pixelsPerUnit > 0 ? text.pixelsPerUnit : 1;
+        if (multiLine)
+            return generator.GetPreferredHeight(plain, text.GetGenerationSettings(new Vector2(width, 0))) / perUnit;
+        return generator.GetPreferredWidth(plain, text.GetGenerationSettings(Vector2.zero)) / perUnit;
     }
 
     // While the formatted copy is shown, the highlight, caret, underline and strikethrough are drawn on it, at its own
@@ -398,7 +439,15 @@ public class SongPropertiesFormatBar : MonoBehaviour
             m_preview.text = message;
     }
 
-    InputField target { get { return m_target ? m_target : m_fields[0]; } }
+    // The box the buttons change: the one being typed in, or the last one that was. None until a box is clicked.
+    bool TryTarget(out InputField field)
+    {
+        field = m_target;
+        if (field)
+            return true;
+        SetStatus("Click in one of the boxes above (or select some of its text) first, then pick a format.");
+        return false;
+    }
 
     // Ctrl+B, Ctrl+I, Ctrl+U and Ctrl+S switch bold, italic, underline and strikethrough on or off for the selected
     // text (all of it with nothing selected), Ctrl+G fades it with the two colors like Gradient, Ctrl+R makes it rainbow
@@ -428,26 +477,34 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
     void ApplyRainbow()
     {
-        InputField field = target;
+        InputField field;
+        if (!TryTarget(out field))
+            return;
         SetFormatted(field, RichTextIni.RainbowVisible(GetTagged(field), m_selectionStart, m_selectionEnd));
     }
 
     void Wrap(string open, string close)
     {
-        InputField field = target;
+        InputField field;
+        if (!TryTarget(out field))
+            return;
         SetFormatted(field, RichTextIni.WrapVisible(GetTagged(field), m_selectionStart, m_selectionEnd, open, close));
     }
 
     // On for the selection, or off if it all has it already
     void Toggle(string name)
     {
-        InputField field = target;
+        InputField field;
+        if (!TryTarget(out field))
+            return;
         SetFormatted(field, RichTextIni.ToggleVisible(GetTagged(field), m_selectionStart, m_selectionEnd, name, "<" + name + ">", "</" + name + ">"));
     }
 
     void ClearFormatting()
     {
-        InputField field = target;
+        InputField field;
+        if (!TryTarget(out field))
+            return;
         SetFormatted(field, RichTextIni.ClearVisible(GetTagged(field), m_selectionStart, m_selectionEnd));
     }
 
@@ -457,6 +514,12 @@ public class SongPropertiesFormatBar : MonoBehaviour
         SetTagged(field, tagged);
         if (m_onChanged != null)
             m_onChanged();
+
+        if (!field.isFocused)
+        {
+            field.ActivateInputField();
+            m_refocus = field;
+        }
     }
 
     void ApplySize()
@@ -490,7 +553,9 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (!RichTextIni.TryParseColor(m_gradientField.text, out to))
             m_gradientField.text = to = "#0000FF";
 
-        InputField field = target;
+        InputField field;
+        if (!TryTarget(out field))
+            return;
         SetFormatted(field, RichTextIni.GradientVisible(GetTagged(field), m_selectionStart, m_selectionEnd, from, to));
     }
 

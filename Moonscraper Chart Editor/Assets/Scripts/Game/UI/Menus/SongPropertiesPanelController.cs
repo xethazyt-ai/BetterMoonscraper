@@ -50,6 +50,8 @@ public class SongPropertiesPanelController : TabMenu
     const string IconKey = "icon";
     SongPropertiesFormatBar formatBar;
     const string LoadingPhraseKey = "loading_phrase";
+    const string MediaTypeKey = "media_type";
+    const string DifficultyKey = "chart_difficulty";     // Only its formatting; the chart keeps the number
     bool lookingUp = false;
 
     TimeSpan customTime = new TimeSpan();
@@ -113,11 +115,11 @@ public class SongPropertiesPanelController : TabMenu
         SetRich(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
         SetRich(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
         SetRich(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
-        year.text = metaData.year;
+        SetRich(year, RichTextIni.DisplayValue(ini, "year", metaData.year));
         offset.text = OffsetText(song.offset);
-        difficulty.text = metaData.difficulty.ToString();
+        SetRich(difficulty, RichTextIni.DisplayValue(ini, DifficultyKey, metaData.difficulty.ToString()));
         SetRich(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
-        mediaType.text = metaData.mediatype;
+        SetRich(mediaType, RichTextIni.DisplayValue(ini, MediaTypeKey, metaData.mediatype));
         if (loadingPhrase)
             SetRich(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
 
@@ -156,11 +158,11 @@ public class SongPropertiesPanelController : TabMenu
         SetRichUnlessTyping(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
         SetRichUnlessTyping(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
         SetRichUnlessTyping(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
-        SetUnlessTyping(year, metaData.year);
+        SetRichUnlessTyping(year, RichTextIni.DisplayValue(ini, "year", metaData.year));
         SetUnlessTyping(offset, OffsetText(song.offset));
-        SetUnlessTyping(difficulty, metaData.difficulty.ToString());
+        SetRichUnlessTyping(difficulty, RichTextIni.DisplayValue(ini, DifficultyKey, metaData.difficulty.ToString()));
         SetRichUnlessTyping(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
-        SetUnlessTyping(mediaType, metaData.mediatype);
+        SetRichUnlessTyping(mediaType, RichTextIni.DisplayValue(ini, MediaTypeKey, metaData.mediatype));
         if (loadingPhrase)
             SetRichUnlessTyping(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
         init = false;
@@ -242,7 +244,7 @@ public class SongPropertiesPanelController : TabMenu
             metaData.artist = RichTextIni.Strip(artist.text);
             metaData.charter = RichTextIni.Strip(charter.text);
             metaData.album = RichTextIni.Strip(album.text);
-            metaData.year = year.text;
+            metaData.year = RichTextIni.Strip(year.text);
 
             // Kept as it was if the box holds something that isn't a number (empty, or just "-"), rather than becoming 0
             float typedOffset;
@@ -256,7 +258,7 @@ public class SongPropertiesPanelController : TabMenu
 
             try
             {
-                metaData.difficulty = int.Parse(difficulty.text);
+                metaData.difficulty = int.Parse(RichTextIni.Strip(difficulty.text));
             }
             catch
             {
@@ -264,14 +266,17 @@ public class SongPropertiesPanelController : TabMenu
             }
 
             metaData.genre = RichTextIni.Strip(genre.text);
-            metaData.mediatype = mediaType.text;
+            metaData.mediatype = RichTextIni.Strip(mediaType.text);
 
             INIParser ini = song.iniProperties;
             bool iniChanged = RichTextIni.StoreFormatted(ini, "name", Tagged(songName));
             iniChanged |= RichTextIni.StoreFormatted(ini, "artist", Tagged(artist));
             iniChanged |= RichTextIni.StoreFormatted(ini, "charter", Tagged(charter));
             iniChanged |= RichTextIni.StoreFormatted(ini, "album", Tagged(album));
+            iniChanged |= RichTextIni.StoreFormatted(ini, "year", Tagged(year));
             iniChanged |= RichTextIni.StoreFormatted(ini, "genre", Tagged(genre));
+            iniChanged |= RichTextIni.StoreFormatted(ini, MediaTypeKey, Tagged(mediaType));
+            iniChanged |= RichTextIni.StoreFormatted(ini, DifficultyKey, Tagged(difficulty));
             if (loadingPhrase && (RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty) != Tagged(loadingPhrase))
             {
                 RichTextIni.WriteIni(ini, LoadingPhraseKey, Tagged(loadingPhrase));
@@ -331,11 +336,12 @@ public class SongPropertiesPanelController : TabMenu
         loadingPhrase.onValidateInput = ValidateStringMetadataInput;
         ((RectTransform)loadingPhrase.transform).anchoredPosition = new Vector2(((RectTransform)genre.transform).anchoredPosition.x, rowY);
 
-        InputField[] richFields = { songName, artist, charter, album, genre, loadingPhrase };
-        foreach (InputField field in richFields)
+        foreach (InputField field in new[] { songName, artist, charter, album, genre, loadingPhrase })
             field.characterLimit = 0;   // Tags make the text longer than it looks
+        // Every text box works the same: formatting, and a + to make it bigger
+        InputField[] richFields = { songName, artist, charter, album, year, difficulty, genre, mediaType, loadingPhrase };
 
-        AddExtendButtons(content, buttonTemplate, new[] { songName, artist, charter, album, genre, mediaType, loadingPhrase });
+        AddExtendButtons(content, buttonTemplate, richFields);
 
         float bottom;
         formatBar = SongPropertiesFormatBar.Build(content, rowY - 30, richFields, genre, labelTemplate, buttonTemplate, LookUpSongInfo, setSongProperties, out bottom);
@@ -353,6 +359,7 @@ public class SongPropertiesPanelController : TabMenu
         public Vector2 position, size, pivot;
         public int siblingIndex;
         public InputField.LineType lineType;
+        public InputField.ContentType contentType;     // Year and Difficulty take numbers only; a new line type resets it
         public HorizontalWrapMode wrap, placeholderWrap;
     }
     readonly List<Extendable> extendables = new List<Extendable>();
@@ -404,6 +411,7 @@ public class SongPropertiesPanelController : TabMenu
         entry.pivot = rect.pivot;
         entry.siblingIndex = rect.GetSiblingIndex();
         entry.lineType = field.lineType;
+        entry.contentType = field.contentType;
         entry.wrap = field.textComponent ? field.textComponent.horizontalOverflow : HorizontalWrapMode.Overflow;
         Text placeholder = field.placeholder as Text;
         entry.placeholderWrap = placeholder ? placeholder.horizontalOverflow : HorizontalWrapMode.Overflow;
@@ -440,6 +448,7 @@ public class SongPropertiesPanelController : TabMenu
         rect.anchoredPosition = entry.position;
         rect.SetSiblingIndex(entry.siblingIndex);
         field.lineType = entry.lineType;
+        field.contentType = entry.contentType;
         if (field.textComponent)
             field.textComponent.horizontalOverflow = entry.wrap;
         Text placeholder = field.placeholder as Text;
@@ -545,11 +554,11 @@ public class SongPropertiesPanelController : TabMenu
         SetRich(artist, RichTextIni.DisplayValue(ini, "artist", metaData.artist));
         SetRich(charter, RichTextIni.DisplayValue(ini, "charter", metaData.charter));
         SetRich(album, RichTextIni.DisplayValue(ini, "album", metaData.album));
-        year.text = metaData.year;
+        SetRich(year, RichTextIni.DisplayValue(ini, "year", metaData.year));
         offset.text = OffsetText(song.offset);
-        difficulty.text = metaData.difficulty.ToString();
+        SetRich(difficulty, RichTextIni.DisplayValue(ini, DifficultyKey, metaData.difficulty.ToString()));
         SetRich(genre, RichTextIni.DisplayValue(ini, "genre", metaData.genre));
-        mediaType.text = metaData.mediatype;
+        SetRich(mediaType, RichTextIni.DisplayValue(ini, MediaTypeKey, metaData.mediatype));
         if (loadingPhrase)
             SetRich(loadingPhrase, RichTextIni.ReadIni(ini, LoadingPhraseKey) ?? string.Empty);
         init = false;
@@ -620,8 +629,7 @@ public class SongPropertiesPanelController : TabMenu
             FillRich(artist, result.artist);
             FillRich(album, result.album);
             FillRich(genre, result.genre);
-            if (!string.IsNullOrEmpty(result.year))
-                year.text = result.year;
+            FillRich(year, result.year);
             setSongProperties();
 
             formatBar.SetStatus("Filled in from iTunes: \"" + result.title + "\" by " + result.artist + ", album " + (result.album ?? "unknown")
