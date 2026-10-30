@@ -32250,7 +32250,7 @@ PrefabInstance:
     - target: {fileID: 2251066575189609905, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
       propertyPath: m_Text
-      value: MOONSCRAPER DISCORD SERVER
+      value: "DR\u2606NER VILLAGE DISCORD"
       objectReference: {fileID: 0}
     - target: {fileID: 2251066575189609905, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
