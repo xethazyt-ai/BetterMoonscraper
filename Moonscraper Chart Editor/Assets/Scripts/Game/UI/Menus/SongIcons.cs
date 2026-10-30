@@ -17,13 +17,16 @@ public static class SongIcons
 {
     static readonly string[] s_sites = { "https://sources-ca135f.gitlab.io/", "https://clonehero.gitlab.io/sources/" };
     // The pictures: the originals in the repository first, since the site's copies can be out of date (LegoKeegan411
-    // came out the wrong color from it), then the site's for icons only it still has
+    // came out the wrong color from it), then the site's for icons only it still has. GitLab's API comes before its
+    // raw file links, which can answer programs with a browser check page instead of the picture. {0} is the file name.
     static readonly string[] s_iconSites =
     {
-        "https://gitlab.com/clonehero/sources/-/raw/master/public/icons/", "https://sources-ca135f.gitlab.io/icons/", "https://clonehero.gitlab.io/sources/icons/",
+        "https://gitlab.com/api/v4/projects/25065576/repository/files/public%2Ficons%2F{0}/raw?ref=master",
+        "https://gitlab.com/clonehero/sources/-/raw/master/public/icons/{0}",
+        "https://sources-ca135f.gitlab.io/icons/{0}", "https://clonehero.gitlab.io/sources/icons/{0}",
     };
     const int TimeoutSeconds = 20;
-    const string KeptIconsFolder = "icons2";     // "icons" kept copies from the site, some out of date
+    const string KeptIconsFolder = "icons3";     // "icons" and "icons2" could hold the site's out of date copies
     const string TreeUrl = "https://gitlab.com/api/v4/projects/25065576/repository/tree?path=public/icons&per_page=100&page=";
     const int MaxTreePages = 40;
     const int MaxIconBytes = 1024 * 1024;   // The guidelines ask for 64x64 or 128x128, so anything this big isn't an icon
@@ -391,7 +394,7 @@ public static class SongIcons
             foreach (string site in s_iconSites)
             {
                 byte[] got = null;
-                yield return DownloadBytes(site + escaped, data => got = data);
+                yield return DownloadBytes(string.Format(site, escaped), data => got = data);
                 if (IsPng(got))
                 {
                     bytes = got;
