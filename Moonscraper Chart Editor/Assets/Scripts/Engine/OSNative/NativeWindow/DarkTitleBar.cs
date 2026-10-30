@@ -9,6 +9,26 @@ using System.Runtime.InteropServices;
 /// </summary>
 public static class DarkTitleBar
 {
+    const string PrefTheme = "Customize.Theme";                 // UITheme's, 1 = Dark
+    const string PrefLastColor = "Customize.TitleBarColor";     // The last color the title bar was given, as 0xRRGGBB
+
+    /// <summary>
+    /// Puts the title bar back how it was last time as early as Unity allows, so it's already the theme's color while
+    /// the splash screen and the first menu load, instead of turning from white to dark once everything is in.
+    /// </summary>
+    [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]
+    static void ApplyLastLook()
+    {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        Set(UnityEngine.PlayerPrefs.GetInt(PrefTheme, 0) == 1);
+        if (UnityEngine.PlayerPrefs.HasKey(PrefLastColor))
+        {
+            int rgb = UnityEngine.PlayerPrefs.GetInt(PrefLastColor);
+            SetColor(new UnityEngine.Color32((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb, 255), false);
+        }
+#endif
+    }
+
     public static void Set(bool dark)
     {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
@@ -41,6 +61,11 @@ public static class DarkTitleBar
     /// </summary>
     public static bool SetColor(UnityEngine.Color? color)
     {
+        return SetColor(color, true);
+    }
+
+    static bool SetColor(UnityEngine.Color? color, bool remember)
+    {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         if (QuitState.isQuitting)
             return true;
@@ -61,6 +86,16 @@ public static class DarkTitleBar
             }
             bool colored = DwmSetWindowAttribute(window, DwmCaptionColor, ref caption, sizeof(int)) == 0;
             DwmSetWindowAttribute(window, DwmTextColor, ref text, sizeof(int));
+            if (remember)
+            {
+                if (colored && color.HasValue)
+                {
+                    UnityEngine.Color32 c = color.Value;
+                    UnityEngine.PlayerPrefs.SetInt(PrefLastColor, (c.r << 16) | (c.g << 8) | c.b);
+                }
+                else
+                    UnityEngine.PlayerPrefs.DeleteKey(PrefLastColor);
+            }
             return colored;
         }
         catch (Exception e)
