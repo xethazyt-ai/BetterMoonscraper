@@ -32529,7 +32529,7 @@ PrefabInstance:
     - target: {fileID: 114818522284670470, guid: e059237f4ab0a8341a8610f2299fa390,
         type: 3}
       propertyPath: m_Options.m_Options.Array.data[2].m_Text
-      value: About Moonscraper
+      value: About BetterMoonscraper
       objectReference: {fileID: 0}
     - target: {fileID: 114818522284670470, guid: e059237f4ab0a8341a8610f2299fa390,
         type: 3}
@@ -46797,7 +46797,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: "www.un4seen.com\n\nBASS 2.4\nCopyright (c) 1999-2016 Un4seen Developments
+  m_Text: "The Clone Hero Community\n\n----------------------------------------------------------------------------------------\n\nwww.un4seen.com\n\nBASS 2.4\nCopyright (c) 1999-2016 Un4seen Developments
     Ltd. All rights reserved.\n\n----------------------------------------------------------------------------------------\n\nBASS.NET
     API: Copyright 2005-2016 by radio42, Author: Bernd Niedergesaess  (bn@radio42.com).
     All rights reserved. \nBASS.NET is the property of radio42 and is protected by
