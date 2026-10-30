@@ -18,6 +18,12 @@ public static class HighwayTransparency
     const int FadeRenderQueue = 2950;   // After the solid notes, before see-through things such as beat lines
     static Shader s_fadeShader;
 
+    // The white rails down the highway's sides draw before the highway normally, so once the highway is see-through
+    // and drawn later it would cover and dim them; they're moved to just after it, so they stay fully white
+    static Material s_railMaterial;
+    static int s_railRenderQueue;
+    const int RailRenderQueue = FadeRenderQueue + 10;
+
     public static int percent
     {
         get
@@ -55,6 +61,15 @@ public static class HighwayTransparency
             s_material = renderer.sharedMaterial;
             s_originalShader = s_material.shader;
             s_originalRenderQueue = s_material.renderQueue;
+            foreach (Renderer child in renderer.transform.parent ? renderer.transform.parent.GetComponentsInChildren<Renderer>(true) : new Renderer[0])
+            {
+                if (child != renderer && child.sharedMaterial && child.name.StartsWith("highway rail"))
+                {
+                    s_railMaterial = child.sharedMaterial;
+                    s_railRenderQueue = s_railMaterial.renderQueue;
+                    break;
+                }
+            }
             s_fadeShader = Resources.Load<Shader>("Shaders/HighwayFade");
             if (!s_fadeShader)
                 Debug.LogWarning("Couldn't find the highway transparency shader");
@@ -70,6 +85,8 @@ public static class HighwayTransparency
             s_material.shader = s_fadeShader;
         s_material.renderQueue = FadeRenderQueue;   // The material sets its own queue, which would win over the shader's
         s_material.SetColor("_Color", new Color(1, 1, 1, 1 - percent / 100f));
+        if (s_railMaterial)
+            s_railMaterial.renderQueue = RailRenderQueue;
     }
 
     // The material is a shared asset, so this also stops the change sticking in the Unity editor
@@ -80,5 +97,7 @@ public static class HighwayTransparency
             s_material.shader = s_originalShader;
             s_material.renderQueue = s_originalRenderQueue;
         }
+        if (s_railMaterial)
+            s_railMaterial.renderQueue = s_railRenderQueue;
     }
 }
