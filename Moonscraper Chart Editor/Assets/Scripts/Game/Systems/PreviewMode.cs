@@ -99,6 +99,21 @@ public class PreviewMode : MonoBehaviour
             m_nextCanvasCheck = Time.unscaledTime + 0.2f;
             HideCanvases();
         }
+        // The red paste arrow switches itself back on whenever playing stops, so it's kept off every frame (it may
+        // also have been off when Preview Mode started, from playing, so GameObject.Find couldn't see it then)
+        ClipboardObjectController clipboard = ClipboardObjectController.instance;
+        if (clipboard && clipboard.gameObject.activeSelf)
+        {
+            clipboard.gameObject.SetActive(false);
+            if (!m_hiddenObjects.Contains(clipboard.gameObject))
+                m_hiddenObjects.Add(clipboard.gameObject);
+        }
+        foreach (GameObject hidden in m_hiddenObjects)
+        {
+            if (hidden && hidden.activeSelf)
+                hidden.SetActive(false);
+        }
+
         if (m_editor.toolManager.currentToolId != EditorObjectToolManager.ToolID.None)
         {
             m_savedTool = m_editor.toolManager.currentToolId;
@@ -157,10 +172,11 @@ public class PreviewMode : MonoBehaviour
         }
         m_hiddenCanvases.Clear();
 
+        ClipboardObjectController clipboard = ClipboardObjectController.instance;
         foreach (GameObject hidden in m_hiddenObjects)
         {
             if (hidden)
-                hidden.SetActive(true);
+                hidden.SetActive(!clipboard || hidden != clipboard.gameObject || m_editor.currentState == ChartEditor.State.Editor);
         }
         m_hiddenObjects.Clear();
 
