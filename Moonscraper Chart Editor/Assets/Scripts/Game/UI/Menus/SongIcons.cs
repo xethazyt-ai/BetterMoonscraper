@@ -16,12 +16,14 @@ using UnityEngine.Networking;
 public static class SongIcons
 {
     static readonly string[] s_sites = { "https://sources-ca135f.gitlab.io/", "https://clonehero.gitlab.io/sources/" };
-    // The pictures: the site's copies, else the originals in the repository
+    // The pictures: the originals in the repository first, since the site's copies can be out of date (LegoKeegan411
+    // came out the wrong color from it), then the site's for icons only it still has
     static readonly string[] s_iconSites =
     {
-        "https://sources-ca135f.gitlab.io/icons/", "https://clonehero.gitlab.io/sources/icons/", "https://gitlab.com/clonehero/sources/-/raw/master/public/icons/",
+        "https://gitlab.com/clonehero/sources/-/raw/master/public/icons/", "https://sources-ca135f.gitlab.io/icons/", "https://clonehero.gitlab.io/sources/icons/",
     };
     const int TimeoutSeconds = 20;
+    const string KeptIconsFolder = "icons2";     // "icons" kept copies from the site, some out of date
     const string TreeUrl = "https://gitlab.com/api/v4/projects/25065576/repository/tree?path=public/icons&per_page=100&page=";
     const int MaxTreePages = 40;
     const int MaxIconBytes = 1024 * 1024;   // The guidelines ask for 64x64 or 128x128, so anything this big isn't an icon
@@ -370,7 +372,7 @@ public static class SongIcons
 
         // Kept under the list's hash, so an icon that's changed is fetched again. The hash is of the original in the
         // repository; the site's copies are shrunk with pngquant, so a download is only checked for being a PNG.
-        string path = icon.localPath ?? Path.Combine(Path.Combine(folder, "icons"), icon.sha1.Length == 40 ? icon.sha1 + ".png" : icon.file);
+        string path = icon.localPath ?? Path.Combine(Path.Combine(folder, KeptIconsFolder), icon.sha1.Length == 40 ? icon.sha1 + ".png" : icon.file);
         byte[] bytes = null;
         try
         {
