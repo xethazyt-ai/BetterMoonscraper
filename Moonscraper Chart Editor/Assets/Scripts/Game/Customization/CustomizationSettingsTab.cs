@@ -18,6 +18,7 @@ public class CustomizationSettingsTab : MonoBehaviour
     // Moonscraper's dropdown box is drawn this far inside its own edges, so dropdowns are made that much bigger to
     // line their boxes up with the writing, buttons and color picker in the same column
     const float DropdownInset = 2.5f;
+    const float ButtonHeightInset = 2.95f;     // The box is drawn this far in from the top and bottom too, so buttons match it
     const float CentringShift = 64;
 
     static readonly ExtensionFilter s_imageFilter = new ExtensionFilter("Images", "png", "jpg", "jpeg", "gif");
@@ -492,8 +493,11 @@ public class CustomizationSettingsTab : MonoBehaviour
         RectTransform rect = (RectTransform)button.transform;
         rect.anchorMin = rect.anchorMax = new Vector2(0, 1);
         rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(ButtonWidth, ((RectTransform)m_dropdownTemplate.transform).sizeDelta.y);
+        rect.sizeDelta = new Vector2(ButtonWidth, ((RectTransform)m_dropdownTemplate.transform).sizeDelta.y - ButtonHeightInset * 2);
         Place(rect, left, ButtonWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+        Text text = button.GetComponentInChildren<Text>(true);
+        if (text)
+            text.verticalOverflow = VerticalWrapMode.Overflow;     // The shorter button mustn't cut its word off
         return button;
     }
 
