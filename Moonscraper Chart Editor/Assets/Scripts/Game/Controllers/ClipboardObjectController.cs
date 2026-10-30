@@ -58,11 +58,20 @@ public class ClipboardObjectController : Snapable {
     // Pattern Blueprints paste where the mouse points on the highway, like Ctrl+V, otherwise at the strikeline
     public void PasteAtMouseOrStrikeline(bool allowMouse)
     {
+        PasteAndReset(MouseOrStrikelineTick(allowMouse));
+    }
+
+    public uint MouseOrStrikelineTick(bool allowMouse)
+    {
         uint tick = editor.currentSong.WorldPositionToSnappedTick(strikeline.position.y, Globals.gameSettings.step);
         if (allowMouse && editor.services.mouseMonitorSystem.world2DPosition != null && !MouseMonitor.IsUIUnderPointer()
             && Input.mousePosition.y < Camera.main.WorldToScreenPoint(editor.mouseYMaxLimit.position).y)
             tick = objectSnappedChartPos;
+        return tick;
+    }
 
+    public void PasteAndReset(uint tick)
+    {
         Paste(tick);
         groupSelectTool.reset();
     }

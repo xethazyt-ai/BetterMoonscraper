@@ -57,12 +57,33 @@ public class StarpowerController : SongObjectController
             transform.position = new Vector3(CHART_CENTER_POS + position, desiredWorldYPosition, 0);
 
             UpdateTailLength();
+            UpdateTailColor();
 
             //if (isDirty)
             {
                 visualsManager.UpdateVisuals();
             }
         }
+    }
+
+    // The tail in the color profile's Star Power color, like the star
+    Renderer m_tailRenderer;
+    Material m_tailOriginal;
+
+    void UpdateTailColor()
+    {
+        if (!m_tailRenderer)
+        {
+            m_tailRenderer = tail ? tail.GetComponent<Renderer>() : null;
+            if (!m_tailRenderer)
+                return;
+            m_tailOriginal = m_tailRenderer.sharedMaterial;
+        }
+
+        Material material = starpower.flags.HasFlag(Starpower.Flags.ProDrums_Activation) ? m_tailOriginal
+            : CustomNoteColors.StarPower(editor.currentGameMode, m_tailOriginal, false);
+        if (m_tailRenderer.sharedMaterial != material)
+            m_tailRenderer.sharedMaterial = material;
     }
 
     public void UpdateTailLength()

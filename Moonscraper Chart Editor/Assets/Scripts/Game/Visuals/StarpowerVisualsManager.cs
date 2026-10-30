@@ -24,6 +24,37 @@ public class StarpowerVisualsManager : MonoBehaviour
         resourceSharedMatsSpDrumFill = resources.starpowerDrumFillMaterials;
     }
 
+    // The star's cyan base and middle (materials 2 and 3)
+    static readonly int[] s_colorSlots = { 2, 3 };
+    Material[] m_profileMats;
+
+    Material[] ProfileColored(Material[] materials)
+    {
+        Chart.GameMode gameMode = ChartEditor.Instance.currentGameMode;
+        Material[] colored = null;
+        foreach (int slot in s_colorSlots)
+        {
+            if (slot >= materials.Length)
+                continue;
+            Material recolored = CustomNoteColors.StarPower(gameMode, materials[slot], false);
+            if (recolored == materials[slot])
+                continue;
+            if (colored == null)
+                colored = m_profileMats != null && m_profileMats.Length == materials.Length ? m_profileMats : new Material[materials.Length];
+            colored[slot] = recolored;
+        }
+        if (colored == null)
+            return materials;
+
+        for (int i = 0; i < materials.Length; ++i)
+        {
+            if (System.Array.IndexOf(s_colorSlots, i) < 0 || !colored[i])
+                colored[i] = materials[i];
+        }
+        m_profileMats = colored;
+        return colored;
+    }
+
     public void UpdateVisuals()
     {
         if (!spRenderer)
@@ -39,8 +70,8 @@ public class StarpowerVisualsManager : MonoBehaviour
             }
             else
             {
-                // Default visuals
-                spRenderer.sharedMaterials = resourceSharedMatsSp;
+                // Default visuals, with the cyan parts in the color profile's Star Power color when it has one
+                spRenderer.sharedMaterials = ProfileColored(resourceSharedMatsSp);
             }
         }
     }

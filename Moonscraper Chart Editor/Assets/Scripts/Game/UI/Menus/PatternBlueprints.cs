@@ -14,6 +14,8 @@ using MoonscraperChartEditor.Song;
 /// 16ths is eight 32nds), below 1x it spreads over more of them (0.5x takes twice as many). Saved on this computer only,
 /// in a file that every Moonscraper version reads. Opened with F5; Ctrl+B pastes the picked pattern where the mouse
 /// points on the highway (or at the strikeline), even with the window closed. Both are rebindable in Controls.
+/// With notes selected, Ctrl+B stamps those notes instead. Pressing it again without moving the mouse puts the next copy
+/// straight after the last one, so a pattern can be run out as long as needed.
 /// </summary>
 public partial class PatternBlueprints : MonoBehaviour
 {
@@ -124,13 +126,13 @@ public partial class PatternBlueprints : MonoBehaviour
 
         if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprintPaste))
         {
-            if (m_selected >= 0 && m_selected < m_file.blueprints.Count)
+            if (SelectedNotes().Count > 0 || m_stampNotes != null || (m_selected >= 0 && m_selected < m_file.blueprints.Count))
             {
                 m_pasteRequested = true;
                 m_pasteAtMouse = true;
             }
             else
-                m_editor.services.notificationBar.PushNotification("PICK A PATTERN IN PATTERN BLUEPRINTS (F5) FIRST", 3, true);
+                m_editor.services.notificationBar.PushNotification("SELECT SOME NOTES, OR PICK A PATTERN IN PATTERN BLUEPRINTS (F5), FIRST", 3, true);
         }
 
         if (m_packRequested != 0)
@@ -146,13 +148,38 @@ public partial class PatternBlueprints : MonoBehaviour
         if (m_pasteRequested)
         {
             m_pasteRequested = false;
-            if (m_selected >= 0 && m_selected < m_file.blueprints.Count)
-                Paste(m_file.blueprints[m_selected], m_pasteAtMouse);
+            Paste(m_pasteAtMouse);
             m_pasteAtMouse = false;
         }
     }
 
-    void Paste(Blueprint blueprint, bool atMouse)
+    // The last Ctrl+B, so pressing it again on the same spot carries on after the last copy
+    SongObject[] m_stampNotes;          // What it pasted, as it went on the clipboard
+    Clipboard.SelectionArea m_stampArea;
+    uint m_stampSpan;                   // Ticks from one copy's start to the next
+    uint m_stampTarget;                 // Where the mouse (or strikeline) was
+    uint m_stampLastStart;              // Where the last copy went
+    Chart m_stampChart;
+    string m_stampName;
+    string m_stampSource;               // "selection", or the pattern and its settings
+
+    const string SelectionSource = "\n selection";
+
+    List<Note> SelectedNotes()
+    {
+        List<Note> notes = new List<Note>();
+        if (m_editor.currentState != ChartEditor.State.Editor)
+            return notes;
+        foreach (SongObject songObject in m_editor.selectedObjectsManager.currentSelectedObjects)
+        {
+            Note note = songObject as Note;
+            if (note != null && note.chart == m_editor.currentChart)
+                notes.Add(note);
+        }
+        return notes;
+    }
+
+    void Paste(bool atMouse)
     {
         if (m_editor.currentState != ChartEditor.State.Editor)
         {
@@ -161,17 +188,124 @@ public partial class PatternBlueprints : MonoBehaviour
         }
 
         ClipboardObjectController clipboard = ClipboardObjectController.instance ? ClipboardObjectController.instance : FindObjectOfType<ClipboardObjectController>();
-        if (!clipboard)
+        Song song = m_editor.currentSong;
+        if (!clipboard || song == null)
         {
             m_status = "Couldn't find Moonscraper's paste tool. Use Copy, then Ctrl+V.";
             return;
         }
 
-        if (!CopyToClipboard(blueprint))
-            return;
+        // Ctrl+B stamps the selected notes if there are any; the window's Paste button always pastes the pattern
+        List<Note> selected = atMouse ? SelectedNotes() : new List<Note>();
+        Blueprint blueprint = m_selected >= 0 && m_selected < m_file.blueprints.Count ? m_file.blueprints[m_selected] : null;
+        string blueprintSource = blueprint == null ? null : blueprint.name + "|" + m_fitStep + "|" + m_speed + "|" + m_mirror + "|" + m_laneShift;
+        // With nothing selected, Ctrl+B carries on with the notes it stamped last, until a pattern is picked
+        bool reuseStamp = selected.Count == 0 && atMouse && m_stampSource == SelectionSource && m_stampNotes != null && m_stampChart == m_editor.currentChart;
+        string source = selected.Count > 0 || reuseStamp ? SelectionSource : blueprintSource;
 
-        clipboard.PasteAtMouseOrStrikeline(atMouse);
-        m_status = "Pasted \"" + blueprint.name + "\". Ctrl+Z undoes it.";
+        uint target = clipboard.MouseOrStrikelineTick(atMouse);
+        uint start = target;
+        bool repeat = m_stampNotes != null && m_stampChart == m_editor.currentChart && target == m_stampTarget && source == m_stampSource;
+        if (repeat)
+        {
+            // Carries on after the last copy, unless that one was undone
+            start = HasNoteAt(m_stampLastStart) ? m_stampLastStart + m_stampSpan : m_stampLastStart;
+        }
+        else
+        {
+            bool built = selected.Count > 0 ? StampFromSelection(selected) : reuseStamp || (blueprint != null && StampFromBlueprint(blueprint));
+            if (!built)
+            {
+                m_stampNotes = null;
+                m_stampSource = null;
+                m_editor.services.notificationBar.PushNotification("SELECT SOME NOTES, OR PICK A PATTERN IN PATTERN BLUEPRINTS (F5), FIRST", 3, true);
+                return;
+            }
+            m_stampChart = m_editor.currentChart;
+            m_stampTarget = target;
+            m_stampSource = source;
+        }
+
+        ClipboardObjectController.SetData(m_stampNotes, m_stampArea, song);
+        clipboard.PasteAndReset(start);
+        m_stampLastStart = start;
+        m_status = "Pasted " + m_stampName + ". Ctrl+B again here adds another copy after it. Ctrl+Z undoes it.";
+        m_editor.services.notificationBar.PushNotification("PASTED " + m_stampName.ToUpperInvariant() + ". CTRL+B AGAIN REPEATS IT", 2, true);
+    }
+
+    bool HasNoteAt(uint tick)
+    {
+        Chart chart = m_editor.currentChart;
+        if (chart == null)
+            return false;
+        int index, length;
+        SongObjectHelper.FindObjectsAtPosition(tick, chart.notes, out index, out length);
+        return length > 0;
+    }
+
+    // The selected notes as they are. The next copy starts one note gap after the last note, so a run of 9 notes
+    // between two lines repeats from the next line. Steps that don't divide into ticks have gaps a tick apart, so the
+    // gap is the average of the shortest ones.
+    bool StampFromSelection(List<Note> selected)
+    {
+        Song song = m_editor.currentSong;
+        selected.Sort((a, b) => a.tick.CompareTo(b.tick));
+        uint first = selected[0].tick, last = selected[selected.Count - 1].tick;
+
+        List<uint> gaps = new List<uint>();
+        for (int i = 1; i < selected.Count; ++i)
+        {
+            if (selected[i].tick > selected[i - 1].tick)
+                gaps.Add(selected[i].tick - selected[i - 1].tick);
+        }
+        double gap = song.resolution * 4.0 / Math.Max(1, Globals.gameSettings.step);
+        if (gaps.Count > 0)
+        {
+            uint smallest = uint.MaxValue;
+            foreach (uint g in gaps)
+                smallest = Math.Min(smallest, g);
+            double total = 0;
+            int count = 0;
+            foreach (uint g in gaps)
+            {
+                if (g <= smallest + 1)
+                {
+                    total += g;
+                    ++count;
+                }
+            }
+            gap = total / count;
+        }
+
+        List<SongObject> notes = new List<SongObject>();
+        foreach (Note note in selected)
+        {
+            Note copy = new Note(note);
+            copy.tick = note.tick - first;
+            notes.Add(copy);
+        }
+
+        m_stampNotes = notes.ToArray();
+        m_stampArea = new Clipboard.SelectionArea(new Rect(-2, 0, 4, 0), 0, last - first);
+        m_stampSpan = Math.Max(1u, (uint)Math.Round(last - first + gap));
+        m_stampName = selected.Count == 1 ? "the selected note" : "the " + selected.Count + " selected notes";
+        return true;
+    }
+
+    bool StampFromBlueprint(Blueprint blueprint)
+    {
+        double span;
+        SongObject[] notes;
+        uint last;
+        if (!BuildNotes(blueprint, out notes, out last, out span))
+            return false;
+
+        // Covers every lane, so pasting replaces whatever notes were already there, as a normal paste does
+        m_stampNotes = notes;
+        m_stampArea = new Clipboard.SelectionArea(new Rect(-2, 0, 4, 0), 0, last);
+        m_stampSpan = Math.Max(1u, (uint)Math.Round(span * m_editor.currentSong.resolution));
+        m_stampName = "\"" + blueprint.name + "\"";
+        return true;
     }
 
     public void Toggle()
@@ -410,6 +544,10 @@ public partial class PatternBlueprints : MonoBehaviour
         m_speed = 1;
         m_mirror = false;
         m_laneShift = 0;
+
+        // Picking or saving a pattern means Ctrl+B pastes that, not the notes stamped last
+        m_stampNotes = null;
+        m_stampSource = null;
     }
 
     static string Describe(Blueprint blueprint, int fitStep, float speed)
@@ -523,9 +661,13 @@ public partial class PatternBlueprints : MonoBehaviour
         Save();
     }
 
-    // Puts the scaled pattern on Moonscraper's own clipboard, so pasting works (and undoes, and reaches Collab) as usual
-    bool CopyToClipboard(Blueprint blueprint)
+    // The scaled pattern as notes from tick 0, for Moonscraper's own clipboard, so pasting works (and undoes, and
+    // reaches Collab) as usual
+    bool BuildNotes(Blueprint blueprint, out SongObject[] result, out uint last, out double span)
     {
+        result = null;
+        last = 0;
+        span = 0;
         Song song = m_editor.currentSong;
         if (song == null || blueprint.notes.Count == 0)
         {
@@ -535,9 +677,7 @@ public partial class PatternBlueprints : MonoBehaviour
 
         float resolution = song.resolution;
         List<SongObject> notes = new List<SongObject>();
-        uint last = 0;
         int count;
-        double span;
         foreach (Placed placed in Arrange(blueprint, m_fitStep, m_speed, m_mirror, m_laneShift, out count, out span))
         {
             uint tick = (uint)Math.Round(placed.beat * resolution);
@@ -546,10 +686,7 @@ public partial class PatternBlueprints : MonoBehaviour
             last = Math.Max(last, tick);
         }
         notes.Sort((a, b) => a.tick.CompareTo(b.tick));
-
-        // Covers every lane, so pasting replaces whatever notes were already there, as a normal paste does
-        Clipboard.SelectionArea area = new Clipboard.SelectionArea(new Rect(-2, 0, 4, 0), 0, last);
-        ClipboardObjectController.SetData(notes.ToArray(), area, song);
+        result = notes.ToArray();
         return true;
     }
 }
