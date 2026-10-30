@@ -22,6 +22,8 @@ public static class SongIcons
         "https://sources-ca135f.gitlab.io/icons/", "https://clonehero.gitlab.io/sources/icons/", "https://gitlab.com/clonehero/sources/-/raw/master/public/icons/",
     };
     const int TimeoutSeconds = 20;
+    const string TreeUrl = "https://gitlab.com/api/v4/projects/25065576/repository/tree?path=public/icons&per_page=100&page=";
+    const int MaxTreePages = 40;
     const int MaxIconBytes = 1024 * 1024;   // The guidelines ask for 64x64 or 128x128, so anything this big isn't an icon
 
     public class Icon
@@ -111,6 +113,36 @@ public static class SongIcons
             break;
         }
 
+        // The site's list can lag behind the icons themselves (LegoKeegan411 was in the repository but not on it), so
+        // the repository's own file list fills in any it's missing
+        List<object> repositoryIcons = new List<object>();
+        for (int page = 1; page <= MaxTreePages; ++page)
+        {
+            string[] got = new string[1];
+            yield return Download(TreeUrl + page, text => got[0] = text);
+            List<object> entries = null;
+            try
+            {
+                entries = got[0] != null ? DuetJson.Read(got[0]) as List<object> : null;
+            }
+            catch (Exception)
+            {
+                entries = null;
+            }
+            if (entries == null || entries.Count == 0)
+                break;
+            foreach (object item in entries)
+            {
+                Dictionary<string, object> entry = item as Dictionary<string, object>;
+                string name = entry != null ? DuetJson.GetString(entry, "name", string.Empty) : string.Empty;
+                if (name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                    repositoryIcons.Add(new Dictionary<string, object> { { "name", name }, { "sha1", DuetJson.GetString(entry, "id", string.Empty) } });
+            }
+            if (entries.Count < 100)
+                break;
+        }
+        iconsJson = MergeLists(iconsJson, repositoryIcons);
+
         string listPath = Path.Combine(folder, "icons.json");
         string sourcesPath = Path.Combine(folder, "sources.txt");
         try
@@ -141,11 +173,42 @@ public static class SongIcons
             done();
     }
 
+    // The site's list plus any icons only the repository has, as the site's icons.json
+    static string MergeLists(string iconsJson, List<object> repositoryIcons)
+    {
+        List<object> merged = null;
+        try
+        {
+            merged = iconsJson != null ? DuetJson.Read(iconsJson) as List<object> : null;
+        }
+        catch (Exception)
+        {
+            merged = null;
+        }
+        if (merged == null)
+            merged = new List<object>();
+        if (repositoryIcons.Count == 0)
+            return merged.Count > 0 ? iconsJson : null;
+
+        HashSet<string> have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (object item in merged)
+        {
+            Dictionary<string, object> entry = item as Dictionary<string, object>;
+            if (entry != null)
+                have.Add(Path.GetFileName(DuetJson.GetString(entry, "name", string.Empty)));
+        }
+        foreach (object item in repositoryIcons)
+        {
+            if (have.Add(DuetJson.GetString((Dictionary<string, object>)item, "name", string.Empty)))
+                merged.Add(item);
+        }
+        return DuetJson.Write(merged);
+    }
+
     // Community charter icons that come with BetterMoonscraper (Assets/StreamingAssets/Charter Icons)
     static string bundledFolder { get { return Path.Combine(Application.streamingAssetsPath, "Charter Icons"); } }
 
-    // Pictures in the Charter Icons folders. Clone Hero's own icon wins a name both have, since that's what the game
-    // shows for it. Works without the internet too, as the only icons then.
+    // Pictures in the Charter Icons folders. Works without the internet too, as the only icons then.
     static int AddLocalIcons()
     {
         HashSet<string> taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -168,10 +231,14 @@ public static class SongIcons
                     string extension = Path.GetExtension(path).ToLowerInvariant();
                     if (extension != ".png" && extension != ".jpg" && extension != ".jpeg")
                         continue;
-                    string id = Path.GetFileNameWithoutExtension(path);
-                    if (id.Length == 0 || !taken.Add(id))
+                    // A name that's already used (by Clone Hero's icon or another of these) gets _2, _3 and so on
+                    string name = Path.GetFileNameWithoutExtension(path);
+                    if (name.Length == 0)
                         continue;
-                    found.Add(new Icon { id = id, file = Path.GetFileName(path), sha1 = string.Empty, source = "Charter icon", localPath = path });
+                    string id = name;
+                    for (int number = 2; !taken.Add(id); ++number)
+                        id = name + "_" + number;
+                    found.Add(new Icon { id = id, file = "Charter Icons/" + id + Path.GetExtension(path), sha1 = string.Empty, source = "Charter icon", localPath = path });
                 }
             }
             catch (Exception e)
@@ -212,6 +279,7 @@ public static class SongIcons
         }
 
         List<Icon> result = new List<Icon>();
+        HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (object item in list)
         {
             Dictionary<string, object> entry = item as Dictionary<string, object>;
@@ -221,10 +289,14 @@ public static class SongIcons
 
             Icon icon = new Icon();
             icon.file = file;
-            icon.id = file.Substring(0, file.Length - 4);
+            // Names that differ only in capitals are different pictures: the later ones get _2, _3 and so on
+            string name = file.Substring(0, file.Length - 4);
+            icon.id = name;
+            for (int number = 2; !ids.Add(icon.id); ++number)
+                icon.id = name + "_" + number;
             icon.sha1 = DuetJson.GetString(entry, "sha1", string.Empty).ToLowerInvariant();
             string source;
-            icon.source = sources.TryGetValue(icon.id, out source) ? source : null;
+            icon.source = sources.TryGetValue(name, out source) ? source : null;
             result.Add(icon);
         }
         return result;
