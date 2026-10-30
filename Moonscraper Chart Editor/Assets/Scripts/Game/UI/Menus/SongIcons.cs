@@ -30,6 +30,7 @@ public static class SongIcons
         public string file;
         public string sha1;
         public string source;   // The full name Clone Hero shows, if the list has one
+        public string localPath;    // A picture in the Charter Icons folder, rather than one of Clone Hero's
     }
 
     public static List<Icon> icons { get; private set; }
@@ -40,6 +41,31 @@ public static class SongIcons
     static readonly HashSet<string> s_downloading = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     static string folder { get { return Path.Combine(CustomizationPrefs.storageFolder, "Game Icons"); } }
+
+    /// <summary>
+    /// "Charter Icons" next to BetterMoonscraper.exe: the user's own icon pictures (say, ones collected from their
+    /// songs), searchable alongside Clone Hero's. Named as they'd go in song.ini, so "xethaz.png" is icon = xethaz.
+    /// </summary>
+    public static string localFolder
+    {
+        get
+        {
+            string appFolder = Path.GetDirectoryName(Application.dataPath);     // dataPath is <app>/<name>_Data
+            foreach (string candidate in new[] { Path.Combine(appFolder, "Charter Icons"), Path.Combine(CustomizationPrefs.storageFolder, "Charter Icons") })
+            {
+                try
+                {
+                    Directory.CreateDirectory(candidate);
+                    return candidate;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("Couldn't make the charter icons folder " + candidate + ". " + e.Message);
+                }
+            }
+            return null;
+        }
+    }
 
     // Downloads run on an object of their own, so closing the menu mid-download doesn't leave one half done
     class Runner : MonoBehaviour { }
@@ -107,11 +133,59 @@ public static class SongIcons
         }
 
         icons = iconsJson != null ? Parse(iconsJson, sourcesText) : null;
+        int local = AddLocalIcons();
         status = icons == null ? "Couldn't get Clone Hero's icon list. Check the internet connection and open this again."
-            : icons.Count + " icons. Type to search by name or source.";
+            : icons.Count + " icons" + (local > 0 ? " (" + local + " charter icons)" : string.Empty) + ". Type to search by name or source.";
         isLoading = false;     // With no list, the next call tries again
         if (done != null)
             done();
+    }
+
+    // Community charter icons that come with BetterMoonscraper (Assets/StreamingAssets/Charter Icons)
+    static string bundledFolder { get { return Path.Combine(Application.streamingAssetsPath, "Charter Icons"); } }
+
+    // Pictures in the Charter Icons folders. Clone Hero's own icon wins a name both have, since that's what the game
+    // shows for it. Works without the internet too, as the only icons then.
+    static int AddLocalIcons()
+    {
+        HashSet<string> taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (icons != null)
+        {
+            foreach (Icon icon in icons)
+                taken.Add(icon.id);
+        }
+
+        // The user's own folder first, then the ones that come with BetterMoonscraper
+        List<Icon> found = new List<Icon>();
+        foreach (string local in new[] { localFolder, bundledFolder })
+        {
+            if (local == null || !Directory.Exists(local))
+                continue;
+            try
+            {
+                foreach (string path in Directory.GetFiles(local))
+                {
+                    string extension = Path.GetExtension(path).ToLowerInvariant();
+                    if (extension != ".png" && extension != ".jpg" && extension != ".jpeg")
+                        continue;
+                    string id = Path.GetFileNameWithoutExtension(path);
+                    if (id.Length == 0 || !taken.Add(id))
+                        continue;
+                    found.Add(new Icon { id = id, file = Path.GetFileName(path), sha1 = string.Empty, source = "Charter icon", localPath = path });
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Couldn't read the charter icons in " + local + ". " + e.Message);
+            }
+        }
+
+        if (found.Count == 0)
+            return 0;
+        if (icons == null)
+            icons = new List<Icon>();
+        icons.AddRange(found);
+        return found.Count;
     }
 
     static List<Icon> Parse(string iconsJson, string sourcesText)
@@ -224,7 +298,7 @@ public static class SongIcons
 
         // Kept under the list's hash, so an icon that's changed is fetched again. The hash is of the original in the
         // repository; the site's copies are shrunk with pngquant, so a download is only checked for being a PNG.
-        string path = Path.Combine(Path.Combine(folder, "icons"), icon.sha1.Length == 40 ? icon.sha1 + ".png" : icon.file);
+        string path = icon.localPath ?? Path.Combine(Path.Combine(folder, "icons"), icon.sha1.Length == 40 ? icon.sha1 + ".png" : icon.file);
         byte[] bytes = null;
         try
         {
@@ -236,7 +310,7 @@ public static class SongIcons
             Debug.LogWarning("Couldn't read the kept icon " + icon.file + ". " + e.Message);
         }
 
-        if (bytes == null)
+        if (bytes == null && icon.localPath == null)
         {
             s_downloading.Add(icon.file);
             string escaped = UnityWebRequest.EscapeURL(icon.file).Replace("+", "%20");
