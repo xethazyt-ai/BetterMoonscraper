@@ -6304,7 +6304,7 @@ PrefabInstance:
     - target: {fileID: 2251066575394956857, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_Arguments.m_StringArgument
-      value: https://www.youtube.com/user/FireFox2000000
+      value: https://www.youtube.com/@xethaz8088
       objectReference: {fileID: 0}
     - target: {fileID: 2251066575394956857, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
@@ -12483,7 +12483,7 @@ PrefabInstance:
     - target: {fileID: 2251066575394956857, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_Arguments.m_StringArgument
-      value: https://github.com/FireFox2000000/Moonscraper-Chart-Editor
+      value: https://github.com/xethazyt-ai/BetterMoonscrapper
       objectReference: {fileID: 0}
     - target: {fileID: 2251066575394956857, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
@@ -32435,7 +32435,7 @@ PrefabInstance:
     - target: {fileID: 2251066575394956857, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_Arguments.m_StringArgument
-      value: https://discord.gg/bjsKTwd
+      value: https://discord.gg/v7nmWt7A2x
       objectReference: {fileID: 0}
     - target: {fileID: 2251066575394956857, guid: 4b9fb9c23f4a6a141a913978aaf17813,
         type: 3}
