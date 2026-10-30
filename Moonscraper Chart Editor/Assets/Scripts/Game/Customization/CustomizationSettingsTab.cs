@@ -14,7 +14,10 @@ using UnityEngine.UI;
 public class CustomizationSettingsTab : MonoBehaviour
 {
     const float RowHeight = 32;
-    const float ControlLeft = 300, ControlWidth = 250, ButtonWidth = 70, Gap = 8;
+    const float ControlLeft = 300, ControlWidth = 250, ButtonWidth = 62, Gap = 4;
+    // Moonscraper's dropdown box is drawn this far inside its own edges, so dropdowns are made that much bigger to
+    // line their boxes up with the writing, buttons and color picker in the same column
+    const float DropdownInset = 2.5f;
     const float CentringShift = 64;
 
     static readonly ExtensionFilter s_imageFilter = new ExtensionFilter("Images", "png", "jpg", "jpeg", "gif");
@@ -283,7 +286,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         choice.dropdown.name = label + " Dropdown";
         choice.dropdown.onValueChanged = new Dropdown.DropdownEvent();
         choice.dropdown.onValueChanged.AddListener((index) => OnChoiceChanged(choice, index));
-        Place((RectTransform)choice.dropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+        PlaceDropdown(choice.dropdown);
         m_choices[kind] = choice;
 
         AddButton("Browse", ControlLeft + ControlWidth + Gap, browse);
@@ -308,7 +311,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         m_clapDropdown.name = "Clap Sound Dropdown";
         m_clapDropdown.onValueChanged = new Dropdown.DropdownEvent();
         m_clapDropdown.onValueChanged.AddListener(OnClapChanged);
-        Place((RectTransform)m_clapDropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+        PlaceDropdown(m_clapDropdown);
 
         // Picks a clap from anywhere, starting in the Clap Sounds folder; sounds dropped in that folder show up in the list
         AddButton("Browse", ControlLeft + ControlWidth + Gap, () =>
@@ -408,7 +411,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         dropdown.value = (int)UITheme.current;
         dropdown.RefreshShownValue();
         dropdown.onValueChanged.AddListener((index) => UITheme.current = (UITheme.Theme)index);
-        Place((RectTransform)dropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+        PlaceDropdown(dropdown);
         ++m_rows;
     }
 
@@ -484,6 +487,13 @@ public class CustomizationSettingsTab : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.sizeDelta = new Vector2(ButtonWidth, ((RectTransform)m_dropdownTemplate.transform).sizeDelta.y);
         Place(rect, left, ButtonWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+    }
+
+    // A dropdown in the control column, its box exactly ControlLeft to ControlLeft + ControlWidth
+    void PlaceDropdown(Dropdown dropdown)
+    {
+        Place((RectTransform)dropdown.transform, ControlLeft - DropdownInset, ControlWidth + DropdownInset * 2,
+            ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
     }
 
     // Puts a control's left edge at `left` on the current row. yOnFirstRow is where it would sit on the first row.
