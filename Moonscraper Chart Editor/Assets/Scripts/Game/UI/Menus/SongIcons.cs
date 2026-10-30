@@ -16,17 +16,24 @@ using UnityEngine.Networking;
 public static class SongIcons
 {
     static readonly string[] s_sites = { "https://sources-ca135f.gitlab.io/", "https://clonehero.gitlab.io/sources/" };
-    // The pictures: the originals in the repository first, since the site's copies can be out of date (LegoKeegan411
-    // came out the wrong color from it), then the site's for icons only it still has. GitLab's API comes before its
-    // raw file links, which can answer programs with a browser check page instead of the picture. {0} is the file name.
-    static readonly string[] s_iconSites =
+    // The pictures. Icons on the site's list come from the site, which has no limit on downloads. Icons only the
+    // repository has come from it first, since the site can still hold an out of date copy (LegoKeegan411 came out the
+    // wrong color from it). GitLab's API comes before its raw file links, which can answer programs with a browser
+    // check page instead of the picture. Both of those only allow so many downloads a minute. {0} is the file name.
+    static readonly string[] s_pagesSites = { "https://sources-ca135f.gitlab.io/icons/{0}", "https://clonehero.gitlab.io/sources/icons/{0}" };
+    static readonly string[] s_repositorySites =
     {
         "https://gitlab.com/api/v4/projects/25065576/repository/files/public%2Ficons%2F{0}/raw?ref=master",
         "https://gitlab.com/clonehero/sources/-/raw/master/public/icons/{0}",
-        "https://sources-ca135f.gitlab.io/icons/{0}", "https://clonehero.gitlab.io/sources/icons/{0}",
     };
     const int TimeoutSeconds = 20;
-    const string KeptIconsFolder = "icons3";     // "icons" and "icons2" could hold the site's out of date copies
+    const string KeptIconsFolder = "icons3";
+    // Kept by earlier versions. Their copies can be out of date, so they're only used when a download fails.
+    static readonly string[] s_olderKeptFolders = { "icons2", "icons" };
+    // After GitLab says too many downloads, the repository is left alone this long (or as long as it asks, if less)
+    const float MaxRateLimitWaitSeconds = 120;
+    static float s_rateLimitedUntil;
+    const string RepositoryOnlyKey = "repository_only";
     const string TreeUrl = "https://gitlab.com/api/v4/projects/25065576/repository/tree?path=public/icons&per_page=100&page=";
     const int MaxTreePages = 40;
     const int MaxIconBytes = 1024 * 1024;   // The guidelines ask for 64x64 or 128x128, so anything this big isn't an icon
@@ -38,6 +45,7 @@ public static class SongIcons
         public string sha1;
         public string source;   // The full name Clone Hero shows, if the list has one
         public string localPath;    // A picture in the Charter Icons folder, rather than one of Clone Hero's
+        public bool repositoryOnly;     // Not on the site's list, so its picture there may be missing or out of date
     }
 
     public static List<Icon> icons { get; private set; }
@@ -121,10 +129,13 @@ public static class SongIcons
         // The site's list can lag behind the icons themselves (LegoKeegan411 was in the repository but not on it), so
         // the repository's own file list fills in any it's missing
         List<object> repositoryIcons = new List<object>();
+        bool repositoryListed = false;
         for (int page = 1; page <= MaxTreePages; ++page)
         {
             string[] got = new string[1];
             yield return Download(TreeUrl + page, text => got[0] = text);
+            if (got[0] == null)
+                break;      // Too many downloads, or offline: the icons from last time fill in below
             List<object> entries = null;
             try
             {
@@ -134,22 +145,34 @@ public static class SongIcons
             {
                 entries = null;
             }
-            if (entries == null || entries.Count == 0)
+            if (entries == null)
                 break;
+            if (entries.Count == 0)
+            {
+                repositoryListed = true;
+                break;
+            }
             foreach (object item in entries)
             {
                 Dictionary<string, object> entry = item as Dictionary<string, object>;
                 string name = entry != null ? DuetJson.GetString(entry, "name", string.Empty) : string.Empty;
                 if (name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                    repositoryIcons.Add(new Dictionary<string, object> { { "name", name }, { "sha1", DuetJson.GetString(entry, "id", string.Empty) } });
+                    repositoryIcons.Add(new Dictionary<string, object> { { "name", name }, { "sha1", DuetJson.GetString(entry, "id", string.Empty) }, { RepositoryOnlyKey, "1" } });
             }
             if (entries.Count < 100)
+            {
+                repositoryListed = true;
                 break;
+            }
         }
-        iconsJson = MergeLists(iconsJson, repositoryIcons);
 
         string listPath = Path.Combine(folder, "icons.json");
         string sourcesPath = Path.Combine(folder, "sources.txt");
+        // A listing cut short (GitLab only allows so many requests a minute) keeps the icons found last time
+        if (!repositoryListed)
+            repositoryIcons.AddRange(KeptRepositoryIcons(listPath));
+        iconsJson = MergeLists(iconsJson, repositoryIcons);
+
         try
         {
             if (iconsJson != null && Parse(iconsJson, sourcesText) != null)
@@ -176,6 +199,30 @@ public static class SongIcons
         isLoading = false;     // With no list, the next call tries again
         if (done != null)
             done();
+    }
+
+    // The repository-only icons in the list kept last time
+    static List<object> KeptRepositoryIcons(string listPath)
+    {
+        List<object> kept = new List<object>();
+        try
+        {
+            List<object> list = File.Exists(listPath) ? DuetJson.Read(File.ReadAllText(listPath)) as List<object> : null;
+            if (list != null)
+            {
+                foreach (object item in list)
+                {
+                    Dictionary<string, object> entry = item as Dictionary<string, object>;
+                    if (entry != null && DuetJson.GetString(entry, RepositoryOnlyKey, string.Empty) == "1")
+                        kept.Add(entry);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Couldn't read the kept icon list. " + e.Message);
+        }
+        return kept;
     }
 
     // The site's list plus any icons only the repository has, as the site's icons.json
@@ -300,6 +347,7 @@ public static class SongIcons
             for (int number = 2; !ids.Add(icon.id); ++number)
                 icon.id = name + "_" + number;
             icon.sha1 = DuetJson.GetString(entry, "sha1", string.Empty).ToLowerInvariant();
+            icon.repositoryOnly = DuetJson.GetString(entry, RepositoryOnlyKey, string.Empty) == "1";
             string source;
             icon.source = sources.TryGetValue(name, out source) ? source : null;
             result.Add(icon);
@@ -391,8 +439,22 @@ public static class SongIcons
         {
             s_downloading.Add(icon.file);
             string escaped = UnityWebRequest.EscapeURL(icon.file).Replace("+", "%20");
-            foreach (string site in s_iconSites)
+            List<string> sites = new List<string>();
+            if (icon.repositoryOnly)
             {
+                sites.AddRange(s_repositorySites);
+                sites.AddRange(s_pagesSites);
+            }
+            else
+            {
+                sites.AddRange(s_pagesSites);
+                sites.AddRange(s_repositorySites);
+            }
+            foreach (string site in sites)
+            {
+                bool fromRepository = Array.IndexOf(s_repositorySites, site) >= 0;
+                if (fromRepository && Time.realtimeSinceStartup < s_rateLimitedUntil)
+                    continue;
                 byte[] got = null;
                 yield return DownloadBytes(string.Format(site, escaped), data => got = data);
                 if (IsPng(got))
@@ -403,7 +465,32 @@ public static class SongIcons
             }
             s_downloading.Remove(icon.file);
 
-            if (bytes != null)
+            // Nothing new to be had right now: a copy an earlier version kept is better than no icon
+            bool fromOlderCopy = false;
+            if (bytes == null)
+            {
+                foreach (string older in s_olderKeptFolders)
+                {
+                    foreach (string name in new[] { icon.sha1.Length == 40 ? icon.sha1 + ".png" : null, icon.file })
+                    {
+                        string olderPath = name != null ? Path.Combine(Path.Combine(folder, older), name) : null;
+                        try
+                        {
+                            if (bytes == null && olderPath != null && File.Exists(olderPath))
+                                bytes = File.ReadAllBytes(olderPath);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogWarning("Couldn't read the kept icon " + olderPath + ". " + e.Message);
+                        }
+                    }
+                }
+                fromOlderCopy = IsPng(bytes);
+                if (!fromOlderCopy)
+                    bytes = null;
+            }
+
+            if (bytes != null && !fromOlderCopy)     // An older copy is tried again for a fresh one next time
             {
                 try
                 {
@@ -459,6 +546,16 @@ public static class SongIcons
         {
             request.timeout = TimeoutSeconds;
             yield return request.SendWebRequest();
+            if (request.responseCode == 429)
+            {
+                // Too many downloads from GitLab: wait as long as it asks (within reason) before asking it again
+                float wait;
+                string retryAfter = request.GetResponseHeader("Retry-After");
+                if (!float.TryParse(retryAfter, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out wait) || wait <= 0)
+                    wait = 60;
+                s_rateLimitedUntil = Time.realtimeSinceStartup + Mathf.Min(wait, MaxRateLimitWaitSeconds);
+                Debug.LogWarning("GitLab says too many downloads; leaving it for " + Mathf.Min(wait, MaxRateLimitWaitSeconds) + " s");
+            }
             byte[] data = request.isNetworkError || request.isHttpError ? null : request.downloadHandler.data;
             done(data != null && data.Length > 0 && data.Length <= MaxIconBytes ? data : null);
         }

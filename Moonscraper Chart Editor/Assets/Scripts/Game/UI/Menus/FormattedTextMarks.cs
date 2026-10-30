@@ -32,6 +32,8 @@ public class FormattedTextMarks : MaskableGraphic
 
     public void Done()
     {
+        if (material != defaultMaterial)
+            material = null;    // The menu color's material would turn the blue highlight pink
         SetVerticesDirty();
     }
 
@@ -62,6 +64,7 @@ public class FormattedTextMarks : MaskableGraphic
         rect.SetSiblingIndex(text.transform.GetSiblingIndex() + (behind ? 0 : 1));
         FormattedTextMarks marks = markObject.AddComponent<FormattedTextMarks>();
         marks.raycastTarget = false;
+        UITheme.KeepColor(marks);     // Drawn in exactly the colors given, in any theme or menu color
         marks.Follow(text);
         return marks;
     }
