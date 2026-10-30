@@ -15,6 +15,7 @@ public class CustomizationSettingsTab : MonoBehaviour
 {
     const float RowHeight = 32;
     const float ControlLeft = 300, ControlWidth = 250, ButtonWidth = 70, Gap = 8;
+    const float CentringShift = 64;
 
     static readonly ExtensionFilter s_imageFilter = new ExtensionFilter("Images", "png", "jpg", "jpeg", "gif");
     static readonly ExtensionFilter s_backgroundFilter = new ExtensionFilter("Images and videos", "png", "jpg", "jpeg", "gif", "mp4", "webm", "mov", "m4v", "ogv", "avi");
@@ -119,7 +120,9 @@ public class CustomizationSettingsTab : MonoBehaviour
         m_group.anchorMin = graphicsGroup.anchorMin;
         m_group.anchorMax = graphicsGroup.anchorMax;
         m_group.pivot = graphicsGroup.pivot;
-        m_group.anchoredPosition = graphicsGroup.anchoredPosition;
+        // The Graphics tab's layout sits right of centre once the Customize rows reach the wide dropdowns and buttons,
+        // so the whole tab moves left to leave the same room either side (left edge to the scroll bar)
+        m_group.anchoredPosition = graphicsGroup.anchoredPosition + new Vector2(-CentringShift, 0);
         m_group.localScale = graphicsGroup.localScale;
 
         // Clone Hero folder
