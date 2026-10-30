@@ -11,25 +11,50 @@ public static class DarkTitleBar
 {
     static UnityEngine.Color? s_shown;     // The color the title bar was last given
 
+    // Unity's splash screen background (Project Settings > Player > Splash Image > Background Color)
+    static readonly UnityEngine.Color SplashBackground = new UnityEngine.Color32(35, 31, 32, 255);
+
     /// <summary>
-    /// Makes the title bar black as early as Unity allows, in either theme, so it matches the black splash and
-    /// loading screens instead of showing Windows' white or grey bar. Once the editor is in, it fades to the theme's
-    /// color (FadeFromLaunch).
+    /// Colors the title bar as early as Unity allows, in either theme, so it's flush with what's below it instead of
+    /// showing Windows' white or grey bar: the splash screen's background while that shows, then black for the
+    /// loading screen, the moment the splash screen ends. Once the editor is in, it fades to the theme's color
+    /// (FadeFromLaunch).
     /// </summary>
     [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void ApplyLaunchLook()
     {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         Set(true);
-        SetColor(UnityEngine.Color.black);
+        if (UnityEngine.Rendering.SplashScreen.isFinished)
+        {
+            SetColor(UnityEngine.Color.black);
+            return;
+        }
+        SetColor(SplashBackground);
+        UnityEngine.GameObject watcher = new UnityEngine.GameObject("Launch Title Bar");
+        UnityEngine.Object.DontDestroyOnLoad(watcher);
+        watcher.AddComponent<SplashWatcher>();
 #endif
     }
 
-    /// <summary>True until the title bar has gone from the launch black to the theme's color</summary>
+    // Turns the title bar black the frame the splash screen ends
+    class SplashWatcher : UnityEngine.MonoBehaviour
+    {
+        void Update()
+        {
+            if (showingLaunchLook && !UnityEngine.Rendering.SplashScreen.isFinished)
+                return;
+            if (showingLaunchLook)
+                SetColor(UnityEngine.Color.black);
+            Destroy(gameObject);
+        }
+    }
+
+    /// <summary>True until the title bar has gone from the launch colors to the theme's color</summary>
     public static bool showingLaunchLook { get; private set; } = true;
 
     /// <summary>
-    /// Fades the title bar from the launch black to a color over the given time. Windows 10 can't color the title bar,
+    /// Fades the title bar from the launch colors to a color over the given time. Windows 10 can't color the title bar,
     /// so there it does nothing.
     /// </summary>
     public static System.Collections.IEnumerator FadeFromLaunch(UnityEngine.Color to, float seconds)
