@@ -9,16 +9,13 @@ using System.Runtime.InteropServices;
 /// </summary>
 public static class DarkTitleBar
 {
-    static UnityEngine.Color? s_shown;     // The color the title bar was last given
-
     // Unity's splash screen background (Project Settings > Player > Splash Image > Background Color)
     static readonly UnityEngine.Color SplashBackground = new UnityEngine.Color32(35, 31, 32, 255);
 
     /// <summary>
     /// Colors the title bar as early as Unity allows, in either theme, so it's flush with what's below it instead of
     /// showing Windows' white or grey bar: the splash screen's background while that shows, then black for the
-    /// loading screen, the moment the splash screen ends. Once the editor is in, it fades to the theme's color
-    /// (FadeFromLaunch).
+    /// loading screen, the moment the splash screen ends. Once the editor is in, it takes the theme's color.
     /// </summary>
     [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void ApplyLaunchLook()
@@ -53,22 +50,10 @@ public static class DarkTitleBar
     /// <summary>True until the title bar has gone from the launch colors to the theme's color</summary>
     public static bool showingLaunchLook { get; private set; } = true;
 
-    /// <summary>
-    /// Fades the title bar from the launch colors to a color over the given time. Windows 10 can't color the title bar,
-    /// so there it does nothing.
-    /// </summary>
-    public static System.Collections.IEnumerator FadeFromLaunch(UnityEngine.Color to, float seconds)
+    /// <summary>The editor is in: the launch colors are done with</summary>
+    public static void EndLaunchLook()
     {
         showingLaunchLook = false;
-        UnityEngine.Color from = s_shown ?? UnityEngine.Color.black;
-        float start = UnityEngine.Time.unscaledTime;
-        while (UnityEngine.Time.unscaledTime - start < seconds)
-        {
-            float t = (UnityEngine.Time.unscaledTime - start) / seconds;
-            if (!SetColor(UnityEngine.Color.Lerp(from, to, t * t * (3 - 2 * t))))
-                yield break;
-            yield return null;
-        }
     }
 
     public static void Set(bool dark)
@@ -123,8 +108,6 @@ public static class DarkTitleBar
             }
             bool colored = DwmSetWindowAttribute(window, DwmCaptionColor, ref caption, sizeof(int)) == 0;
             DwmSetWindowAttribute(window, DwmTextColor, ref text, sizeof(int));
-            if (colored)
-                s_shown = color;
             return colored;
         }
         catch (Exception e)

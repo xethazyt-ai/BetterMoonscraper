@@ -70,11 +70,11 @@ public class CustomizationManager : MonoBehaviour
         ApplyBackground();
 
         UITheme.Apply();
+        MatchTitleBarNow();     // Straight from the loading screen's black to the theme's color, on the first frame
         ChartEditor.Instance.events.editorStateChangedEvent.Register(OnEditorStateChanged);
     }
 
     Coroutine m_titleBarMatch;
-    const float TitleBarFadeSeconds = 0.6f;
 
     Color? m_menuBarThemeColor;     // The menu bar's own color while it's matched to a Windows 10 title bar
     Color m_menuBarWindowsColor;
@@ -106,12 +106,23 @@ public class CustomizationManager : MonoBehaviour
 
         // Both themes: Windows' own title bar never matched Moonscraper's light grey menu bar either
         if (isActiveAndEnabled)
-            m_titleBarMatch = StartCoroutine(MatchTitleBarNextFrame());
+            m_titleBarMatch = StartCoroutine(MatchTitleBar(true));
     }
 
-    IEnumerator MatchTitleBarNextFrame()
+    // Once the theme is already on the menu bar, without waiting a frame
+    void MatchTitleBarNow()
     {
-        yield return null;  // Let the menu bar take the theme first
+        if (m_titleBarMatch != null)
+            StopCoroutine(m_titleBarMatch);
+        m_titleBarMatch = null;
+        if (isActiveAndEnabled)
+            m_titleBarMatch = StartCoroutine(MatchTitleBar(false));
+    }
+
+    IEnumerator MatchTitleBar(bool nextFrame)
+    {
+        if (nextFrame)
+            yield return null;  // Let the menu bar take the theme first
 
         // The menu bar's own color, worked out rather than read off the screen, so it's right straight away even with
         // Settings open and darkening everything behind it
@@ -125,8 +136,7 @@ public class CustomizationManager : MonoBehaviour
 
             Color bar = MenuColor.Shift(barGraphic.color);
             bar.a = 1;
-            if (DarkTitleBar.showingLaunchLook)
-                yield return DarkTitleBar.FadeFromLaunch(bar, TitleBarFadeSeconds);     // From the loading screen's black
+            DarkTitleBar.EndLaunchLook();
             if (!DarkTitleBar.SetColor(bar))
             {
                 // Windows 10 can't color the title bar, so the menu bar takes the title bar's black or white instead,
