@@ -158,7 +158,6 @@ public partial class PatternBlueprints : MonoBehaviour
     Clipboard.SelectionArea m_stampArea;
     uint m_stampSpan;                   // Ticks from one copy's start to the next
     uint m_stampTarget;                 // Where the mouse (or strikeline) was
-    uint m_stampLastStart;              // Where the last copy went
     Chart m_stampChart;
     string m_stampName;
     string m_stampSource;               // "selection", or the pattern and its settings
@@ -208,8 +207,9 @@ public partial class PatternBlueprints : MonoBehaviour
         bool repeat = m_stampNotes != null && m_stampChart == m_editor.currentChart && target == m_stampTarget && source == m_stampSource;
         if (repeat)
         {
-            // Carries on after the last copy, unless that one was undone
-            start = HasNoteAt(m_stampLastStart) ? m_stampLastStart + m_stampSpan : m_stampLastStart;
+            // Goes after the copies still there, so one that was undone or had notes deleted is filled in again
+            for (int copies = 0; copies < 10000 && IsCopyAt(start); ++copies)
+                start += m_stampSpan;
         }
         else
         {
@@ -228,19 +228,30 @@ public partial class PatternBlueprints : MonoBehaviour
 
         ClipboardObjectController.SetData(m_stampNotes, m_stampArea, song);
         clipboard.PasteAndReset(start);
-        m_stampLastStart = start;
         m_status = "Pasted " + m_stampName + ". Ctrl+B again here adds another copy after it. Ctrl+Z undoes it.";
         m_editor.services.notificationBar.PushNotification("PASTED " + m_stampName.ToUpperInvariant() + ". CTRL+B AGAIN REPEATS IT", 2, true);
     }
 
-    bool HasNoteAt(uint tick)
+    // Whether every note of the stamp is still in the chart, starting here
+    bool IsCopyAt(uint start)
     {
         Chart chart = m_editor.currentChart;
         if (chart == null)
             return false;
-        int index, length;
-        SongObjectHelper.FindObjectsAtPosition(tick, chart.notes, out index, out length);
-        return length > 0;
+        foreach (SongObject songObject in m_stampNotes)
+        {
+            Note stamped = songObject as Note;
+            if (stamped == null)
+                continue;
+            int index, length;
+            SongObjectHelper.FindObjectsAtPosition(start + stamped.tick, chart.notes, out index, out length);
+            bool found = false;
+            for (int i = index; i < index + length && !found; ++i)
+                found = chart.notes[i].rawNote == stamped.rawNote;
+            if (!found)
+                return false;
+        }
+        return true;
     }
 
     // The selected notes as they are. The next copy starts one note gap after the last note, so a run of 9 notes
