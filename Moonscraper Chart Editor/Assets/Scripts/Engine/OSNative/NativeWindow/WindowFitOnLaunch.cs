@@ -154,6 +154,15 @@ public class WindowFitOnLaunch : MonoBehaviour
 
     IEnumerator Start()
     {
+        try
+        {
+            KeepLaunchSizeSaved(FindOwnWindow());
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Couldn't keep the launch size saved. " + e.Message);
+        }
+
         // Give Unity a moment to finish sizing the window itself, and check again once loading has settled
         for (int i = 0; i < 5; ++i)
             yield return null;
@@ -212,13 +221,52 @@ public class WindowFitOnLaunch : MonoBehaviour
 
     IntPtr m_window;
     bool m_watching, m_wasZoomed;
-    float m_nextCheck;
+    float m_nextCheck, m_nextKeep;
+    const float KeepLaunchSizeSeconds = 2;
+
+    // Unity keeps the window's size with the other saved settings, and any save writes it, so a maximised window
+    // could leave its size for the next launch while still open. Another copy opened meanwhile (two at once) then
+    // showed Unity's splash screen at that size. The saved size is kept at the launch size instead.
+    static void KeepLaunchSizeSaved(IntPtr window)
+    {
+        int width, height;
+        if (window == IntPtr.Zero || !GetLaunchSize(window, out width, out height))
+            return;
+        bool changed = SetPref("Screenmanager Resolution Width", width);
+        changed |= SetPref("Screenmanager Resolution Height", height);
+        changed |= SetPref("Screenmanager Resolution Use Native", 0);
+        changed |= SetPref("Screenmanager Is Fullscreen mode", 0);
+        changed |= SetPref("Screenmanager Fullscreen mode", 3);    // Windowed, for newer Unity versions
+        if (changed)
+            PlayerPrefs.Save();     // Straight away, for a copy opened right now
+    }
+
+    static bool SetPref(string key, int value)
+    {
+        if (PlayerPrefs.HasKey(key) && PlayerPrefs.GetInt(key) == value)
+            return false;
+        PlayerPrefs.SetInt(key, value);
+        return true;
+    }
 
     void Update()
     {
         if (!m_watching || m_window == IntPtr.Zero || Time.unscaledTime < m_nextCheck)
             return;
         m_nextCheck = Time.unscaledTime + 0.2f;
+
+        if (Time.unscaledTime >= m_nextKeep)
+        {
+            m_nextKeep = Time.unscaledTime + KeepLaunchSizeSeconds;
+            try
+            {
+                KeepLaunchSizeSaved(m_window);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Couldn't keep the launch size saved. " + e.Message);
+            }
+        }
 
         try
         {
