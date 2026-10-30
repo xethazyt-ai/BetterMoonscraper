@@ -54,6 +54,9 @@ public class SongPropertiesPanelController : TabMenu
 
     TimeSpan customTime = new TimeSpan();
 
+    /// <summary>True while the window is open. Ctrl+S is strikethrough here, so the file shortcuts are off.</summary>
+    public static bool isOpen { get; private set; }
+
     static readonly string[] validAudioExtensions = { "ogg", "wav", "mp3", "opus" };
     readonly ExtensionFilter audioExFilter = new ExtensionFilter("Audio files", validAudioExtensions);
 
@@ -74,6 +77,7 @@ public class SongPropertiesPanelController : TabMenu
 
     protected override void OnEnable()
     {
+        isOpen = true;
         ResetToInitialMenuItem();
 
         m_audioStreamTextLookup = new Dictionary<Song.AudioInstrument, Text>()
@@ -136,6 +140,7 @@ public class SongPropertiesPanelController : TabMenu
         CollapseExtended();
         DuetEditorSong.onRemoteSongInfoApplied -= RefreshFromSong;
         UpdateIni();
+        isOpen = false;
         base.OnDisable();
     }
 

@@ -190,7 +190,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format (Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+G gradient, Ctrl+R rainbow, Ctrl+C clear). Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient.";
+            m_preview.text = "Select text in a field above, then pick a format (Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+S strikethrough, Ctrl+G gradient, Ctrl+R rainbow, Ctrl+C clear). Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient.";
         }
     }
 
@@ -400,9 +400,9 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
     InputField target { get { return m_target ? m_target : m_fields[0]; } }
 
-    // Ctrl+B, Ctrl+I and Ctrl+U switch bold, italic and underline on or off for the selected text (all of it with
-    // nothing selected), Ctrl+G fades it with the two colors like Gradient, Ctrl+R makes it rainbow and Ctrl+C clears
-    // its formatting. Fixed keys, only while Song Properties is open.
+    // Ctrl+B, Ctrl+I, Ctrl+U and Ctrl+S switch bold, italic, underline and strikethrough on or off for the selected
+    // text (all of it with nothing selected), Ctrl+G fades it with the two colors like Gradient, Ctrl+R makes it rainbow
+    // and Ctrl+C clears its formatting. Fixed keys, only while Song Properties is open.
     void UpdateHotkeys()
     {
         bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
@@ -416,6 +416,8 @@ public class SongPropertiesFormatBar : MonoBehaviour
             Toggle("i");
         else if (Input.GetKeyDown(KeyCode.U))
             Toggle("u");
+        else if (Input.GetKeyDown(KeyCode.S))
+            Toggle("s");
         else if (Input.GetKeyDown(KeyCode.G))
             ApplyGradient();
         else if (Input.GetKeyDown(KeyCode.R))

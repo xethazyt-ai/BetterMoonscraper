@@ -218,6 +218,10 @@ public class Globals : MonoBehaviour {
             services.notificationBar.PushNotification("METRONOME TOGGLED " + Services.BoolToStrOnOff(Globals.gameSettings.metronomeActive), 2, true);
         }
 
+        // Song Properties uses Ctrl+S for strikethrough, and saving or opening a chart from inside it isn't wanted
+        if (SongPropertiesPanelController.isOpen)
+            return;
+
         if (MSChartEditorInput.GetInputDown(MSChartEditorInputActions.FileSave))
             editor._Save();
 
