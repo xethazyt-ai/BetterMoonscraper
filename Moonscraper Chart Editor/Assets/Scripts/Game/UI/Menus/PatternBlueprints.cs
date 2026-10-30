@@ -206,7 +206,9 @@ public partial class PatternBlueprints : MonoBehaviour
 
         uint target = clipboard.MouseOrStrikelineTick(atMouse);
         uint start = target;
-        bool repeat = m_stampNotes != null && m_stampChart == m_editor.currentChart && target == m_stampTarget && source == m_stampSource;
+        // A new selection at the same spot starts over with those notes; the copy Ctrl+B just pasted (still selected) repeats
+        bool repeat = m_stampNotes != null && m_stampChart == m_editor.currentChart && target == m_stampTarget && source == m_stampSource
+            && (selected.Count == 0 || IsStamp(selected));
         if (repeat)
         {
             // Goes after the copies still there, so one that was undone or had notes deleted is filled in again
@@ -250,6 +252,39 @@ public partial class PatternBlueprints : MonoBehaviour
             bool found = false;
             for (int i = index; i < index + length && !found; ++i)
                 found = chart.notes[i].rawNote == stamped.rawNote;
+            if (!found)
+                return false;
+        }
+        return true;
+    }
+
+    // Whether the selected notes are the stamp itself (same notes, same spacing), wherever they sit
+    bool IsStamp(List<Note> selected)
+    {
+        if (selected.Count != m_stampNotes.Length)
+            return false;
+        selected.Sort((a, b) => a.tick.CompareTo(b.tick));
+        List<Note> stamp = new List<Note>();
+        foreach (SongObject songObject in m_stampNotes)
+        {
+            Note note = songObject as Note;
+            if (note == null)
+                return false;
+            stamp.Add(note);
+        }
+        stamp.Sort((a, b) => a.tick != b.tick ? a.tick.CompareTo(b.tick) : a.rawNote.CompareTo(b.rawNote));
+        uint first = selected[0].tick;
+        foreach (Note note in selected)
+        {
+            bool found = false;
+            foreach (Note stamped in stamp)
+            {
+                if (stamped.tick == note.tick - first && stamped.rawNote == note.rawNote && stamped.length == note.length)
+                {
+                    found = true;
+                    break;
+                }
+            }
             if (!found)
                 return false;
         }
