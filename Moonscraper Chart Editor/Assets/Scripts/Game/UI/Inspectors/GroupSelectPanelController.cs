@@ -217,10 +217,13 @@ public class GroupSelectPanelController : MonoBehaviour
         if (largest - smallest > 1 || smallest == 0)
             return "N/A";
 
-        double averageGap = (double)(positions[positions.Count - 1].tick - positions[0].tick) / (positions.Count - 1);
-        double step = editor.currentSong.resolution * 4 / averageGap;
+        // Steps that don't divide into ticks (72 at 192 a beat is 10.67 ticks) get rounded note by note, so the
+        // span can be up to a tick off what the step would give and still be that step
+        uint span = positions[positions.Count - 1].tick - positions[0].tick;
+        double wholeNote = editor.currentSong.resolution * 4;
+        double step = wholeNote * (positions.Count - 1) / span;
         double rounded = System.Math.Round(step);
-        if (System.Math.Abs(step - rounded) < 0.02)
+        if (rounded > 0 && System.Math.Abs(wholeNote / rounded * (positions.Count - 1) - span) <= 1)
             return ((int)rounded).ToString();
         return step.ToString("0.##");
     }
@@ -553,6 +556,51 @@ public class GroupSelectPanelController : MonoBehaviour
         }
     }
 
+    // The gap Equal Spacing puts between notes. Charters think of a fast pattern as so many notes from one line on
+    // the highway to the next (the lines are every half beat in x/4): 9 notes per line is step 72, and each extra
+    // note adds 8. So the pattern is fitted to whole line gaps, with the next line where the note after the last
+    // one would go, and how far the notes were dragged doesn't change the step. The last note may sit anywhere from
+    // one gap short of the line to on it, so the line count is the one that range fits best. Slower patterns (a
+    // note per line or less) snap to the nearest plain step instead: 1, 2, 3, 4, 6 or 8.
+    double EqualSpacingGap(uint startTick, uint tickDiff, int totalNotes)
+    {
+        Song song = editor.currentSong;
+        double wholeNote = song.resolution * 4;
+        var timeSignatures = song.timeSignatures;
+        TimeSignature ts = timeSignatures[SongObjectHelper.FindClosestPositionRoundedDown(startTick, timeSignatures)];
+        double lineGap = song.resolution * 2.0 / System.Math.Max(1u, ts.denominator);
+
+        int gaps = totalNotes - 1;
+        int bestLines = 1;
+        double bestMiss = double.MaxValue;
+        for (int lines = 1; lines < gaps; ++lines)
+        {
+            double shortest = lineGap * lines * gaps / totalNotes, longest = lineGap * lines;
+            double miss = tickDiff < shortest ? shortest - tickDiff : tickDiff > longest ? tickDiff - longest : 0;
+            if (miss < bestMiss)
+            {
+                bestMiss = miss;
+                bestLines = lines;
+            }
+        }
+        if (bestMiss < lineGap / 2)
+            return lineGap * bestLines / totalNotes;
+
+        double best = wholeNote / 8;
+        bestMiss = double.MaxValue;
+        foreach (int step in new[] { 1, 2, 3, 4, 6, 8 })
+        {
+            double spacing = wholeNote / step;
+            double miss = System.Math.Abs(spacing * gaps - tickDiff);
+            if (miss < bestMiss)
+            {
+                bestMiss = miss;
+                best = spacing;
+            }
+        }
+        return best;
+    }
+
     public void EqualiseNoteSpacing()
     {
         List<SongObject> notesToDelete = new List<SongObject>();
@@ -585,22 +633,7 @@ public class GroupSelectPanelController : MonoBehaviour
             uint endTick = endTickMaybe.Value;
             uint tickDiff = endTick - startTick;
 
-            // A real step instead of whatever the span divides into: the step in 8s (1/8, 1/16, 1/24, 1/32...) whose
-            // spacing makes the notes fill the span best. The first note stays put; the last one lands on the step.
-            double wholeNote = editor.currentSong.resolution * 4;
-            double offsetPerNote = wholeNote / 8;
-            double bestMiss = double.MaxValue;
-            for (int step = 8; wholeNote / step >= 1; step += 8)
-            {
-                double spacing = wholeNote / step;
-                double miss = System.Math.Abs(spacing * (totalNotes - 1) - tickDiff);
-                if (miss < bestMiss)
-                {
-                    bestMiss = miss;
-                    offsetPerNote = spacing;
-                }
-            }
-
+            double offsetPerNote = EqualSpacingGap(startTick, tickDiff, totalNotes);
             int index = -1;
             uint lastTickAdded = uint.MaxValue;
             foreach (ChartObject chartObject in editor.selectedObjectsManager.currentSelectedObjects)
