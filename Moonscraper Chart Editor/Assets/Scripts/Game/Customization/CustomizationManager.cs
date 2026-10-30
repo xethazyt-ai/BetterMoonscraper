@@ -74,6 +74,7 @@ public class CustomizationManager : MonoBehaviour
     }
 
     Coroutine m_titleBarMatch;
+    const float TitleBarFadeSeconds = 0.6f;
 
     Color? m_menuBarThemeColor;     // The menu bar's own color while it's matched to a Windows 10 title bar
     Color m_menuBarWindowsColor;
@@ -124,6 +125,8 @@ public class CustomizationManager : MonoBehaviour
 
             Color bar = MenuColor.Shift(barGraphic.color);
             bar.a = 1;
+            if (DarkTitleBar.showingLaunchLook)
+                yield return DarkTitleBar.FadeFromLaunch(bar, TitleBarFadeSeconds);     // From the loading screen's black
             if (!DarkTitleBar.SetColor(bar))
             {
                 // Windows 10 can't color the title bar, so the menu bar takes the title bar's black or white instead,

@@ -9,24 +9,41 @@ using System.Runtime.InteropServices;
 /// </summary>
 public static class DarkTitleBar
 {
-    const string PrefTheme = "Customize.Theme";                 // UITheme's, 1 = Dark
-    const string PrefLastColor = "Customize.TitleBarColor";     // The last color the title bar was given, as 0xRRGGBB
+    static UnityEngine.Color? s_shown;     // The color the title bar was last given
 
     /// <summary>
-    /// Puts the title bar back how it was last time as early as Unity allows, so it's already the theme's color while
-    /// the splash screen and the first menu load, instead of turning from white to dark once everything is in.
+    /// Makes the title bar black as early as Unity allows, in either theme, so it matches the black splash and
+    /// loading screens instead of showing Windows' white or grey bar. Once the editor is in, it fades to the theme's
+    /// color (FadeFromLaunch).
     /// </summary>
     [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]
-    static void ApplyLastLook()
+    static void ApplyLaunchLook()
     {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-        Set(UnityEngine.PlayerPrefs.GetInt(PrefTheme, 0) == 1);
-        if (UnityEngine.PlayerPrefs.HasKey(PrefLastColor))
-        {
-            int rgb = UnityEngine.PlayerPrefs.GetInt(PrefLastColor);
-            SetColor(new UnityEngine.Color32((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb, 255), false);
-        }
+        Set(true);
+        SetColor(UnityEngine.Color.black);
 #endif
+    }
+
+    /// <summary>True until the title bar has gone from the launch black to the theme's color</summary>
+    public static bool showingLaunchLook { get; private set; } = true;
+
+    /// <summary>
+    /// Fades the title bar from the launch black to a color over the given time. Windows 10 can't color the title bar,
+    /// so there it does nothing.
+    /// </summary>
+    public static System.Collections.IEnumerator FadeFromLaunch(UnityEngine.Color to, float seconds)
+    {
+        showingLaunchLook = false;
+        UnityEngine.Color from = s_shown ?? UnityEngine.Color.black;
+        float start = UnityEngine.Time.unscaledTime;
+        while (UnityEngine.Time.unscaledTime - start < seconds)
+        {
+            float t = (UnityEngine.Time.unscaledTime - start) / seconds;
+            if (!SetColor(UnityEngine.Color.Lerp(from, to, t * t * (3 - 2 * t))))
+                yield break;
+            yield return null;
+        }
     }
 
     public static void Set(bool dark)
@@ -61,11 +78,6 @@ public static class DarkTitleBar
     /// </summary>
     public static bool SetColor(UnityEngine.Color? color)
     {
-        return SetColor(color, true);
-    }
-
-    static bool SetColor(UnityEngine.Color? color, bool remember)
-    {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         if (QuitState.isQuitting)
             return true;
@@ -86,16 +98,8 @@ public static class DarkTitleBar
             }
             bool colored = DwmSetWindowAttribute(window, DwmCaptionColor, ref caption, sizeof(int)) == 0;
             DwmSetWindowAttribute(window, DwmTextColor, ref text, sizeof(int));
-            if (remember)
-            {
-                if (colored && color.HasValue)
-                {
-                    UnityEngine.Color32 c = color.Value;
-                    UnityEngine.PlayerPrefs.SetInt(PrefLastColor, (c.r << 16) | (c.g << 8) | c.b);
-                }
-                else
-                    UnityEngine.PlayerPrefs.DeleteKey(PrefLastColor);
-            }
+            if (colored)
+                s_shown = color;
             return colored;
         }
         catch (Exception e)
