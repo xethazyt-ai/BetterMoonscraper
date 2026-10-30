@@ -35,7 +35,8 @@ public class CustomizationSettingsTab : MonoBehaviour
 
     Text m_folderText;
     Text m_statusText;
-    Text m_clapText;
+    Dropdown m_clapDropdown;
+    readonly List<string> m_clapPaths = new List<string>();     // Matches the clap dropdown. Null is the default clap.
     readonly Dictionary<CustomizationPrefs.Kind, Choice> m_choices = new Dictionary<CustomizationPrefs.Kind, Choice>();
 
     bool m_built = false;
@@ -299,18 +300,14 @@ public class CustomizationSettingsTab : MonoBehaviour
     void AddClapSoundRow()
     {
         AddLabel("Clap sound");
-        float textWidth = ControlWidth - ButtonWidth - Gap;
-        m_clapText = AddText(ControlLeft, textWidth, RowHeight, TextAnchor.MiddleLeft, 14);
-        // Opens the Clap Sounds folder (next to BetterMoonscraper.exe, default clap included) in Explorer, to drop
-        // sounds into
-        AddButton("Folder", ControlLeft + textWidth + Gap, () =>
-        {
-            string folder = ClapSound.soundsFolder;
-            if (folder != null)
-                Application.OpenURL("file:///" + folder.Replace('\\', '/'));
-            m_statusText.text = folder != null ? "Clap sounds folder: " + folder : "Couldn't make the Clap Sounds folder.";
-        });
-        // Picks a clap from that folder (or anywhere); "Default clap.wav" goes back to the default
+
+        m_clapDropdown = Instantiate(m_dropdownTemplate, m_group);
+        m_clapDropdown.name = "Clap Sound Dropdown";
+        m_clapDropdown.onValueChanged = new Dropdown.DropdownEvent();
+        m_clapDropdown.onValueChanged.AddListener(OnClapChanged);
+        Place((RectTransform)m_clapDropdown.transform, ControlLeft, ControlWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+
+        // Picks a clap from anywhere, starting in the Clap Sounds folder; sounds dropped in that folder show up in the list
         AddButton("Browse", ControlLeft + ControlWidth + Gap, () =>
         {
             string path;
@@ -323,10 +320,76 @@ public class CustomizationSettingsTab : MonoBehaviour
         ++m_rows;
     }
 
+    // "Default clap", then every sound in the Clap Sounds folder (next to BetterMoonscraper.exe), plus the picked one
+    // if it's somewhere else
     void RefreshClapSound()
     {
-        if (m_clapText)
-            m_clapText.text = ClapSound.customName ?? "Default clap";
+        if (!m_clapDropdown)
+            return;
+
+        m_clapPaths.Clear();
+        List<string> names = new List<string>();
+        m_clapPaths.Add(null);
+        names.Add("Default clap");
+
+        string folder = ClapSound.soundsFolder;
+        if (folder != null)
+        {
+            try
+            {
+                List<string> files = new List<string>(Directory.GetFiles(folder));
+                files.Sort((a, b) => string.Compare(Path.GetFileName(a), Path.GetFileName(b), StringComparison.OrdinalIgnoreCase));
+                foreach (string file in files)
+                {
+                    string name = Path.GetFileName(file);
+                    if (string.Equals(name, ClapSound.DefaultClapName, StringComparison.OrdinalIgnoreCase)
+                        || Array.IndexOf(ClapSound.Extensions, Path.GetExtension(file).TrimStart('.').ToLowerInvariant()) < 0)
+                        continue;
+                    m_clapPaths.Add(Path.GetFullPath(file));
+                    names.Add(Path.GetFileNameWithoutExtension(file));
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("Couldn't list the clap sounds. " + e.Message);
+            }
+        }
+
+        int selected = 0;
+        string picked = ClapSound.customPath;
+        if (picked != null)
+        {
+            picked = Path.GetFullPath(picked);
+            selected = m_clapPaths.FindIndex(path => path != null && string.Equals(path, picked, StringComparison.OrdinalIgnoreCase));
+            if (selected < 0)
+            {
+                m_clapPaths.Add(picked);
+                names.Add(ClapSound.customName ?? Path.GetFileNameWithoutExtension(picked));
+                selected = m_clapPaths.Count - 1;
+            }
+        }
+
+        m_populating = true;
+        m_clapDropdown.ClearOptions();
+        m_clapDropdown.AddOptions(names);
+        m_clapDropdown.value = selected;
+        m_clapDropdown.RefreshShownValue();
+        m_populating = false;
+    }
+
+    void OnClapChanged(int index)
+    {
+        if (m_populating || index < 0 || index >= m_clapPaths.Count)
+            return;
+        string path = m_clapPaths[index];
+        if (path == null)
+        {
+            ClapSound.ClearCustom();
+            m_statusText.text = string.Empty;
+        }
+        else
+            m_statusText.text = ClapSound.SetCustom(path) ?? string.Empty;
+        RefreshClapSound();
     }
 
     // Light (Moonscraper's own look) or Dark for the menus and panels
