@@ -422,11 +422,9 @@ namespace MoonscraperChartEditor.Song
         {
             get
             {
-                Note seperatePrevious = previousSeperateNote;
-
-                // BetterMoonscraper: a note the same as the one before can be forced too, so two HOPOs of one color can sit
-                // next to each other. Only the very first note has nothing to be forced against.
-                return seperatePrevious == null;
+                // BetterMoonscraper: any note can be forced. A note the same as the one before can be, so two HOPOs of one
+                // color can sit next to each other, and so can the chart's first note (Clone Hero plays it as a HOPO).
+                return false;
             }
         }
 
