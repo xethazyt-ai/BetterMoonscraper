@@ -38,6 +38,8 @@ public class CustomizationSettingsTab : MonoBehaviour
     RectTransform m_group;
 
     Text m_folderText;
+    readonly List<Button> m_browseButtons = new List<Button>();
+    ScrollRect m_scroll;
     Text m_statusText;
     Dropdown m_clapDropdown;
     readonly List<string> m_clapPaths = new List<string>();     // Matches the clap dropdown. Null is the default clap.
@@ -69,7 +71,10 @@ public class CustomizationSettingsTab : MonoBehaviour
     void OnEnable()
     {
         if (m_built)
+        {
+            CentreBrowseButtons();     // Again with the window open, in case it was laid out differently when built
             Refresh();
+        }
     }
 
     const float SettingsScrollSensitivity = 100, DropdownScrollSensitivity = 50;
@@ -131,7 +136,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         // Clone Hero folder
         AddLabel("Clone Hero folder");
         m_folderText = AddText(ControlLeft, ControlWidth, RowHeight, TextAnchor.MiddleLeft, 14);
-        AddButton("Browse", ControlLeft + ControlWidth + Gap, BrowseCloneHeroFolder);
+        m_browseButtons.Add(AddButton("Browse", ControlLeft + ControlWidth + Gap, BrowseCloneHeroFolder));
         ++m_rows;
 
         AddChoiceRow("Color profile", CustomizationPrefs.Kind.ColorProfile, BrowseColorProfile);
@@ -163,6 +168,8 @@ public class CustomizationSettingsTab : MonoBehaviour
         m_rows += 3;
 
         m_group.sizeDelta = new Vector2(graphicsGroup.sizeDelta.x, m_rows * RowHeight + 10);
+        m_scroll = scroll;
+        CentreBrowseButtons();
         groupObject.SetActive(false);
 
         tabButton.onClick.AddListener(() =>
@@ -289,7 +296,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         PlaceDropdown(choice.dropdown);
         m_choices[kind] = choice;
 
-        AddButton("Browse", ControlLeft + ControlWidth + Gap, browse);
+        m_browseButtons.Add(AddButton("Browse", ControlLeft + ControlWidth + Gap, browse));
         ++m_rows;
     }
 
@@ -314,7 +321,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         PlaceDropdown(m_clapDropdown);
 
         // Picks a clap from anywhere, starting in the Clap Sounds folder; sounds dropped in that folder show up in the list
-        AddButton("Browse", ControlLeft + ControlWidth + Gap, () =>
+        m_browseButtons.Add(AddButton("Browse", ControlLeft + ControlWidth + Gap, () =>
         {
             string path;
             if (FileExplorer.OpenFilePanel(s_soundFilter, "wav", ClapSound.soundsFolder, out path))
@@ -322,7 +329,7 @@ public class CustomizationSettingsTab : MonoBehaviour
                 m_statusText.text = ClapSound.SetCustom(path) ?? string.Empty;
                 RefreshClapSound();
             }
-        });
+        }));
         ++m_rows;
     }
 
@@ -473,7 +480,7 @@ public class CustomizationSettingsTab : MonoBehaviour
         return text;
     }
 
-    void AddButton(string label, float left, Action onClick)
+    Button AddButton(string label, float left, Action onClick)
     {
         Button button = Instantiate(m_buttonTemplate, m_group);
         button.name = label + " Button";
@@ -487,6 +494,28 @@ public class CustomizationSettingsTab : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.sizeDelta = new Vector2(ButtonWidth, ((RectTransform)m_dropdownTemplate.transform).sizeDelta.y);
         Place(rect, left, ButtonWidth, ((RectTransform)m_dropdownTemplate.transform).anchoredPosition.y);
+        return button;
+    }
+
+    // Each Browse sits in the middle of the space between the dropdown boxes' right edge and the scroll bar
+    void CentreBrowseButtons()
+    {
+        RectTransform bar = m_scroll && m_scroll.verticalScrollbar ? (RectTransform)m_scroll.verticalScrollbar.transform : null;
+        if (!bar)
+            return;
+        Vector3[] corners = new Vector3[4];
+        bar.GetWorldCorners(corners);
+        float barLeft = m_group.InverseTransformPoint(corners[0]).x;
+        float boxRight = ControlLeft + ControlWidth;
+        foreach (Button button in m_browseButtons)
+        {
+            RectTransform rect = (RectTransform)button.transform;
+            // Place measures from the group's left edge, so the bar's position is turned into the same measure
+            float groupLeft = m_group.rect.xMin;
+            float middle = (boxRight + (barLeft - groupLeft)) / 2;
+            if (barLeft - groupLeft > boxRight + ButtonWidth)
+                rect.anchoredPosition = new Vector2(middle, rect.anchoredPosition.y);
+        }
     }
 
     // A dropdown in the control column, its box exactly ControlLeft to ControlLeft + ControlWidth
