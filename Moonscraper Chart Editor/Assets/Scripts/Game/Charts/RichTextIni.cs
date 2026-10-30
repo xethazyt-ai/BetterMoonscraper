@@ -66,6 +66,57 @@ public static class RichTextIni
         return Normalise(tagged.Substring(0, openAt) + open + tagged.Substring(openAt, closeAt - openAt) + close + tagged.Substring(closeAt));
     }
 
+    // Bold, italic and so on as a switch: if every visible character in [start, end) already has the tag (name like
+    // "b"), it comes off them; otherwise they're wrapped in open and close. Nothing selected means all of it.
+    public static string ToggleVisible(string tagged, int start, int end, string name, string open, string close)
+    {
+        tagged = tagged ?? string.Empty;
+        List<int> visible = VisiblePositions(tagged);
+        ClampSelection(visible.Count, ref start, ref end);
+        if (visible.Count == 0)
+            return tagged;
+
+        bool all = true;
+        for (int i = start; i < end && all; ++i)
+            all = FindOpen(OpenTagsAt(tagged, visible[i]), name) != null;
+
+        // Off for the selection first, so turning it on over partly-bold text doesn't nest one inside another. Close
+        // it where the selection starts, drop it inside, and open it again where the selection ends if it
+        // carried on past there
+        int from = start > 0 ? visible[start - 1] + 1 : 0;
+        int to = end < visible.Count ? visible[end] : tagged.Length;
+        string openAtFrom = FindOpen(OpenTagsAt(tagged, from), name);
+        string openAtTo = to < tagged.Length ? FindOpen(OpenTagsAt(tagged, to), name) : null;
+        StringBuilder result = new StringBuilder(tagged.Substring(0, from));
+        if (openAtFrom != null)
+            result.Append("</").Append(name).Append('>');
+        string middle = tagged.Substring(from, to - from);
+        int copied = 0;
+        foreach (Match tag in s_tag.Matches(middle))
+        {
+            result.Append(middle, copied, tag.Index - copied);
+            if (TagName(tag.Value) != name)
+                result.Append(tag.Value);
+            copied = tag.Index + tag.Length;
+        }
+        result.Append(middle, copied, middle.Length - copied);
+        if (openAtTo != null)
+            result.Append(openAtTo);
+        result.Append(tagged.Substring(to));
+        string removed = Normalise(result.ToString());
+        return all ? removed : WrapVisible(removed, start, end, open, close);
+    }
+
+    static string FindOpen(List<string> open, string name)
+    {
+        for (int i = open.Count - 1; i >= 0; --i)
+        {
+            if (TagName(open[i]) == name)
+                return open[i];
+        }
+        return null;
+    }
+
     // Fades the visible characters [start, end) from one color to another, a color tag per letter (spaces are
     // skipped). Colors are hex like #FF0000. Nothing selected fades all of it.
     public static string GradientVisible(string tagged, int start, int end, string fromHex, string toHex)

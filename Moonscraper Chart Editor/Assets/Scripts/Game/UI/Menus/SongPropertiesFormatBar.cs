@@ -60,10 +60,10 @@ public class SongPropertiesFormatBar : MonoBehaviour
         y -= RowHeight + RowGap;
 
         float x = Left;
-        x = bar.TagButton(buttonTemplate, content, "<b>B</b>", x, y, 34, "<b>", "</b>");
-        x = bar.TagButton(buttonTemplate, content, "<i>I</i>", x, y, 34, "<i>", "</i>");
-        x = bar.TagButton(buttonTemplate, content, "U", x, y, 34, "<u>", "</u>");
-        x = bar.TagButton(buttonTemplate, content, "S", x, y, 34, "<s>", "</s>");
+        x = bar.TagButton(buttonTemplate, content, "<b>B</b>", x, y, 34, "b");
+        x = bar.TagButton(buttonTemplate, content, "<i>I</i>", x, y, 34, "i");
+        x = bar.TagButton(buttonTemplate, content, "U", x, y, 34, "u");
+        x = bar.TagButton(buttonTemplate, content, "S", x, y, 34, "s");
         x = MakeButton(buttonTemplate, content, "Clear", x, y, 56, bar.ClearFormatting);
 
         bar.m_sizeField = MakeField(fieldTemplate, content, "150", x, y, 44);
@@ -168,6 +168,8 @@ public class SongPropertiesFormatBar : MonoBehaviour
             }
         }
 
+        UpdateHotkeys();
+
         foreach (InputField field in m_fields)
         {
             if (!field)
@@ -182,7 +184,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format. Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient. Underline and strikethrough only show in Clone Hero.";
+            m_preview.text = "Select text in a field above, then pick a format (Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+C clear). Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient. Underline and strikethrough only show in Clone Hero.";
         }
     }
 
@@ -296,10 +298,36 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
     InputField target { get { return m_target ? m_target : m_fields[0]; } }
 
+    // Ctrl+B, Ctrl+I and Ctrl+U switch bold, italic and underline on or off for the selected text (all of it with
+    // nothing selected), and Ctrl+C clears its formatting. Fixed keys, only while Song Properties is open.
+    void UpdateHotkeys()
+    {
+        bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        bool other = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt) || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        if (!ctrl || other)
+            return;
+
+        if (Input.GetKeyDown(KeyCode.B))
+            Toggle("b");
+        else if (Input.GetKeyDown(KeyCode.I))
+            Toggle("i");
+        else if (Input.GetKeyDown(KeyCode.U))
+            Toggle("u");
+        else if (Input.GetKeyDown(KeyCode.C))
+            ClearFormatting();
+    }
+
     void Wrap(string open, string close)
     {
         InputField field = target;
         SetFormatted(field, RichTextIni.WrapVisible(GetTagged(field), m_selectionStart, m_selectionEnd, open, close));
+    }
+
+    // On for the selection, or off if it all has it already
+    void Toggle(string name)
+    {
+        InputField field = target;
+        SetFormatted(field, RichTextIni.ToggleVisible(GetTagged(field), m_selectionStart, m_selectionEnd, name, "<" + name + ">", "</" + name + ">"));
     }
 
     void ClearFormatting()
@@ -356,9 +384,9 @@ public class SongPropertiesFormatBar : MonoBehaviour
         return ColorUtility.ToHtmlStringRGB(a) == ColorUtility.ToHtmlStringRGB(b);
     }
 
-    float TagButton(Button template, RectTransform parent, string label, float x, float y, float width, string open, string close)
+    float TagButton(Button template, RectTransform parent, string label, float x, float y, float width, string name)
     {
-        return MakeButton(template, parent, label, x, y, width, () => Wrap(open, close));
+        return MakeButton(template, parent, label, x, y, width, () => Toggle(name));
     }
 
     static float MakeButton(Button template, RectTransform parent, string label, float x, float y, float width, UnityEngine.Events.UnityAction onClick)
