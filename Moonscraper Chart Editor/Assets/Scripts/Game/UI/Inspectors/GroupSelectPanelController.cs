@@ -561,7 +561,7 @@ public class GroupSelectPanelController : MonoBehaviour
     // note adds 8. So the pattern is fitted to whole line gaps, with the next line where the note after the last
     // one would go, and how far the notes were dragged doesn't change the step. The last note may sit anywhere from
     // one gap short of the line to on it, so the line count is the one that range fits best. Slower patterns (a
-    // note per line or less) snap to the nearest plain step instead: 1, 2, 3, 4, 6 or 8.
+    // note per line or less, or too few notes to tell) snap to the nearest step in 8s, or 1, 2, 3, 4, 6 or 12.
     double EqualSpacingGap(uint startTick, uint tickDiff, int totalNotes)
     {
         Song song = editor.currentSong;
@@ -583,12 +583,16 @@ public class GroupSelectPanelController : MonoBehaviour
                 bestLines = lines;
             }
         }
-        if (bestMiss < lineGap / 2)
-            return lineGap * bestLines / totalNotes;
+        double lineFit = lineGap * bestLines / totalNotes;
+        if (bestMiss < lineFit / 2)
+            return lineFit;
 
         double best = wholeNote / 8;
         bestMiss = double.MaxValue;
-        foreach (int step in new[] { 1, 2, 3, 4, 6, 8 })
+        List<int> steps = new List<int>() { 1, 2, 3, 4, 6, 12 };
+        for (int step = 8; wholeNote / step >= 1; step += 8)
+            steps.Add(step);
+        foreach (int step in steps)
         {
             double spacing = wholeNote / step;
             double miss = System.Math.Abs(spacing * gaps - tickDiff);
@@ -609,6 +613,7 @@ public class GroupSelectPanelController : MonoBehaviour
         uint? startTickMaybe = null;
         uint? endTickMaybe = null;
         int totalNotes = 0;
+        uint smallestGap = uint.MaxValue, largestGap = 0;
         foreach (ChartObject chartObject in editor.selectedObjectsManager.currentSelectedObjects)
         {
             if (chartObject.classID == (int)SongObject.ID.Note)
@@ -621,6 +626,11 @@ public class GroupSelectPanelController : MonoBehaviour
                 if (!endTickMaybe.HasValue || chartObject.tick > endTickMaybe.Value)
                 {
                     ++totalNotes;   // Only 1 note for chords
+                    if (endTickMaybe.HasValue)
+                    {
+                        smallestGap = System.Math.Min(smallestGap, chartObject.tick - endTickMaybe.Value);
+                        largestGap = System.Math.Max(largestGap, chartObject.tick - endTickMaybe.Value);
+                    }
                 }
 
                 endTickMaybe = chartObject.tick;
@@ -633,7 +643,8 @@ public class GroupSelectPanelController : MonoBehaviour
             uint endTick = endTickMaybe.Value;
             uint tickDiff = endTick - startTick;
 
-            double offsetPerNote = EqualSpacingGap(startTick, tickDiff, totalNotes);
+            // Notes already on one step (give or take a tick of rounding) stay on it
+            double offsetPerNote = largestGap - smallestGap <= 1 ? (double)tickDiff / (totalNotes - 1) : EqualSpacingGap(startTick, tickDiff, totalNotes);
             int index = -1;
             uint lastTickAdded = uint.MaxValue;
             foreach (ChartObject chartObject in editor.selectedObjectsManager.currentSelectedObjects)
