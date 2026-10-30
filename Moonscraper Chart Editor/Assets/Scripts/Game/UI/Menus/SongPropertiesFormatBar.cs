@@ -185,7 +185,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         if (m_preview && source != m_previewSource)
         {
             m_previewSource = source;
-            m_preview.text = "Select text in a field above, then pick a format (Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+C clear). Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient. Underline and strikethrough only show in Clone Hero.";
+            m_preview.text = "Select text in a field above, then pick a format (Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+G gradient, Ctrl+R rainbow, Ctrl+C clear). Color: set it with the sliders or type it, then press Color. Gradient: set both colors, then press Gradient. Underline and strikethrough only show in Clone Hero.";
         }
     }
 
@@ -306,7 +306,8 @@ public class SongPropertiesFormatBar : MonoBehaviour
     InputField target { get { return m_target ? m_target : m_fields[0]; } }
 
     // Ctrl+B, Ctrl+I and Ctrl+U switch bold, italic and underline on or off for the selected text (all of it with
-    // nothing selected), and Ctrl+C clears its formatting. Fixed keys, only while Song Properties is open.
+    // nothing selected), Ctrl+G fades it with the two colors like Gradient, Ctrl+R makes it rainbow and Ctrl+C clears
+    // its formatting. Fixed keys, only while Song Properties is open.
     void UpdateHotkeys()
     {
         bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
@@ -320,8 +321,18 @@ public class SongPropertiesFormatBar : MonoBehaviour
             Toggle("i");
         else if (Input.GetKeyDown(KeyCode.U))
             Toggle("u");
+        else if (Input.GetKeyDown(KeyCode.G))
+            ApplyGradient();
+        else if (Input.GetKeyDown(KeyCode.R))
+            ApplyRainbow();
         else if (Input.GetKeyDown(KeyCode.C))
             ClearFormatting();
+    }
+
+    void ApplyRainbow()
+    {
+        InputField field = target;
+        SetFormatted(field, RichTextIni.RainbowVisible(GetTagged(field), m_selectionStart, m_selectionEnd));
     }
 
     void Wrap(string open, string close)

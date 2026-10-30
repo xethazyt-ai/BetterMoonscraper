@@ -22,7 +22,7 @@ namespace UnityEngine
         public static Color white { get { return new Color(1, 1, 1); } }
         public static Color Lerp(Color a, Color b, float t) { return new Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t); }
     }
-    public enum KeyCode { F9, F10 }
+    public enum KeyCode { None, F9, F10, B, C, G, I, R, LeftControl, RightControl }
     public static class ColorUtility
     {
         public static string ToHtmlStringRGB(Color c) { return ((int)System.Math.Round(c.r * 255)).ToString("X2") + ((int)System.Math.Round(c.g * 255)).ToString("X2") + ((int)System.Math.Round(c.b * 255)).ToString("X2"); }
@@ -63,6 +63,7 @@ namespace UnityEngine
         public static bool anyKey;  // Set by tests to simulate holding a key or mouse button
         public static Vector3 mousePosition;
         public static bool GetKeyDown(KeyCode key) { return false; }
+        public static bool GetKey(KeyCode key) { return false; }
         public static bool GetMouseButton(int button) { return false; }
         public static bool GetMouseButtonDown(int button) { return false; }
     }
@@ -81,8 +82,8 @@ namespace UnityEngine
         public float yMax { get { return y + height; } }
     }
     public static class Screen { public static int width = 1920, height = 1080; }
-    public enum EventType { MouseDown, Repaint }
-    public class Event { public static Event current = new Event(); public EventType type; public Vector2 mousePosition; }
+    public enum EventType { MouseDown, Repaint, KeyDown }
+    public class Event { public static Event current = new Event(); public EventType type; public Vector2 mousePosition; public KeyCode keyCode; public char character; public bool control, command, alt, shift; public void Use() { } }
     public class GUILayoutOption { }
     public static class GUILayoutUtility { public static Rect GetLastRect() { return new Rect(); } }
     public static class GUIUtility { public static int keyboardControl; public static string systemCopyBuffer; }

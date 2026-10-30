@@ -121,11 +121,25 @@ public static class RichTextIni
     // skipped). Colors are hex like #FF0000. Nothing selected fades all of it.
     public static string GradientVisible(string tagged, int start, int end, string fromHex, string toHex)
     {
+        int from, to;
+        if (!TryParseRgb(fromHex, out from) || !TryParseRgb(toHex, out to))
+            return tagged ?? string.Empty;
+        return ColorLetters(tagged, start, end, t => LerpHex(from, to, t));
+    }
+
+    // Rainbow letters: red through orange, yellow, green and blue to violet across the visible characters [start, end)
+    public static string RainbowVisible(string tagged, int start, int end)
+    {
+        return ColorLetters(tagged, start, end, t => HueHex(t * 5 / 6));
+    }
+
+    // A color tag per letter (spaces are skipped), colorAt going from 0 at the first letter to 1 at the last
+    static string ColorLetters(string tagged, int start, int end, Func<double, string> colorAt)
+    {
         tagged = tagged ?? string.Empty;
         int count = VisiblePositions(tagged).Count;
         ClampSelection(count, ref start, ref end);
-        int from, to;
-        if (count == 0 || !TryParseRgb(fromHex, out from) || !TryParseRgb(toHex, out to))
+        if (count == 0)
             return tagged;
 
         int letters = 0;
@@ -142,9 +156,29 @@ public static class RichTextIni
                 continue;
             double t = letters > 1 ? letter / (double)(letters - 1) : 0;
             ++letter;
-            tagged = WrapVisible(tagged, i, i + 1, "<color=" + LerpHex(from, to, t) + ">", "</color>");
+            tagged = WrapVisible(tagged, i, i + 1, "<color=" + colorAt(t) + ">", "</color>");
         }
         return tagged;
+    }
+
+    // A fully bright, fully saturated color at a hue from 0 (red) to 1 (red again), as #RRGGBB
+    static string HueHex(double hue)
+    {
+        double h = (hue - Math.Floor(hue)) * 6;
+        int sector = (int)h;
+        double f = h - sector;
+        double r, g, b;
+        switch (sector)
+        {
+            case 0: r = 1; g = f; b = 0; break;
+            case 1: r = 1 - f; g = 1; b = 0; break;
+            case 2: r = 0; g = 1; b = f; break;
+            case 3: r = 0; g = 1 - f; b = 1; break;
+            case 4: r = f; g = 0; b = 1; break;
+            default: r = 1; g = 0; b = 1 - f; break;
+        }
+        int rgb = ((int)Math.Round(r * 255) << 16) | ((int)Math.Round(g * 255) << 8) | (int)Math.Round(b * 255);
+        return "#" + rgb.ToString("X6");
     }
 
     public static bool TryParseRgb(string hex, out int rgb)

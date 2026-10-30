@@ -124,8 +124,9 @@ public partial class PatternBlueprints : MonoBehaviour
         if (!Services.IsTyping && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprints))
             Toggle();
 
-        // Not while a menu is open: Song Properties uses Ctrl+B for bold
-        if (!Services.IsTyping && m_editor.currentState == ChartEditor.State.Editor && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprintPaste))
+        // Not while a menu is open, or over the Collab Mode window: both use Ctrl+B for bold
+        if (!Services.IsTyping && m_editor.currentState == ChartEditor.State.Editor && !DuetPanel.IsPointerOverWindow()
+            && MSChartEditorInput.GetInputDown(MSChartEditorInputActions.PatternBlueprintPaste))
         {
             if (SelectedNotes().Count > 0 || m_stampNotes != null || (m_selected >= 0 && m_selected < m_file.blueprints.Count))
             {

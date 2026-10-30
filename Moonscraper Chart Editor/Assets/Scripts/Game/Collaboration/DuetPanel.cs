@@ -138,7 +138,12 @@ public class DuetPanel : MonoBehaviour
     {
         if (DuetChat.IsPointerOver() || PatternBlueprints.IsPointerOver() || AutoTempoMap.IsPointerOver() || s_quitPromptOpen)
             return true;
+        return IsPointerOverWindow();
+    }
 
+    // Just the Collab Mode window itself
+    public static bool IsPointerOverWindow()
+    {
         if (s_instance == null || !s_instance.m_visible || IsHiddenUnlessShownInPreview(s_instance.m_shownInPreview))
             return false;
 
@@ -478,6 +483,7 @@ public class DuetPanel : MonoBehaviour
 
         if (m_welcomeOpen)
         {
+            HandleNameHotkeys(GUIUtility.keyboardControl != 0);
             DrawWelcome();
             return;
         }
@@ -506,6 +512,9 @@ public class DuetPanel : MonoBehaviour
         // An open Moonscraper menu goes in front of the window, so the window steps out of its way
         if (DuetMenuCover.Covers(m_window.rect, scale))
             return;
+
+        HandleNameHotkeys(m_window.rect.Contains(Event.current.mousePosition)
+            || (GUIUtility.keyboardControl != 0 && !DuetChat.isTyping && !PatternBlueprints.isTyping));
 
         m_window.Draw("Collab Mode", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
@@ -959,6 +968,84 @@ public class DuetPanel : MonoBehaviour
         return host != null ? host.name : "the host";
     }
 
+    // Ctrl+B and Ctrl+I switch your name's bold and italic, Ctrl+G its gradient, Ctrl+R rainbow, and Ctrl+C clears them
+    // all, like Song Properties. Taken here, before the window's text fields see them: Ctrl+I also types a Tab, which
+    // would move to the next field.
+    void HandleNameHotkeys(bool active)
+    {
+        Event e = Event.current;
+        if (!active || e.type != EventType.KeyDown)
+            return;
+
+        bool ctrl = e.control || e.command || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        if (!ctrl || e.alt || e.shift)
+            return;
+        if (e.character == '\t')
+        {
+            e.Use();
+            return;
+        }
+
+        switch (e.keyCode)
+        {
+            case KeyCode.B:
+                SetNameStyle(m_nameStyle ^ DuetPresence.NameBold);
+                break;
+            case KeyCode.I:
+                SetNameStyle(m_nameStyle ^ DuetPresence.NameItalic);
+                break;
+            case KeyCode.G:
+                ToggleGradient();
+                break;
+            case KeyCode.R:
+                ToggleRainbow();
+                break;
+            case KeyCode.C:
+                SetNameStyle(0);
+                SetGradient(DuetPresence.NoGradient);
+                if (DuetPresence.IsRainbow(m_color))
+                    ToggleRainbow();
+                return;     // Left for the name field too, so copying still works
+            default:
+                return;
+        }
+        e.Use();
+    }
+
+    void SetNameStyle(int style)
+    {
+        m_nameStyle = style & DuetPresence.NameStyles;
+        PlayerPrefs.SetInt(PrefNameStyle, m_nameStyle);
+    }
+
+    // As the Gradient button: on fades to the last fade color (or a preset), and a rainbow gives way to a color
+    void ToggleGradient()
+    {
+        if (m_gradient != DuetPresence.NoGradient)
+        {
+            SetGradient(DuetPresence.NoGradient);
+            return;
+        }
+        if (DuetPresence.IsRainbow(m_color))
+            SetColor(m_colorBeforeRainbow);
+        Color end;
+        SetGradient(ColorUtility.TryParseHtmlString(m_gradientHex, out end) ? DuetPresence.MakeCustomColor(end) : DuetPresence.ColorCount - 3);
+    }
+
+    // On, as the Rainbow button; off goes back to the color from before
+    void ToggleRainbow()
+    {
+        if (DuetPresence.IsRainbow(m_color))
+        {
+            SetColor(DuetPresence.IsRainbow(m_colorBeforeRainbow) ? 0 : m_colorBeforeRainbow);
+            return;
+        }
+        m_colorBeforeRainbow = m_color;
+        SetColor(DuetPresence.MakeRainbow(m_rainbowSpeed));
+        SetGradient(DuetPresence.NoGradient);   // A rainbow already has every color
+    }
+    int m_colorBeforeRainbow = 0;
+
     void SetColor(int color, bool updateHex = true)
     {
         m_color = color;
@@ -1044,10 +1131,7 @@ public class DuetPanel : MonoBehaviour
         m_showCustomColor = showCustomColor;
         GUI.backgroundColor = rainbow ? DuetPresence.GetColor(m_color) : background;
         if (GUILayout.Toggle(rainbow, rainbow ? "* Rainbow" : "Rainbow", rainbow ? DuetSkin.swatch : GUI.skin.button) && !rainbow)
-        {
-            SetColor(DuetPresence.MakeRainbow(m_rainbowSpeed));
-            SetGradient(DuetPresence.NoGradient);   // A rainbow already has every color
-        }
+            ToggleRainbow();
 
         // A gradient: the name fades from your color to a second one, letter by letter
         bool gradient = m_gradient != DuetPresence.NoGradient;
@@ -1096,10 +1180,7 @@ public class DuetPanel : MonoBehaviour
         bool newItalic = GUILayout.Toggle(italic, "<i>Italic</i>", RichButton(italic));
         GUILayout.EndHorizontal();
         if (newBold != bold || newItalic != italic)
-        {
-            m_nameStyle = (newBold ? DuetPresence.NameBold : 0) | (newItalic ? DuetPresence.NameItalic : 0);
-            PlayerPrefs.SetInt(PrefNameStyle, m_nameStyle);
-        }
+            SetNameStyle((newBold ? DuetPresence.NameBold : 0) | (newItalic ? DuetPresence.NameItalic : 0));
 
         if (rainbow)
         {
