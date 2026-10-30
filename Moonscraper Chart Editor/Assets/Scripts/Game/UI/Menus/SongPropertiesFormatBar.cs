@@ -42,6 +42,7 @@ public class SongPropertiesFormatBar : MonoBehaviour
         public string shown;
         public float shownWidth;
         public bool overflows;
+        public bool shownFocused;
     }
     readonly Dictionary<InputField, Formatted> m_formatted = new Dictionary<InputField, Formatted>();
 
@@ -226,13 +227,17 @@ public class SongPropertiesFormatBar : MonoBehaviour
 
         RectTransform rect = formatted.overlay.rectTransform;
         float width = rect.rect.width;
-        if (formatted.shown != formatted.tagged || formatted.shownWidth != width)
+        bool focused = field.isFocused;
+        if (formatted.shown != formatted.tagged || formatted.shownWidth != width || formatted.shownFocused != focused)
         {
             formatted.shown = formatted.tagged;
             formatted.shownWidth = width;
+            formatted.shownFocused = focused;
             formatted.overlay.horizontalOverflow = field.multiLine ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;    // An extended box wraps
+            // While typing, bigger sizes are drawn at the field's size so the text stays close to where the caret
+            // and the selection are
             int size = formatted.overlay.fontSize;
-            formatted.overlay.text = RichTextIni.ToPreview(formatted.tagged, size, size * 3 / 2);
+            formatted.overlay.text = RichTextIni.ToPreview(formatted.tagged, size, focused ? size : size * 3 / 2);
             // A multi-line box (the Loading phrase) wraps, and only shrinks if even that runs out of lines
             float room = field.multiLine ? rect.rect.height : width;
             float needed = field.multiLine ? formatted.overlay.preferredHeight : formatted.overlay.preferredWidth;
@@ -241,8 +246,10 @@ public class SongPropertiesFormatBar : MonoBehaviour
             rect.localScale = new Vector3(scale, scale, 1);
         }
 
-        // Plain text that fits is left to the field itself
-        bool show = !field.isFocused && (formatted.overflows || RichTextIni.HasTags(formatted.tagged));
+        // Plain text that fits is left to the field itself. While typing the formatting shows live too, unless the text
+        // runs past the box (the field scrolls it then, and the formatted copy can't follow)
+        bool show = focused ? !formatted.overflows && RichTextIni.HasTags(formatted.tagged)
+            : formatted.overflows || RichTextIni.HasTags(formatted.tagged);
         if (formatted.overlay.enabled != show)
         {
             formatted.overlay.enabled = show;
