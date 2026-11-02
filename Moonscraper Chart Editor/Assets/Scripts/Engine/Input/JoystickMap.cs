@@ -151,6 +151,12 @@ namespace MoonscraperEngine.Input
             if (otherMap == null || otherMap.IsEmpty)
                 return false;
 
+            // Only a binding on the same controller can clash. Saved bindings for another controller (or for this
+            // guitar from an earlier session that SDL saw differently) aren't shown in the list, so they mustn't block
+            // a key here either.
+            if (otherMap.deviceId != deviceId)
+                return false;
+
             bool allowSameFrameMultiInput = properties.allowSameFrameMultiInput;
 
             if (allowSameFrameMultiInput)

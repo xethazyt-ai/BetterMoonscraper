@@ -211,6 +211,42 @@ namespace MoonscraperEngine.Input
             return deviceMaps;
         }
 
+        /// <summary>
+        /// The Controls menu shows two bindings per device. Any more were hidden, yet still blocked those keys as
+        /// "already in use", so the extras go: empty ones first, then the last ones.
+        /// </summary>
+        public void TrimMapsForDevice(IInputDevice device, int maxMaps)
+        {
+            List<IInputMap> deviceMaps = new List<IInputMap>();
+            foreach (IInputMap map in inputMaps)
+            {
+                if (map.IsCompatibleWithDevice(device))
+                    deviceMaps.Add(map);
+            }
+
+            for (int i = deviceMaps.Count - 1; i >= 0 && deviceMaps.Count > maxMaps; --i)
+            {
+                if (deviceMaps[i].IsEmpty && RemoveMap(deviceMaps[i]))
+                    deviceMaps.RemoveAt(i);
+            }
+            for (int i = deviceMaps.Count - 1; i >= maxMaps; --i)
+            {
+                if (RemoveMap(deviceMaps[i]))
+                    deviceMaps.RemoveAt(i);
+            }
+        }
+
+        bool RemoveMap(IInputMap map)
+        {
+            if (map is KeyboardMap)
+                return inputMaps.kbMaps.Remove((KeyboardMap)map);
+            if (map is GamepadMap)
+                return inputMaps.gpButtonMaps.Remove((GamepadMap)map);
+            if (map is JoystickMap)
+                return inputMaps.jsMaps.Remove((JoystickMap)map);
+            return false;
+        }
+
         public void RemoveMapsForDevice(IInputDevice device)
         {
             for (int i = inputMaps.kbMaps.Count - 1; i >= 0; --i)

@@ -63,6 +63,7 @@ public class ActionBindingsMenu : MonoBehaviour
             // populate strings and callback fns
             actionNameText.text = inputAction.properties.displayName;
 
+            inputAction.TrimMapsForDevice(device, actionInputButtons.Length);
             var maps = inputAction.GetMapsForDevice(device);
 
             if (maps != null && maps.Count > 0)
