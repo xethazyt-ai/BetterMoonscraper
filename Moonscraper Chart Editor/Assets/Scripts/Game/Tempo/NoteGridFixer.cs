@@ -120,11 +120,21 @@ public class NoteGridFixer : MonoBehaviour
         foreach (TimeSignature ts in song.timeSignatures)
             lines.Add(new NoteGridCheck.Line { tick = ts.tick, beatTicks = song.resolution * 4.0 / Math.Max(1u, ts.denominator) });
 
+        // Frets at each tick, for splitting stray chords in streams (5-fret guitar only)
+        bool guitar = m_editor.currentChart != null && m_editor.currentChart.gameMode == Chart.GameMode.Guitar;
+        Dictionary<uint, List<int>> frets = guitar ? new Dictionary<uint, List<int>>() : null;
         List<uint> ticks = new List<uint>();
         foreach (Note note in notes)
         {
             if (ticks.Count == 0 || ticks[ticks.Count - 1] != note.tick)
                 ticks.Add(note.tick);
+            if (frets != null)
+            {
+                List<int> at;
+                if (!frets.TryGetValue(note.tick, out at))
+                    frets[note.tick] = at = new List<int>();
+                at.Add(note.rawNote);
+            }
         }
         ticks.Sort();
         for (int i = ticks.Count - 1; i > 0; --i)
@@ -132,7 +142,7 @@ public class NoteGridFixer : MonoBehaviour
             if (ticks[i] == ticks[i - 1])
                 ticks.RemoveAt(i);
         }
-        return NoteGridCheck.Find(ticks, lines, song.resolution);
+        return NoteGridCheck.Find(ticks, lines, song.resolution, frets);
     }
 
     void Check()
@@ -198,7 +208,7 @@ public class NoteGridFixer : MonoBehaviour
         GUI.enabled = true;
         GUILayout.EndHorizontal();
 
-        GUILayout.Label("Each beat (and half beat) is checked for the step its notes are charted at. Notes a few ticks off it are listed here.");
+        GUILayout.Label("Each beat (and half beat) is checked for the step its notes are charted at. Notes off it, chords that break a stream and extra notes are listed here.");
 
         if (m_fixes.Count == 0)
         {
@@ -212,8 +222,14 @@ public class NoteGridFixer : MonoBehaviour
             {
                 NoteGridCheck.Fix fix = m_fixes[i];
                 int ticksOff = (int)fix.from - (int)fix.to;
-                string label = "Go to " + Utility.timeConvertion(song.TickToTime(fix.from, song.resolution)) + "  ("
-                    + Math.Abs(ticksOff) + (Math.Abs(ticksOff) == 1 ? " tick " : " ticks ") + (ticksOff > 0 ? "late" : "early") + ", 1/" + fix.step + ")";
+                string what;
+                if (fix.remove)
+                    what = "extra note, removed";
+                else if (fix.chordSplit)
+                    what = "chord in a stream, split";
+                else
+                    what = Math.Abs(ticksOff) + (Math.Abs(ticksOff) == 1 ? " tick " : " ticks ") + (ticksOff > 0 ? "late" : "early");
+                string label = "Go to " + Utility.timeConvertion(song.TickToTime(fix.from, song.resolution)) + "  (" + what + ", 1/" + fix.step + ")";
                 if (GUILayout.Button(label))
                     JumpTo(fix.from);
             }
@@ -264,15 +280,31 @@ public class NoteGridFixer : MonoBehaviour
         List<Note> notes = NotesToCheck();
         List<NoteGridCheck.Fix> fixes = FindFixes(notes);
         Dictionary<uint, uint> moves = new Dictionary<uint, uint>();
+        Dictionary<long, uint> splits = new Dictionary<long, uint>();   // (tick, fret) -> tick
+        HashSet<uint> removes = new HashSet<uint>();
         foreach (NoteGridCheck.Fix fix in fixes)
-            moves[fix.from] = fix.to;
+        {
+            if (fix.remove)
+                removes.Add(fix.from);
+            else if (fix.fret >= 0)
+                splits[((long)fix.from << 8) | (uint)fix.fret] = fix.to;
+            else
+                moves[fix.from] = fix.to;
+        }
 
         List<SongObject> oldNotes = new List<SongObject>();
         List<SongObject> newNotes = new List<SongObject>();
+        int removed = 0;
         foreach (Note note in notes)
         {
+            if (removes.Contains(note.tick))
+            {
+                oldNotes.Add(note);
+                ++removed;
+                continue;
+            }
             uint to;
-            if (!moves.TryGetValue(note.tick, out to))
+            if (!splits.TryGetValue(((long)note.tick << 8) | (uint)note.rawNote, out to) && !moves.TryGetValue(note.tick, out to))
                 continue;
             Note moved = note.CloneAs<Note>();
             moved.tick = to;
@@ -286,13 +318,12 @@ public class NoteGridFixer : MonoBehaviour
             return;
         }
 
-        List<SongEditCommand> commands = new List<SongEditCommand>
-        {
-            new SongEditDelete(oldNotes),
-            new SongEditAdd(newNotes),
-        };
+        List<SongEditCommand> commands = new List<SongEditCommand> { new SongEditDelete(oldNotes) };
+        if (newNotes.Count > 0)
+            commands.Add(new SongEditAdd(newNotes));
         m_editor.commandStack.Push(new BatchedSongEditCommand(commands));
-        m_status = "Moved " + oldNotes.Count + (oldNotes.Count == 1 ? " note" : " notes") + " onto their steps. Ctrl+Z undoes it.";
+        m_status = "Moved " + newNotes.Count + (newNotes.Count == 1 ? " note" : " notes") + " onto their steps"
+            + (removed > 0 ? " and removed " + removed + " extra" + (removed == 1 ? " note" : " notes") : string.Empty) + ". Ctrl+Z undoes it.";
         m_editor.services.notificationBar.PushNotification("BROKEN NOTES FIXED", 2, true);
         if (m_selectedOnly)
             m_editor.selectedObjectsManager.TryFindAndSelectSongObjects(newNotes);
