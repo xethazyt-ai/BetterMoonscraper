@@ -159,6 +159,8 @@ public enum MSChartEditorInputActions
     ResetMenuPositions,
 
     EqualSpacing,
+
+    FpsCounter,
 }
 
 public static class MSChartEditorInput
