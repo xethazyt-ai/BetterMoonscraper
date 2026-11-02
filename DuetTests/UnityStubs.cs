@@ -254,6 +254,11 @@ public static class FpsCounter
     public static bool IsPointerOver() { return false; }
 }
 
+public static class NoteGridFixer
+{
+    public static bool IsPointerOver() { return false; }
+}
+
 public static class PatternBlueprints
 {
     public static bool isTyping { get { return false; } }

@@ -112,19 +112,8 @@ public class AutoTempoMap : MonoBehaviour
             if (!dropdown)
                 continue;
 
-            int index = dropdown.options.Count;
-            CustomUnityDropdown.OptionData option = new CustomUnityDropdown.OptionData("Auto Tempo Map");
-            option.toggleCheckEvent = new CustomUnityDropdown.ToggleIsOnEvent();
-            option.hideOnSelectItem = true;
-            dropdown.options.Add(option);
-
-            List<UnityEngine.Events.UnityEvent> events = new List<UnityEngine.Events.UnityEvent>(menu.menuEvent ?? new UnityEngine.Events.UnityEvent[0]);
-            while (events.Count < index)
-                events.Add(new UnityEngine.Events.UnityEvent());
-            UnityEngine.Events.UnityEvent open = new UnityEngine.Events.UnityEvent();
-            open.AddListener(Open);
-            events.Insert(index, open);
-            menu.menuEvent = events.ToArray();
+            AddOption(menu, dropdown, "Auto Tempo Map", Open);
+            AddOption(menu, dropdown, "Fix Broken Notes", NoteGridFixer.OpenWindow);     // Just under it
 
             // The menu keeps "nothing picked" as value = the old option count, which is now this option's index, and
             // picking the value it already has does nothing. Park it past the end again, as DropDownMenu does.
@@ -134,6 +123,23 @@ public class AutoTempoMap : MonoBehaviour
             return;
         }
         Debug.LogWarning("Couldn't find the Tools menu to add Auto Tempo Map to");
+    }
+
+    static void AddOption(DropDownMenu menu, CustomUnityDropdown dropdown, string label, UnityEngine.Events.UnityAction onPicked)
+    {
+        int index = dropdown.options.Count;
+        CustomUnityDropdown.OptionData option = new CustomUnityDropdown.OptionData(label);
+        option.toggleCheckEvent = new CustomUnityDropdown.ToggleIsOnEvent();
+        option.hideOnSelectItem = true;
+        dropdown.options.Add(option);
+
+        List<UnityEngine.Events.UnityEvent> events = new List<UnityEngine.Events.UnityEvent>(menu.menuEvent ?? new UnityEngine.Events.UnityEvent[0]);
+        while (events.Count < index)
+            events.Add(new UnityEngine.Events.UnityEvent());
+        UnityEngine.Events.UnityEvent open = new UnityEngine.Events.UnityEvent();
+        open.AddListener(onPicked);
+        events.Insert(index, open);
+        menu.menuEvent = events.ToArray();
     }
 
     public void Open()
