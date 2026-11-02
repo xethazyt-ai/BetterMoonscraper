@@ -143,6 +143,19 @@ public class ActionBindingsMenu : MonoBehaviour
         LoadActions(actionEnumerator, categoryDisplayMask);
     }
 
+    // Search text from the Controls menu. While it isn't empty, matching actions from every category are listed.
+    string m_filter = string.Empty;
+
+    public void SetFilter(string filter)
+    {
+        filter = filter == null ? string.Empty : filter.Trim();
+        if (filter == m_filter)
+            return;
+        m_filter = filter;
+        if (loadedActions != null)
+            PopulateFrom(loadedActions, categoryDisplayMask);
+    }
+
     public void LoadActions(IEnumerable<InputAction> actionEnumerator, int categoryDisplayMask)
     {
         loadedActions = actionEnumerator;
@@ -159,7 +172,13 @@ public class ActionBindingsMenu : MonoBehaviour
                 continue;
 
             // Not displaying these actions at the moment.
-            if (((1 << inputAction.properties.category) & categoryDisplayMask) == 0)
+            if (m_filter.Length > 0)
+            {
+                string name = inputAction.properties.displayName ?? string.Empty;
+                if (name.IndexOf(m_filter, System.StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+            }
+            else if (((1 << inputAction.properties.category) & categoryDisplayMask) == 0)
                 continue;
 
             if (index >= rowPool.Count)
