@@ -21,11 +21,11 @@ public class InputManager : UnitySingleton<InputManager>
     const string PrefConnectedNotice = "Controls.ConnectedNotice";
 
     /// <summary>
-    /// Settings > Editor: the "... CONNECTED" notice when a controller or guitar is plugged in
+    /// Settings > Editor: the "... CONNECTED" notice when a controller or guitar is plugged in. Off unless turned on.
     /// </summary>
     public static bool connectedNotice
     {
-        get { return PlayerPrefs.GetInt(PrefConnectedNotice, 1) != 0; }
+        get { return PlayerPrefs.GetInt(PrefConnectedNotice, 0) != 0; }
         set { PlayerPrefs.SetInt(PrefConnectedNotice, value ? 1 : 0); PlayerPrefs.Save(); }
     }
 
@@ -101,6 +101,7 @@ public class InputManager : UnitySingleton<InputManager>
                 Debug.LogFormat("Initialising SDL input {0}", SDL_FLAGS);
 
                 SDL.SDL_SetMainReady();
+                SetGuitarFriendlyHints();
 
                 Debug.Log("SDL input main ready");
 
@@ -151,10 +152,83 @@ public class InputManager : UnitySingleton<InputManager>
         }
     }
 
+    // Set before SDL starts, so every kind of guitar is found:
+    // - XInput guitars (Xbox 360 guitars, most Arduino/Pico guitars such as Santroller) stay on Windows' XInput, which
+    //   is what Clone Hero reads them with. HIDAPI's Xbox driver and Raw Input are kept off so they can't take them over.
+    // - DirectInput guitars and adapters (PS3/Wii dongles, Raphnet, Arduino guitars in HID mode) come in as joysticks.
+    // - SDL is started on a worker thread, so plugging in is watched on SDL's own thread (newer SDL versions) and
+    //   controllers keep working while another window has focus.
+    // Hints this SDL version doesn't know are ignored.
+    static void SetGuitarFriendlyHints()
+    {
+        SDL.SDL_SetHint("SDL_XINPUT_ENABLED", "1");
+        SDL.SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+        SDL.SDL_SetHint("SDL_JOYSTICK_THREAD", "1");
+        SDL.SDL_SetHint("SDL_JOYSTICK_RAWINPUT", "0");
+        SDL.SDL_SetHint("SDL_JOYSTICK_HIDAPI_XBOX", "0");
+    }
+
     // Update is called once per frame
     void Update () 
     {
         UpdateSdl();
+        RescanForMissedDevices();
+    }
+
+    // A guitar whose plug-in message SDL never sent (seen with some adapters, and ones plugged in while BetterMoonscraper
+    // was starting) is picked up here: every couple of seconds, anything SDL lists that isn't open yet is opened.
+    const float RescanSeconds = 2;
+    float m_nextRescan = 0;
+
+    void RescanForMissedDevices()
+    {
+        if (!sdlInitialised || Time.unscaledTime < m_nextRescan)
+            return;
+        m_nextRescan = Time.unscaledTime + RescanSeconds;
+
+        int count = SDL.SDL_NumJoysticks();
+        for (int index = 0; index < count; ++index)
+        {
+            if (IsOpen(SDL.SDL_JoystickGetDeviceInstanceID(index)))
+                continue;
+            Debug.Log("Found a controller SDL hadn't announced, opening it: " + DescribeIndex(index));
+            if (SDL.SDL_IsGameController(index) == SDL.SDL_bool.SDL_TRUE)
+                OnControllerConnect(index);
+            else
+                OnJoystickConnect(index);
+        }
+    }
+
+    bool IsOpen(int instanceId)
+    {
+        if (instanceId < 0)
+            return true;    // Already gone again
+        foreach (GamepadDevice gamepad in controllers)
+        {
+            if (SDL.SDL_JoystickInstanceID(SDL.SDL_GameControllerGetJoystick(gamepad.sdlHandle)) == instanceId)
+                return true;
+        }
+        foreach (JoystickDevice joystick in joysticks)
+        {
+            if (SDL.SDL_JoystickInstanceID(joystick.sdlHandle) == instanceId)
+                return true;
+        }
+        return false;
+    }
+
+    // For the log, so a guitar that won't work can be looked up: its name, USB IDs and what SDL takes it for
+    static string DescribeIndex(int index)
+    {
+        try
+        {
+            return string.Format("\"{0}\" (USB {1:X4}:{2:X4}, {3}, {4})", SDL.SDL_JoystickNameForIndex(index),
+                SDL.SDL_JoystickGetDeviceVendor(index), SDL.SDL_JoystickGetDeviceProduct(index), SDL.SDL_JoystickGetDeviceType(index),
+                SDL.SDL_IsGameController(index) == SDL.SDL_bool.SDL_TRUE ? "XInput/known controller" : "DirectInput joystick");
+        }
+        catch (Exception e)
+        {
+            return "device " + index + " (" + e.Message + ")";
+        }
     }
 
     void UpdateSdl()
@@ -214,6 +288,10 @@ public class InputManager : UnitySingleton<InputManager>
 
     void OnControllerConnect(int index)
     {
+        if (IsOpen(SDL.SDL_JoystickGetDeviceInstanceID(index)))
+            return;     // Opened already by the rescan
+        Debug.Log("Controller plugged in: " + DescribeIndex(index));
+
         IntPtr gameController = SDL.SDL_GameControllerOpen(index);
         if (gameController != IntPtr.Zero)
         {
@@ -236,6 +314,10 @@ public class InputManager : UnitySingleton<InputManager>
 
     void OnJoystickConnect(int index)
     {
+        if (IsOpen(SDL.SDL_JoystickGetDeviceInstanceID(index)))
+            return;     // Opened already by the rescan
+        Debug.Log("Joystick plugged in: " + DescribeIndex(index));
+
         IntPtr joystick = SDL.SDL_JoystickOpen(index);
         if (joystick != IntPtr.Zero)
         {
