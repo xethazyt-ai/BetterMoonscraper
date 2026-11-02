@@ -76,10 +76,9 @@ public class SettingsController : TabMenu
         SetUpClapVolume();
     }
 
-    // Clap volume, under Music Vol. Moonscraper's own Clap Vol row, which it had hidden. It goes past 100% to make the
-    // clap louder, so it shows its percent to the right, where the Pan row shows R.
+    // Clap volume, under Music Vol. Moonscraper's own Clap Vol row, which it had hidden. It goes up to 400%, so the
+    // middle of the slider is louder than Moonscraper's clap.
     const int ClapVolumeStep = 5;
-    Text m_clapVolumeText;
     bool m_clapVolumePending = false;
 
     void SetUpClapVolume()
@@ -93,35 +92,7 @@ public class SettingsController : TabMenu
         clapSourceSlider.maxValue = ClapSound.MaxVolumePercent / ClapVolumeStep;
         clapSourceSlider.value = ClapSound.volumePercent / ClapVolumeStep;
 
-        Transform rightPanObject = musicPanSlider ? musicPanSlider.transform.parent.Find("Right Pan") : null;
-        Text template = rightPanObject ? rightPanObject.GetComponent<Text>() : null;
-        if (template)
-        {
-            RectTransform slider = (RectTransform)clapSourceSlider.transform;
-            m_clapVolumeText = Instantiate(template, slider.parent);
-            m_clapVolumeText.name = "Clap Volume Value";
-            m_clapVolumeText.alignment = TextAnchor.MiddleLeft;
-            RectTransform rect = m_clapVolumeText.rectTransform;
-            rect.anchorMin = slider.anchorMin;
-            rect.anchorMax = slider.anchorMax;
-            rect.pivot = new Vector2(0, 0.5f);
-            rect.sizeDelta = new Vector2(80, ((RectTransform)template.transform).sizeDelta.y);
-            // Just past the slider's right end, like the Pan row's R
-            rect.anchoredPosition = new Vector2(slider.anchoredPosition.x + slider.sizeDelta.x * (1 - slider.pivot.x) + 12, slider.anchoredPosition.y);
-        }
-
-        clapSourceSlider.onValueChanged.AddListener(value =>
-        {
-            UpdateClapVolumeText();
-            m_clapVolumePending = true;
-        });
-        UpdateClapVolumeText();
-    }
-
-    void UpdateClapVolumeText()
-    {
-        if (m_clapVolumeText && clapSourceSlider)
-            m_clapVolumeText.text = Mathf.RoundToInt(clapSourceSlider.value * ClapVolumeStep) + "%";
+        clapSourceSlider.onValueChanged.AddListener(value => m_clapVolumePending = true);
     }
 
     // The clap is rebuilt when the slider is let go, rather than for every step of a drag
@@ -273,7 +244,6 @@ public class SettingsController : TabMenu
         {
             clapSourceSlider.value = ClapSound.volumePercent / ClapVolumeStep;
             m_clapVolumePending = false;
-            UpdateClapVolumeText();
         }
         musicPanSlider.value = Globals.gameSettings.audio_pan * 10.0f;
 

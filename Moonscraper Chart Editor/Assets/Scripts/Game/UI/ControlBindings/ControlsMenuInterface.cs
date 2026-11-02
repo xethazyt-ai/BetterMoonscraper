@@ -82,17 +82,14 @@ public class ControlsMenuInterface : MonoBehaviour
         RefreshActionBindingsMenu();
     }
 
-    // The category and device are picked from dropdowns rather than stepped through with the < > arrows, and a search
-    // box above the list finds an action in any category by name. Built from the Settings menu's own dropdown and text
-    // box, so they look like the rest of Moonscraper's menus.
+    // The category and device are picked from dropdowns rather than stepped through with the < > arrows.
+    // Built from the Settings menu's own dropdown, so they look like the
+    // rest of Moonscraper's menus.
     bool m_headerBuilt = false;
     bool m_settingDropdowns = false;
     Dropdown m_categoryDropdown;
     Dropdown m_deviceDropdown;
-    InputField m_searchField;
     readonly List<string> m_deviceNames = new List<string>();
-
-    const float SearchHeight = 26;
 
     void BuildHeader()
     {
@@ -100,13 +97,11 @@ public class ControlsMenuInterface : MonoBehaviour
 
         Transform parent = actionCategoryText ? actionCategoryText.transform.parent : null;
         Dropdown dropdownTemplate = null;
-        InputField fieldTemplate = null;
         foreach (SettingsController settings in Resources.FindObjectsOfTypeAll<SettingsController>())
         {
             if (settings.gameObject.scene.IsValid())
             {
                 dropdownTemplate = settings.antiAliasingLevel;
-                fieldTemplate = settings.sustainGapInput;
             }
         }
         if (!parent || !dropdownTemplate || !deviceText)
@@ -127,8 +122,6 @@ public class ControlsMenuInterface : MonoBehaviour
             if (m_settingDropdowns)
                 return;
             actionCategoryIndex = index;
-            if (m_searchField && m_searchField.text.Length > 0)
-                m_searchField.text = string.Empty;      // Picking a category shows that category again
             RefreshActionBindingsMenu();
         });
 
@@ -143,8 +136,6 @@ public class ControlsMenuInterface : MonoBehaviour
             RefreshActionBindingsMenu();
         });
 
-        if (fieldTemplate)
-            BuildSearchField(fieldTemplate, parent, categoryLeft, categoryRight);
     }
 
     // A dropdown over the row's label and its two arrows, which are hidden
@@ -175,39 +166,6 @@ public class ControlsMenuInterface : MonoBehaviour
         rect.sizeDelta = new Vector2(right - left, rect.sizeDelta.y);
         rect.anchoredPosition = new Vector2((left + right) / 2, label.anchoredPosition.y);
         return dropdown;
-    }
-
-    void BuildSearchField(InputField template, Transform parent, float left, float right)
-    {
-        // On the row of the Primary and Secondary column titles, over the action names
-        RectTransform columnTitle = parent.Find("Primary Column Text") as RectTransform;
-        float y = columnTitle ? columnTitle.anchoredPosition.y : actionCategoryText.rectTransform.anchoredPosition.y - 30;
-
-        m_searchField = Instantiate(template, parent);
-        m_searchField.name = "Search Actions Field";
-        m_searchField.onValueChanged = new InputField.OnChangeEvent();
-        m_searchField.onEndEdit = new InputField.SubmitEvent();
-        m_searchField.contentType = InputField.ContentType.Standard;
-        m_searchField.lineType = InputField.LineType.SingleLine;
-        m_searchField.characterLimit = 40;
-        m_searchField.text = string.Empty;
-        m_searchField.gameObject.SetActive(true);
-        if (m_searchField.textComponent)
-            m_searchField.textComponent.alignment = TextAnchor.MiddleLeft;
-        Text placeholder = m_searchField.placeholder as Text;
-        if (placeholder)
-        {
-            placeholder.text = "Search actions...";
-            placeholder.alignment = TextAnchor.MiddleLeft;
-        }
-
-        RectTransform rect = (RectTransform)m_searchField.transform;
-        rect.anchorMin = rect.anchorMax = actionCategoryText.rectTransform.anchorMin;
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(right - left, SearchHeight);
-        rect.anchoredPosition = new Vector2((left + right) / 2, y);
-
-        m_searchField.onValueChanged.AddListener(actionBindingsMenu.SetFilter);
     }
 
     // Shows the current category and device in the dropdowns, and lists the devices connected now
