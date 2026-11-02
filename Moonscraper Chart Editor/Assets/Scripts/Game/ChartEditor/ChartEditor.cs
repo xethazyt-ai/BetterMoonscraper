@@ -365,6 +365,37 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         watchdog.IsBackground = true;
         watchdog.Name = "Quit watchdog";
         watchdog.Start();
+
+        StartOutsideQuitWatchdog();
+    }
+
+    // The thread above dies with the rest of the C# side once Unity unloads it, so a hang after that (in native
+    // audio, controller or online code) still left the process running, and Discord kept showing BetterMoonscraper as
+    // open. A hidden PowerShell outside the process holds a handle to it and ends it if it hasn't closed in time.
+    const int OutsideQuitWatchdogSeconds = 30;
+
+    static void StartOutsideQuitWatchdog()
+    {
+        if (Application.platform != RuntimePlatform.WindowsPlayer)
+            return;
+
+        try
+        {
+            int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+            string script = "$p = Get-Process -Id " + pid + " -ErrorAction SilentlyContinue; "
+                + "if ($p -and -not $p.WaitForExit(" + OutsideQuitWatchdogSeconds * 1000 + ")) { $p.Kill() }";
+            System.Diagnostics.ProcessStartInfo info = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"" + script + "\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            System.Diagnostics.Process.Start(info);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("Couldn't start the quit watchdog: " + e.Message);
+        }
     }
 
     void FinaliseQuit()
