@@ -330,6 +330,43 @@ public class AutoTempoDetector
     double FrameTime(int frame) { return frame * m_hopSeconds + m_frameOffset; }
 
     /// <summary>
+    /// The clearest hit within 'window' seconds of a tapped beat, so taps land on the music rather than a few
+    /// milliseconds either side of it. NaN when nothing there stands out from the sound around it.
+    /// </summary>
+    public double SnapToOnset(double time, double window)
+    {
+        if (m_onsets == null || m_onsets.Length == 0)
+            return double.NaN;
+
+        int from = Math.Max(0, (int)Math.Floor((time - window - m_frameOffset) / m_hopSeconds));
+        int to = Math.Min(m_onsets.Length - 1, (int)Math.Ceiling((time + window - m_frameOffset) / m_hopSeconds));
+        int best = -1;
+        float bestValue = 0;
+        for (int f = from; f <= to; ++f)
+        {
+            if (m_onsets[f] > bestValue)
+            {
+                bestValue = m_onsets[f];
+                best = f;
+            }
+        }
+        if (best < 0)
+            return double.NaN;
+
+        // Compared with the average over a third of a second each side
+        int around = (int)(0.33 / m_hopSeconds);
+        double sum = 0;
+        int count = 0;
+        for (int f = Math.Max(0, best - around); f <= Math.Min(m_onsets.Length - 1, best + around); ++f)
+        {
+            sum += m_onsets[f];
+            ++count;
+        }
+        double mean = count > 0 ? sum / count : 0;
+        return bestValue > mean * 2 ? FrameTime(best) : double.NaN;
+    }
+
+    /// <summary>
     /// The song's tempo, best guess first, with the half, double and other related tempos it could be mistaken for.
     /// Only the part from 'from' to 'to' (seconds) is used; pass 0 and the duration for the whole song. 'fresh' is for
     /// a song's own tempo, with nothing before it to go on (not a change partway through).

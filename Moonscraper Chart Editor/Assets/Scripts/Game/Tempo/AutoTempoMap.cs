@@ -44,6 +44,14 @@ public class AutoTempoMap : MonoBehaviour
     string m_status = string.Empty;
     Vector2 m_scroll;
 
+    // Tap-along: beats tapped with T (or the Tap button) while the song plays, in audio seconds
+    const KeyCode TapKey = KeyCode.T;
+    const double SnapWindow = 0.07;
+    readonly List<double> m_taps = new List<double>();
+    bool m_tapping;             // Waiting for taps; ends when playback stops
+    bool m_tapPlayed;           // Playback started since tapping began
+    string m_tapStatus = string.Empty;
+
     // Testing against a folder of finished charts (runs off the main thread too)
     TempoTest m_test;
     Thread m_testThread;
@@ -137,6 +145,7 @@ public class AutoTempoMap : MonoBehaviour
 
     void Update()
     {
+        UpdateTapping();
         if (m_working)
             return;
 
@@ -287,6 +296,8 @@ public class AutoTempoMap : MonoBehaviour
                 GUILayout.Label(m_status);
             if (GUILayout.Button("Listen to the song"))
                 Analyse(0);
+            if (m_editor.currentSong != null)
+                DrawTapAlong();
             DrawClose();
             return;
         }
@@ -379,6 +390,8 @@ public class AutoTempoMap : MonoBehaviour
         if (main.downbeat < song.offset)
             GUILayout.Label("The song comes in before the chart's start (Offset in Song Properties). Set Offset to 0 first.");
 
+        DrawTapAlong();
+
         GUILayout.Space(4);
         GUILayout.Label("Tip: turn on the Metronome (M) and play to hear it. Ctrl+Z undoes it.");
         GUILayout.BeginHorizontal();
@@ -395,6 +408,172 @@ public class AutoTempoMap : MonoBehaviour
         if (m_status.Length > 0)
             GUILayout.Label(m_status);
         DrawClose();
+    }
+
+    // Where the song is playing now, in seconds of its audio (what the map is measured in)
+    double AudioNow()
+    {
+        AudioStream stream = m_editor.currentSongAudio != null ? m_editor.currentSongAudio.mainSongAudio : null;
+        if (stream != null && stream.isValid)
+            return stream.CurrentPositionSeconds;
+        return m_editor.currentVisibleTime + m_editor.currentSong.offset;
+    }
+
+    void UpdateTapping()
+    {
+        if (!m_tapping || m_editor == null)
+            return;
+
+        if (m_editor.currentState == ChartEditor.State.Playing)
+        {
+            m_tapPlayed = true;
+            if (!Services.IsTyping && Input.GetKeyDown(TapKey))
+                Tap();
+        }
+        else if (m_tapPlayed)
+        {
+            m_tapping = false;      // Playback stopped: the taps are ready to use
+            m_tapStatus = m_taps.Count + " taps" + TappedTempo() + ".";
+        }
+    }
+
+    void Tap()
+    {
+        m_taps.Add(AudioNow());
+        m_tapStatus = m_taps.Count + " taps" + TappedTempo();
+    }
+
+    string TappedTempo()
+    {
+        if (m_taps.Count < 3)
+            return string.Empty;
+        List<double> beats = TapTempo.CleanBeats(m_taps);
+        double span = beats[beats.Count - 1] - beats[0];
+        return span > 0 ? ", about " + FormatBpm(60 * (beats.Count - 1) / span) : string.Empty;
+    }
+
+    // Tap along: for a stretch it got wrong (or a song it couldn't hear a beat in), tap the beats and they become the
+    // tempo map there
+    void DrawTapAlong()
+    {
+        GUILayout.Space(6);
+        GUILayout.Label("Tap along, for a part it got wrong:");
+        if (m_tapping)
+        {
+            GUILayout.Label(m_taps.Count > 0 ? m_tapStatus : "Playing... press " + TapKey + " on every beat, starting on beat 1 of a measure.");
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Tap (" + TapKey + ")"))
+                Tap();
+            if (GUILayout.Button("Stop", GUILayout.Width(80)))
+            {
+                if (m_editor.currentState == ChartEditor.State.Playing)
+                    m_editor.Stop();
+                m_tapping = false;
+                m_tapStatus = m_taps.Count + " taps" + TappedTempo() + ".";
+            }
+            GUILayout.EndHorizontal();
+            return;
+        }
+
+        if (m_taps.Count == 0)
+        {
+            if (m_tapStatus.Length > 0)
+                GUILayout.Label(m_tapStatus);
+            GUILayout.Label("Put the playhead just before the part, press Start, then tap " + TapKey + " on every beat from beat 1 of a measure. Stop (or Space) when done.");
+            if (GUILayout.Button("Start tapping"))
+                StartTapping();
+            return;
+        }
+
+        if (m_tapStatus.Length > 0)
+            GUILayout.Label(m_tapStatus);
+        GUILayout.BeginHorizontal();
+        GUI.enabled = m_taps.Count > m_beatsPerMeasure;
+        if (GUILayout.Button("Use the taps"))
+            UseTaps();
+        GUI.enabled = true;
+        if (GUILayout.Button("Tap again", GUILayout.Width(100)))
+            StartTapping();
+        if (GUILayout.Button("Clear", GUILayout.Width(70)))
+        {
+            m_taps.Clear();
+            m_tapStatus = string.Empty;
+        }
+        GUILayout.EndHorizontal();
+    }
+
+    void StartTapping()
+    {
+        m_taps.Clear();
+        m_tapStatus = string.Empty;
+        m_tapPlayed = false;
+        m_tapping = true;
+        if (m_editor.currentState == ChartEditor.State.Editor)
+            m_editor.Play();
+    }
+
+    // The taps, nudged onto the hits they were meant for, become the map for the stretch they cover
+    void UseTaps()
+    {
+        Song song = m_editor.currentSong;
+        if (song == null)
+            return;
+
+        // Each tap moves to the clearest hit near it. Taps with nothing clear nearby move by the usual amount, as
+        // that's mostly how late (or early) the tapping ran.
+        List<double> snapped = new List<double>();
+        List<double> shifts = new List<double>();
+        foreach (double tap in m_taps)
+        {
+            double onset = m_detector != null ? m_detector.SnapToOnset(tap, SnapWindow) : double.NaN;
+            snapped.Add(onset);
+            if (!double.IsNaN(onset))
+                shifts.Add(onset - tap);
+        }
+        shifts.Sort();
+        double usualShift = shifts.Count > 0 ? shifts[shifts.Count / 2] : 0;
+        for (int i = 0; i < snapped.Count; ++i)
+        {
+            if (double.IsNaN(snapped[i]))
+                snapped[i] = m_taps[i] + usualShift;
+        }
+
+        int beatsPerMeasure = m_beatsPerMeasure > 0 ? m_beatsPerMeasure : 4;
+        List<double> beats = TapTempo.CleanBeats(snapped);
+        List<AutoTempoDetector.Segment> tapped = TapTempo.ToSegments(beats, beatsPerMeasure);
+        if (tapped.Count == 0)
+        {
+            m_tapStatus = "Tap at least " + (beatsPerMeasure + 1) + " beats (a whole measure and the next beat 1).";
+            return;
+        }
+        int wholeBeats = (beats.Count - 1) / beatsPerMeasure * beatsPerMeasure;
+        double tapEnd = beats[wholeBeats];
+
+        AutoTempoDetector.Map map = new AutoTempoDetector.Map();
+        if (m_map != null)
+        {
+            map.choices = m_map.choices;
+            map.musicStart = m_map.musicStart;
+            map.startBpm = m_map.startBpm;
+            map.measuresChecked = m_map.measuresChecked;
+            foreach (double unsure in m_map.unsureMeasures)
+            {
+                if (unsure < tapped[0].downbeat - 0.05 || unsure > tapEnd)
+                    map.unsureMeasures.Add(unsure);
+            }
+        }
+        else
+        {
+            map.musicStart = tapped[0].downbeat;
+            map.startBpm = tapped[0].bpm;
+        }
+        map.segments = TapTempo.Merge(m_map != null ? m_map.segments : null, tapped, tapEnd, beatsPerMeasure);
+        m_map = map;
+        m_analysedSong = song;
+
+        m_tapStatus = "Taps used from " + Utility.timeConvertion((float)(tapped[0].downbeat - song.offset)) + " to "
+            + Utility.timeConvertion((float)(tapEnd - song.offset)) + ". Apply tempo map puts it in the chart.";
+        m_taps.Clear();
     }
 
     void DrawClose()
