@@ -562,6 +562,8 @@ public class GroupSelectPanelController : MonoBehaviour
     // one would go, and how far the notes were dragged doesn't change the step. The last note may sit anywhere from
     // one gap short of the line to on it, so the line count is the one that range fits best. Slower patterns (a
     // note per line or less, or too few notes to tell) snap to the nearest step in 8s, or 1, 2, 3, 4, 6 or 12.
+    // A last note already on a line stays there, with the notes spread evenly up to it (9 notes over one line is
+    // step 64), as long as that spacing is a whole step; otherwise the rule above applies.
     double EqualSpacingGap(uint startTick, uint tickDiff, int totalNotes)
     {
         Song song = editor.currentSong;
@@ -571,6 +573,17 @@ public class GroupSelectPanelController : MonoBehaviour
         double lineGap = song.resolution * 2.0 / System.Math.Max(1u, ts.denominator);
 
         int gaps = totalNotes - 1;
+        const double OnLineTicks = 1;   // Rounding when a note was placed on the line
+        double fromLine = (startTick + tickDiff - ts.tick) % lineGap;
+        bool lastOnLine = System.Math.Min(fromLine, lineGap - fromLine) <= OnLineTicks;
+        if (lastOnLine && tickDiff > 0)
+        {
+            double step = wholeNote * gaps / tickDiff;
+            double wholeStep = System.Math.Round(step);
+            if (wholeStep >= 1 && System.Math.Abs(wholeNote * gaps / wholeStep - tickDiff) <= OnLineTicks)
+                return (double)tickDiff / gaps;
+        }
+
         int bestLines = 1;
         double bestMiss = double.MaxValue;
         for (int lines = 1; lines < gaps; ++lines)

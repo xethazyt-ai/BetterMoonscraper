@@ -730,10 +730,14 @@ public class DuetSession
         });
     }
 
+    // song.ini is left out: saving the chart rewrites it, and its contents already reach everyone live with the song's
+    // details, so a save used to send everyone the whole song (audio and all) again, holding up the edits behind it
     static string SongFilesSignature(List<string> parts, List<string> paths)
     {
         foreach (string path in paths)
         {
+            if (string.Equals(Path.GetFileName(path), "song.ini", StringComparison.OrdinalIgnoreCase))
+                continue;
             string part = path;
             try
             {

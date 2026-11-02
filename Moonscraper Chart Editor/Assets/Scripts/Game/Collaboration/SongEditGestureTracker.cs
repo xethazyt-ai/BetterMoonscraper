@@ -10,7 +10,8 @@ using MoonscraperEngine;
 /// Many tools rewrite their own last command while the user is still dragging or holding keys
 /// (sustain drags, star power length, BPM drags, eraser drags, keyboard note entry): they pop the last
 /// command and push a replacement on every update. This holds the newest pushed command as "pending"
-/// and only reports it once the user lets go of every key and mouse button, or another command is
+/// and only reports it once the user lets go of every key and mouse button (game controllers don't
+/// count: a plugged in guitar or keypad can read as a button held all the time), or another command is
 /// pushed on top of it. A pending command that is popped is dropped without being reported, as its
 /// changes have been fully reverted.
 ///
@@ -48,10 +49,42 @@ public class SongEditGestureTracker : SystemManagerState.System
 
     public override void SystemUpdate()
     {
-        if (hasPendingEdit && !Input.anyKey)
+        if (hasPendingEdit && !KeyboardOrMouseHeld())
         {
             FinishPending();
         }
+    }
+
+    // Unity's anyKey counts controller buttons too. With one that always reads as held, a pending edit was never
+    // finished: the joiner's last edit didn't go out, and a host held everyone's edits back for minutes at a time.
+    static KeyCode[] s_keyboardKeys;
+
+    static bool KeyboardOrMouseHeld()
+    {
+        if (!Input.anyKey)
+            return false;
+        for (int button = 0; button < 3; ++button)
+        {
+            if (Input.GetMouseButton(button))
+                return true;
+        }
+
+        if (s_keyboardKeys == null)
+        {
+            List<KeyCode> keys = new List<KeyCode>();
+            foreach (KeyCode key in System.Enum.GetValues(typeof(KeyCode)))
+            {
+                if (key != KeyCode.None && key < KeyCode.Mouse0)     // Mouse buttons and controllers come after the keyboard
+                    keys.Add(key);
+            }
+            s_keyboardKeys = keys.ToArray();
+        }
+        foreach (KeyCode key in s_keyboardKeys)
+        {
+            if (Input.GetKey(key))
+                return true;
+        }
+        return false;
     }
 
     void OnStackChanged(in SongEditCommandStack.StackChange change)

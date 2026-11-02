@@ -22,7 +22,7 @@ namespace UnityEngine
         public static Color white { get { return new Color(1, 1, 1); } }
         public static Color Lerp(Color a, Color b, float t) { return new Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t); }
     }
-    public enum KeyCode { None, F9, F10, B, C, G, I, R, LeftControl, RightControl }
+    public enum KeyCode { None, F9, F10, B, C, G, I, R, LeftControl, RightControl, Mouse0 = 323 }
     public static class ColorUtility
     {
         public static string ToHtmlStringRGB(Color c) { return ((int)System.Math.Round(c.r * 255)).ToString("X2") + ((int)System.Math.Round(c.g * 255)).ToString("X2") + ((int)System.Math.Round(c.b * 255)).ToString("X2"); }
@@ -64,7 +64,7 @@ namespace UnityEngine
         public static Vector3 mousePosition;
         public static bool GetKeyDown(KeyCode key) { return false; }
         public static bool GetKey(KeyCode key) { return false; }
-        public static bool GetMouseButton(int button) { return false; }
+        public static bool GetMouseButton(int button) { return anyKey; }   // A held key or button, as tests set it
         public static bool GetMouseButtonDown(int button) { return false; }
     }
 

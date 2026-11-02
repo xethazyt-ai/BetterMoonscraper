@@ -95,7 +95,13 @@ public class DisplayProperties : UpdateableService
     Text cloneHeroScoresText;
     float m_nextScoresCheck;
     const float ScoresCheckSeconds = 2;
-    const float ScoresTop = 136;
+    // The Stats tab, laid out in code: one row per line with room between them, wrapped to the panel's width, and the
+    // scrolled area exactly as tall as everything in it so the scroll bar reaches the bottom
+    const float StatsMargin = 4;
+    const float StatsRowGap = 4;
+    const float StatsSectionGap = 12;
+    bool m_statsLayoutDirty = true;
+    float m_statsLaidOutWidth = -1;
 
     protected override void Start()
     {
@@ -195,13 +201,19 @@ public class DisplayProperties : UpdateableService
                 bool isDirty = lastUpdatedNpsTextValues.bpmValue != bpmValue || lastUpdatedNpsTextValues.stepNps != stepNps || lastUpdatedNpsTextValues.stepValue != stepValue;
                 if (isDirty)
                 {
-                    stepNpsDisplay.text = string.Format("NPS ({2} bpm @ 1/{0}): {1}nps", stepValue, stepNps.ToString("n2"), bpmValue);
+                    stepNpsDisplay.text = string.Format("NPS at 1/{0}, {2} BPM: {1}", stepValue, stepNps.ToString("n2"), bpmValue);
+                    m_statsLayoutDirty = true;
 
                     lastUpdatedNpsTextValues.bpmValue = bpmValue;
                     lastUpdatedNpsTextValues.stepValue = stepValue;
                     lastUpdatedNpsTextValues.stepNps = stepNps;
                 }
             }
+
+            if (currentNoteCount != prevNoteCount || currentSpCount != prevSpCount || currentLocalEventCount != prevLocalEventCount
+                || currentBpmCount != prevBpmCount || currentTsCount != prevTsCount || currentSecCount != prevSecCount
+                || currentGlobalEventCount != prevGlobalEventCount)
+                m_statsLayoutDirty = true;
 
             prevNoteCount = currentNoteCount;
             prevSpCount = currentSpCount;
@@ -212,8 +224,12 @@ public class DisplayProperties : UpdateableService
             prevGlobalEventCount = currentGlobalEventCount;
         }
 
-        if (statsMenuOption.gameObject.activeInHierarchy && Time.unscaledTime >= m_nextScoresCheck)
-            UpdateCloneHeroScores();
+        if (statsMenuOption.gameObject.activeInHierarchy)
+        {
+            if (Time.unscaledTime >= m_nextScoresCheck)
+                UpdateCloneHeroScores();
+            LayoutStats();
+        }
 
         // Shortcuts
         if (MSChartEditorInput.GetInputDown(MSChartEditorInputActions.ToggleClap))
@@ -239,15 +255,63 @@ public class DisplayProperties : UpdateableService
         cloneHeroScoresText.verticalOverflow = VerticalWrapMode.Overflow;
         cloneHeroScoresText.supportRichText = true;
         cloneHeroScoresText.alignment = TextAnchor.UpperLeft;
+        cloneHeroScoresText.text = string.Empty;
+        m_statsLayoutDirty = true;
+    }
 
-        RectTransform source = globalEventsCount.rectTransform;
-        RectTransform rect = cloneHeroScoresText.rectTransform;
-        float left = source.anchoredPosition.x - source.sizeDelta.x * source.pivot.x;
+    // Stacks the Stats lines from the top, each as tall as its text wrapped to the panel's width
+    void LayoutStats()
+    {
+        RectTransform content = globalEventsCount ? globalEventsCount.transform.parent as RectTransform : null;
+        if (!content)
+            return;
+        float width = content.rect.width - StatsMargin * 2;
+        if (width <= 0 || (!m_statsLayoutDirty && Mathf.Approximately(width, m_statsLaidOutWidth)))
+            return;
+        m_statsLayoutDirty = false;
+        m_statsLaidOutWidth = width;
+
+        float y = StatsMargin;
+        foreach (Text line in new[] { noteCount, spCount, localEventsCount, bpmCount, tsCount, sectionCount, globalEventsCount })
+            y = PlaceStatsLine(line, y, width) + StatsRowGap;
+
+        if (stepNpsDisplay && stepNpsDisplay.transform.parent == content)
+        {
+            y += StatsSectionGap - StatsRowGap;
+            stepNpsDisplay.enableWordWrapping = true;
+            float height = Mathf.Ceil(stepNpsDisplay.GetPreferredValues(stepNpsDisplay.text, width, 0).y);
+            PlaceStatsRect(stepNpsDisplay.rectTransform, y, height);
+            y += height + StatsRowGap;
+        }
+
+        if (cloneHeroScoresText && cloneHeroScoresText.text.Length > 0)
+        {
+            y += StatsSectionGap - StatsRowGap;
+            y = PlaceStatsLine(cloneHeroScoresText, y, width) + StatsRowGap;
+        }
+
+        content.sizeDelta = new Vector2(content.sizeDelta.x, y + StatsMargin);
+    }
+
+    float PlaceStatsLine(Text line, float top, float width)
+    {
+        if (!line)
+            return top;
+        line.horizontalOverflow = HorizontalWrapMode.Wrap;
+        line.verticalOverflow = VerticalWrapMode.Overflow;
+        float perUnit = line.pixelsPerUnit > 0 ? line.pixelsPerUnit : 1;
+        float height = Mathf.Ceil(line.cachedTextGeneratorForLayout.GetPreferredHeight(line.text, line.GetGenerationSettings(new Vector2(width, 0))) / perUnit);
+        PlaceStatsRect(line.rectTransform, top, height);
+        return top + height;
+    }
+
+    static void PlaceStatsRect(RectTransform rect, float top, float height)
+    {
         rect.anchorMin = new Vector2(0, 1);
         rect.anchorMax = new Vector2(1, 1);
         rect.pivot = new Vector2(0, 1);
-        rect.offsetMin = new Vector2(left, -ScoresTop - 20);
-        rect.offsetMax = new Vector2(-4, -ScoresTop);
+        rect.offsetMin = new Vector2(StatsMargin, -top - height);
+        rect.offsetMax = new Vector2(-StatsMargin, -top);
     }
 
     void UpdateCloneHeroScores()
@@ -261,24 +325,17 @@ public class DisplayProperties : UpdateableService
             return;
 
         cloneHeroScoresText.text = text;
-
-        // Fit the text's height, and the scroll view's content around it
-        RectTransform rect = cloneHeroScoresText.rectTransform;
-        float height = Mathf.Ceil(cloneHeroScoresText.preferredHeight) + 2;
-        rect.offsetMin = new Vector2(rect.offsetMin.x, rect.offsetMax.y - height);
-
-        RectTransform content = rect.parent as RectTransform;
-        content.sizeDelta = new Vector2(content.sizeDelta.x, ScoresTop + height + 4);
+        m_statsLayoutDirty = true;
     }
 
     static string CloneHeroScoresText(CloneHeroScores.Result result)
     {
         switch (result.status)
         {
-            case CloneHeroScores.Status.NoChart: return "Clone Hero: save the chart to see its scores";
-            case CloneHeroScores.Status.NoScoresFile: return "Clone Hero: no scores file found";
-            case CloneHeroScores.Status.Unreadable: return "Clone Hero: can't read its scores file";
-            case CloneHeroScores.Status.NotPlayed: return "Clone Hero: no scores for this chart file yet";
+            case CloneHeroScores.Status.NoChart: return "<b>Clone Hero</b>\nSave the chart to see its scores";
+            case CloneHeroScores.Status.NoScoresFile: return "<b>Clone Hero</b>\nNo scores file found";
+            case CloneHeroScores.Status.Unreadable: return "<b>Clone Hero</b>\nCan't read its scores file";
+            case CloneHeroScores.Status.NotPlayed: return "<b>Clone Hero</b>\nNo scores for this chart yet";
         }
 
         CloneHeroScores.Song song = result.song;
