@@ -19,6 +19,7 @@ public static class NoteGridCheck
     const double CloseShare = 0.2;      // A note within a fifth of a step's gap is meant for that step
     const double OnTicks = 1;           // How far a step between two ticks can be from either
     const double MostShare = 0.75;      // Share of notes on a step for it to win when not every note fits
+    const double LeftoverShare = 0.35; // A stray this close to a taken spot is a leftover, removed
     const int MostOdd = 2;              // More odd ones out than this is a pattern (a 1/96 burst), not strays
     const int MostMinNotes = 4;         // Too few notes to tell which are the odd ones out
     const double StreamShare = 0.25;    // At most this share of a span's notes are chords for it to be a stream
@@ -121,8 +122,21 @@ public static class NoteGridCheck
             if (!all && m_ticks.Count < MostMinNotes)
                 return false;
 
-            foreach (int split in s_splits)
+            // The usual steps, then even spacing: N notes spread evenly over the span (Equal Spacing, 10 to a half
+            // beat = 1/80). An even split must have every note exactly on it to fit them all, and only splits near
+            // the note count are tried, so it can't swallow notes that are just a little off.
+            List<int> splits = new List<int>(s_splits);
+            int extraFrom = splits.Count;
+            for (int k = Math.Max(1, m_ticks.Count - 2); k <= m_ticks.Count + 2; ++k)
             {
+                if (!splits.Contains(k))
+                    splits.Add(k);
+            }
+
+            for (int n = 0; n < splits.Count; ++n)
+            {
+                int split = splits[n];
+                bool even = n >= extraFrom;
                 double g = m_length / split;
                 int close = 0, on = 0;
                 foreach (uint tick in m_ticks)
@@ -134,7 +148,7 @@ public static class NoteGridCheck
                 }
                 // Most notes must be exactly on the step, so a fine step can't claim notes spread evenly between
                 // its lines (20 to a beat, say)
-                if (all ? close == m_ticks.Count : on >= m_ticks.Count * MostShare && m_ticks.Count - close <= MostOdd)
+                if (all ? (even ? on : close) == m_ticks.Count : on >= m_ticks.Count * MostShare && m_ticks.Count - close <= MostOdd)
                 {
                     gap = g;
                     return true;
@@ -170,7 +184,15 @@ public static class NoteGridCheck
                 uint to = tick;
                 double onStep = Slot(tick - m_start, gap);
                 if (!IsOn(tick, onStep))
+                {
                     to = (uint)Math.Max(0, Math.Round(onStep));
+                    if (taken.Contains(to))
+                    {
+                        // Its spot already has a note: a leftover copy, dealt with with the strays
+                        strays.Add(tick);
+                        continue;
+                    }
+                }
                 final.Add(Move(tick, to, step, taken, frets, fixes) ? to : tick);
             }
 
@@ -186,7 +208,9 @@ public static class NoteGridCheck
                 double below = m_start + Math.Floor(offset / gap) * gap, above = below + gap;
                 double near = tick - below <= above - tick ? below : above, far = near == below ? above : below;
                 bool moved = false;
-                foreach (double spot in new[] { near, far })
+                // Right beside a note already on the step: a leftover copy (from pasting over another pattern, say)
+                bool leftover = taken.Contains((uint)Math.Max(0, Math.Round(near))) && Math.Abs(tick - near) < gap * LeftoverShare;
+                foreach (double spot in leftover ? new double[0] : new[] { near, far })
                 {
                     uint t = (uint)Math.Max(0, Math.Round(spot));
                     if (!taken.Contains(t) && Move(tick, t, step, taken, frets, fixes))
@@ -243,10 +267,10 @@ public static class NoteGridCheck
                 uint? after = SpotAt(tick + gap, end - 1), afterNext = SpotAt(tick + 2 * gap, end + gap);
                 uint? before = tick >= gap ? SpotAt(tick - gap, end) : null;
                 uint? beforePrev = tick >= 2 * gap ? SpotAt(tick - 2 * gap, end) : null;
-                bool holeAfter = after.HasValue && !taken.Contains(after.Value) && afterNext.HasValue && taken.Contains(afterNext.Value)
-                    && before.HasValue && taken.Contains(before.Value);
-                bool holeBefore = before.HasValue && before.Value >= m_start - 0.5 && !taken.Contains(before.Value)
-                    && beforePrev.HasValue && taken.Contains(beforePrev.Value) && after.HasValue && taken.Contains(after.Value);
+                bool holeAfter = after.HasValue && !Has(taken, after.Value) && afterNext.HasValue && Has(taken, afterNext.Value)
+                    && before.HasValue && Has(taken, before.Value);
+                bool holeBefore = before.HasValue && before.Value >= m_start - 0.5 && !Has(taken, before.Value)
+                    && beforePrev.HasValue && Has(taken, beforePrev.Value) && after.HasValue && Has(taken, after.Value);
                 if (holeAfter == holeBefore)
                     continue;   // No hole, or one each side and no telling which
 
@@ -267,6 +291,16 @@ public static class NoteGridCheck
                 at.Remove(move);
                 frets[hole] = new List<int> { move };
             }
+        }
+
+        // A note is on this spot. A step between ticks (Equal Spacing, 1/72 at 192) rounds either way, so the ticks
+        // beside it count too.
+        bool Has(HashSet<uint> taken, uint spot)
+        {
+            if (taken.Contains(spot))
+                return true;
+            bool between = Math.Abs(gap - Math.Round(gap)) > 0.01;
+            return between && (taken.Contains(spot + 1) || (spot > 0 && taken.Contains(spot - 1)));
         }
 
         // A spot on the step, or null past 'limit'
