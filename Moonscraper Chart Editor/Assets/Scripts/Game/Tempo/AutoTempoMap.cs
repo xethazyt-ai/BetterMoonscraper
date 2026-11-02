@@ -488,7 +488,7 @@ public class AutoTempoMap : MonoBehaviour
         if (m_tapStatus.Length > 0)
             GUILayout.Label(m_tapStatus);
         GUILayout.BeginHorizontal();
-        GUI.enabled = m_taps.Count > m_beatsPerMeasure;
+        GUI.enabled = m_taps.Count >= 4;
         if (GUILayout.Button("Use the taps"))
             UseTaps();
         GUI.enabled = true;
@@ -538,16 +538,17 @@ public class AutoTempoMap : MonoBehaviour
                 snapped[i] = m_taps[i] + usualShift;
         }
 
+        // One BPM marker where the tapping started: the average tempo, rounded to a whole BPM (Robert's call)
         int beatsPerMeasure = m_beatsPerMeasure > 0 ? m_beatsPerMeasure : 4;
         List<double> beats = TapTempo.CleanBeats(snapped);
-        List<AutoTempoDetector.Segment> tapped = TapTempo.ToSegments(beats, beatsPerMeasure);
-        if (tapped.Count == 0)
+        AutoTempoDetector.Segment single = TapTempo.ToSingleSegment(beats);
+        if (single == null || beats.Count < 4)
         {
-            m_tapStatus = "Tap at least " + (beatsPerMeasure + 1) + " beats (a whole measure and the next beat 1).";
+            m_tapStatus = "Tap at least 4 beats.";
             return;
         }
-        int wholeBeats = (beats.Count - 1) / beatsPerMeasure * beatsPerMeasure;
-        double tapEnd = beats[wholeBeats];
+        List<AutoTempoDetector.Segment> tapped = new List<AutoTempoDetector.Segment> { single };
+        double tapEnd = beats[beats.Count - 1];
 
         AutoTempoDetector.Map map = new AutoTempoDetector.Map();
         if (m_map != null)
@@ -567,12 +568,12 @@ public class AutoTempoMap : MonoBehaviour
             map.musicStart = tapped[0].downbeat;
             map.startBpm = tapped[0].bpm;
         }
-        map.segments = TapTempo.Merge(m_map != null ? m_map.segments : null, tapped, tapEnd, beatsPerMeasure);
+        map.segments = TapTempo.Merge(m_map != null ? m_map.segments : null, tapped, tapEnd, beatsPerMeasure, false);
         m_map = map;
         m_analysedSong = song;
 
-        m_tapStatus = "Taps used from " + Utility.timeConvertion((float)(tapped[0].downbeat - song.offset)) + " to "
-            + Utility.timeConvertion((float)(tapEnd - song.offset)) + ". Apply tempo map puts it in the chart.";
+        m_tapStatus = FormatBpm(single.bpm) + " from " + Utility.timeConvertion((float)(single.downbeat - song.offset))
+            + ", from your taps. Apply tempo map puts it in the chart.";
         m_taps.Clear();
     }
 

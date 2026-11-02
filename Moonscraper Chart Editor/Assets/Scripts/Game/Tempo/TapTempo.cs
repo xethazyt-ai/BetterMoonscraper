@@ -52,6 +52,18 @@ public static class TapTempo
     }
 
     /// <summary>
+    /// The taps as one BPM marker on the first tapped beat (where the tapping started): the average tempo over every
+    /// tapped beat, rounded to a whole BPM.
+    /// </summary>
+    public static AutoTempoDetector.Segment ToSingleSegment(List<double> beats)
+    {
+        if (beats.Count < 2)
+            return null;
+        double bpm = Math.Max(1, Math.Round(FitBpm(beats, 0, beats.Count - 1)));
+        return new AutoTempoDetector.Segment { downbeat = beats[0], bpm = bpm };
+    }
+
+    /// <summary>
     /// The tapped stretch as map segments, the first tap being beat 1 of a measure. Only whole measures count.
     /// </summary>
     public static List<AutoTempoDetector.Segment> ToSegments(List<double> beats, int beatsPerMeasure)
@@ -99,7 +111,7 @@ public static class TapTempo
     /// The tapped stretch put into the detected map: what was found before it stays, the taps replace the stretch,
     /// and after it the map picks up again on its own measure lines. With no map, it's the taps alone.
     /// </summary>
-    public static List<AutoTempoDetector.Segment> Merge(List<AutoTempoDetector.Segment> found, List<AutoTempoDetector.Segment> tapped, double tapEnd, int beatsPerMeasure)
+    public static List<AutoTempoDetector.Segment> Merge(List<AutoTempoDetector.Segment> found, List<AutoTempoDetector.Segment> tapped, double tapEnd, int beatsPerMeasure, bool carryOn = true)
     {
         List<AutoTempoDetector.Segment> merged = new List<AutoTempoDetector.Segment>();
         if (tapped.Count == 0)
@@ -134,7 +146,7 @@ public static class TapTempo
             }
         }
         double resume = tapEnd;
-        if (playing != null && playing.beats == null)
+        if (carryOn && playing != null && playing.beats == null)
         {
             double measure = 60 / playing.bpm * beatsPerMeasure;
             double line = playing.downbeat + Math.Ceiling((tapEnd - playing.downbeat) / measure - 0.25) * measure;
