@@ -308,7 +308,7 @@ public class CustomizationSettingsTab : MonoBehaviour
             label.offsetMin = new Vector2(26, label.offsetMin.y);
     }
 
-    // Your own clap sound, used in place of Moonscraper's (its volume is in the Clap Settings menu)
+    // Your own clap sound, used in place of Moonscraper's (its volume is in Settings > Audio, under Music Vol)
     static readonly ExtensionFilter s_soundFilter = new ExtensionFilter("Sounds", ClapSound.Extensions);
 
     void AddClapSoundRow()

@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using UnityEngine;
 
 /// <summary>
-/// The Duet Mode window. Press F6 (rebindable in Controls) to show or hide it. Drawn on top of the editor, so the editor's own UI is unchanged.
+/// The Duet Mode window. Press F5 (rebindable in Controls) to show or hide it. Drawn on top of the editor, so the editor's own UI is unchanged.
 /// </summary>
 public class DuetPanel : MonoBehaviour
 {

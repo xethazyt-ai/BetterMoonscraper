@@ -12,7 +12,7 @@ using MoonscraperChartEditor.Song;
 /// Fit to step re-spaces the same notes at another step (a 32nd pattern as 16ths takes twice the beat lines). The
 /// speed slider changes the step too: above 1x the pattern repeats, whole, to fill the beat lines it took (2x of four
 /// 16ths is eight 32nds), below 1x it spreads over more of them (0.5x takes twice as many). Saved on this computer only,
-/// in a file that every Moonscraper version reads. Opened with F5; Ctrl+B pastes the picked pattern where the mouse
+/// in a file that every Moonscraper version reads. Opened with F7; Ctrl+B pastes the picked pattern where the mouse
 /// points on the highway (or at the strikeline), even with the window closed. Both are rebindable in Controls.
 /// With notes selected, Ctrl+B stamps those notes instead. Pressing it again without moving the mouse puts the next copy
 /// straight after the last one, so a pattern can be run out as long as needed.
@@ -134,7 +134,7 @@ public partial class PatternBlueprints : MonoBehaviour
                 m_pasteAtMouse = true;
             }
             else
-                m_editor.services.notificationBar.PushNotification("SELECT SOME NOTES, OR PICK A PATTERN IN PATTERN BLUEPRINTS (F5), FIRST", 3, true);
+                m_editor.services.notificationBar.PushNotification("SELECT SOME NOTES, OR PICK A PATTERN IN PATTERN BLUEPRINTS (F7), FIRST", 3, true);
         }
 
         if (m_packRequested != 0)
@@ -222,7 +222,7 @@ public partial class PatternBlueprints : MonoBehaviour
             {
                 m_stampNotes = null;
                 m_stampSource = null;
-                m_editor.services.notificationBar.PushNotification("SELECT SOME NOTES, OR PICK A PATTERN IN PATTERN BLUEPRINTS (F5), FIRST", 3, true);
+                m_editor.services.notificationBar.PushNotification("SELECT SOME NOTES, OR PICK A PATTERN IN PATTERN BLUEPRINTS (F7), FIRST", 3, true);
                 return;
             }
             m_stampChart = m_editor.currentChart;

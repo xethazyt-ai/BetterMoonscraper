@@ -34,11 +34,11 @@ public class FaqContent : MonoBehaviour
         { "Why is part of my chart cut off at the end?",
           "The chart is as long as the song's audio. With no audio loaded, BetterMoonscraper gives the song 5 minutes." },
         { "How do I chart with friends (Collab Mode)?",
-          "Press F6 to open Collab Mode. One person hosts and shares the room code; everyone else joins with it and " +
+          "Press F5 to open Collab Mode. One person hosts and shares the room code; everyone else joins with it and " +
           "gets the song's audio, art and settings from the host. Everyone edits the same chart live, with their own " +
           "undo. Only the host can save, so the host keeps the finished chart." },
         { "What are Pattern Blueprints?",
-          "Saved note patterns you can paste anywhere. Press F5 to open the window and save or pick a pattern. " +
+          "Saved note patterns you can paste anywhere. Press F7 to open the window and save or pick a pattern. " +
           "Ctrl+B pastes it at the mouse (or the strikeline). With notes selected, Ctrl+B stamps those notes instead. " +
           "Pressing Ctrl+B again in the same spot adds another copy after the last one." },
         { "How do I watch the chart like it's in Clone Hero?",

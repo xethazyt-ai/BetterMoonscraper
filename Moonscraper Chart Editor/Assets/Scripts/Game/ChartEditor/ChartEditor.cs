@@ -727,7 +727,7 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         if (!DuetPanel.isGuest)
             return false;
 
-        services.notificationBar.PushNotification("LEAVE THE COLLAB SESSION FIRST (F6) TO OPEN ANOTHER CHART", 3, true);
+        services.notificationBar.PushNotification("LEAVE THE COLLAB SESSION FIRST (F5) TO OPEN ANOTHER CHART", 3, true);
         return true;
     }
 

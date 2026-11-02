@@ -73,6 +73,69 @@ public class SettingsController : TabMenu
         sustainGapTimeInput.text = Globals.gameSettings.sustainGapTimeMs.ToString();
         lyricEditorPhaseEndTimeInput.text = Globals.gameSettings.lyricEditorSettings.phaseEndThreashold.ToString();
         lyricEditorPhaseEndTimeInput.onValidateInput = LocalesManager.ValidateDecimalInput;
+        SetUpClapVolume();
+    }
+
+    // Clap volume, under Music Vol. Moonscraper's own Clap Vol row, which it had hidden. It goes past 100% to make the
+    // clap louder, so it shows its percent to the right, where the Pan row shows R.
+    const int ClapVolumeStep = 5;
+    Text m_clapVolumeText;
+    bool m_clapVolumePending = false;
+
+    void SetUpClapVolume()
+    {
+        if (!clapSourceSlider)
+            return;
+
+        clapSourceSlider.onValueChanged = new Slider.SliderEvent();
+        clapSourceSlider.wholeNumbers = true;
+        clapSourceSlider.minValue = ClapSound.MinVolumePercent / ClapVolumeStep;
+        clapSourceSlider.maxValue = ClapSound.MaxVolumePercent / ClapVolumeStep;
+        clapSourceSlider.value = ClapSound.volumePercent / ClapVolumeStep;
+
+        Transform rightPanObject = musicPanSlider ? musicPanSlider.transform.parent.Find("Right Pan") : null;
+        Text template = rightPanObject ? rightPanObject.GetComponent<Text>() : null;
+        if (template)
+        {
+            RectTransform slider = (RectTransform)clapSourceSlider.transform;
+            m_clapVolumeText = Instantiate(template, slider.parent);
+            m_clapVolumeText.name = "Clap Volume Value";
+            m_clapVolumeText.alignment = TextAnchor.MiddleLeft;
+            RectTransform rect = m_clapVolumeText.rectTransform;
+            rect.anchorMin = slider.anchorMin;
+            rect.anchorMax = slider.anchorMax;
+            rect.pivot = new Vector2(0, 0.5f);
+            rect.sizeDelta = new Vector2(80, ((RectTransform)template.transform).sizeDelta.y);
+            // Just past the slider's right end, like the Pan row's R
+            rect.anchoredPosition = new Vector2(slider.anchoredPosition.x + slider.sizeDelta.x * (1 - slider.pivot.x) + 12, slider.anchoredPosition.y);
+        }
+
+        clapSourceSlider.onValueChanged.AddListener(value =>
+        {
+            UpdateClapVolumeText();
+            m_clapVolumePending = true;
+        });
+        UpdateClapVolumeText();
+    }
+
+    void UpdateClapVolumeText()
+    {
+        if (m_clapVolumeText && clapSourceSlider)
+            m_clapVolumeText.text = Mathf.RoundToInt(clapSourceSlider.value * ClapVolumeStep) + "%";
+    }
+
+    // The clap is rebuilt when the slider is let go, rather than for every step of a drag
+    void ApplyClapVolume()
+    {
+        if (m_clapVolumePending && clapSourceSlider)
+            ClapSound.volumePercent = Mathf.RoundToInt(clapSourceSlider.value * ClapVolumeStep);
+        m_clapVolumePending = false;
+    }
+
+    protected override void OnDisable()
+    {
+        ApplyClapVolume();
+        base.OnDisable();
     }
 
     protected override void Update()
@@ -114,7 +177,8 @@ public class SettingsController : TabMenu
         Globals.gameSettings.vol_crowd.value = crowdSourceSlider.value;
         Globals.gameSettings.sfxVolume = sfxSlider.value;
 
-        //editor.clapSource.volume = clapSourceSlider.value;
+        if (m_clapVolumePending && !Input.GetMouseButton(0))
+            ApplyClapVolume();
 
         Globals.gameSettings.vol_master.value = masterVolumeSlider.value / 10.0f;
         AudioListener.volume = Globals.gameSettings.vol_master;
@@ -205,7 +269,12 @@ public class SettingsController : TabMenu
 		vocalSourceSlider.value = Globals.gameSettings.vol_vocals;
 		crowdSourceSlider.value = Globals.gameSettings.vol_crowd;
 
-        //clapSourceSlider.value = editor.clapSource.volume;
+        if (clapSourceSlider && clapSourceSlider.wholeNumbers)
+        {
+            clapSourceSlider.value = ClapSound.volumePercent / ClapVolumeStep;
+            m_clapVolumePending = false;
+            UpdateClapVolumeText();
+        }
         musicPanSlider.value = Globals.gameSettings.audio_pan * 10.0f;
 
         extendedSustainsToggle.isOn = Globals.gameSettings.extendedSustainsEnabled;

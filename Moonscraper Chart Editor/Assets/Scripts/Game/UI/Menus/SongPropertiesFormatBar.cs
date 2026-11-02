@@ -21,7 +21,10 @@ public class SongPropertiesFormatBar : MonoBehaviour
     const float SectionGap = 20;
     const float PreviewHeight = 110;     // Around the color sliders and the help text
 
-    static readonly string[] s_swatches = { "#FF0000", "#FFA500", "#FFFF00", "#00FF00", "#0000FF", "#800080", "#FFFFFF" };
+    // The 8 basic colors, the same as Collab Mode's "Your color" row: red, orange, yellow, green, cyan, blue, purple, pink
+    static readonly string[] s_swatches = { "#FF0000", "#FFA500", "#FFFF00", "#00FF00", "#00FFFF", "#0000FF", "#800080", "#FFC0CB" };
+    const float SwatchSize = 21;
+    const float SwatchStep = 24;
 
     InputField[] m_fields;
     InputField m_target;
@@ -92,19 +95,8 @@ public class SongPropertiesFormatBar : MonoBehaviour
         foreach (string swatch in s_swatches)
         {
             string hex = swatch;
-            Button button = Instantiate(buttonTemplate, content);
-            button.onClick = new Button.ButtonClickedEvent();
-            button.onClick.AddListener(() => { bar.m_colorField.text = hex; bar.ApplyColor(); });
-            Place(button.GetComponent<RectTransform>(), x, y, 22, 22);
-            foreach (Text text in button.GetComponentsInChildren<Text>(true))
-                text.text = string.Empty;
-            Color color;
-            if (button.targetGraphic && ColorUtility.TryParseHtmlString(hex, out color))
-            {
-                button.targetGraphic.color = color;
-                UITheme.KeepColor(button.targetGraphic);    // Shows the color itself in any theme or menu color
-            }
-            x += 26;
+            MakeSwatch(content, hex, x, y - (RowHeight - SwatchSize) / 2, () => { bar.m_colorField.text = hex; bar.ApplyColor(); });
+            x += SwatchStep;
         }
         y -= RowHeight + RowGap;
 
@@ -603,6 +595,44 @@ public class SongPropertiesFormatBar : MonoBehaviour
     }
 
     // x is the left edge, y the top edge, both from the content's top left
+    // A plain square of the color itself. It's made fresh rather than copied from a menu button, so it has no sprite,
+    // menu color material or grey button tint to dim it, and shows exactly as in Collab Mode's color row.
+    static void MakeSwatch(RectTransform parent, string hex, float x, float y, UnityEngine.Events.UnityAction onClick)
+    {
+        Color color;
+        if (!ColorUtility.TryParseHtmlString(hex, out color))
+            return;
+
+        GameObject border = new GameObject("Swatch " + hex, typeof(RectTransform));
+        border.transform.SetParent(parent, false);
+        Image frame = border.AddComponent<Image>();
+        frame.color = Color.white;      // The button tints below make it near black, or light grey on hover
+        UITheme.KeepColor(frame);
+        Place(frame.rectTransform, x, y, SwatchSize, SwatchSize);
+
+        GameObject fill = new GameObject("Color", typeof(RectTransform));
+        fill.transform.SetParent(border.transform, false);
+        Image image = fill.AddComponent<Image>();
+        image.color = color;
+        UITheme.KeepColor(image);
+        RectTransform rect = image.rectTransform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(1, 1);
+        rect.offsetMax = new Vector2(-1, -1);
+
+        // Only the frame is tinted, so the color inside stays exact. The frame lights up on hover.
+        Button button = border.AddComponent<Button>();
+        button.targetGraphic = frame;
+        ColorBlock tints = button.colors;
+        tints.normalColor = new Color(0.08f, 0.08f, 0.08f);
+        tints.highlightedColor = new Color(0.8f, 0.8f, 0.8f);
+        tints.pressedColor = new Color(0.5f, 0.5f, 0.5f);
+        tints.colorMultiplier = 1;
+        button.colors = tints;
+        button.onClick.AddListener(onClick);
+    }
+
     public static void Place(RectTransform rect, float x, float y, float width, float height)
     {
         rect.anchorMin = rect.anchorMax = new Vector2(0, 1);

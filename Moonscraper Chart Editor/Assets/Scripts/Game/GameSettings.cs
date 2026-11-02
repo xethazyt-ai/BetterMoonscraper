@@ -417,8 +417,10 @@ public class GameSettings
                 string controlsJson = File.ReadAllText(controllerBindingsFilepath);
                 controls.LoadFromSaveData(JsonUtility.FromJson<MSChartEditorInput.MSChartEditorActionContainer>(controlsJson));
                 MoveOldFunctionKeys();
+                SwapCollabAndBlueprintKeys();
             }
             PlayerPrefs.SetInt(PrefFunctionKeysMoved, 1);
+            PlayerPrefs.SetInt(PrefCollabKeysSwapped, 1);
         }
         catch (Exception e)
         {
@@ -438,6 +440,20 @@ public class GameSettings
         controls.GetActionConfig(MSChartEditorInputActions.PatternBlueprints).ReplaceKey(KeyCode.F9, KeyCode.F5);
         controls.GetActionConfig(MSChartEditorInputActions.DuetToggleWindow).ReplaceKey(KeyCode.F10, KeyCode.F6);
         controls.GetActionConfig(MSChartEditorInputActions.DuetHideChat).ReplaceKey(KeyCode.F11, KeyCode.F7);
+    }
+
+    const string PrefCollabKeysSwapped = "Controls.CollabKeysSwapped";
+
+    // Then Robert reordered them: the Collab window on F5, Hide Chat on F6 and Pattern Blueprints on F7 (Reset Menu
+    // Positions stays on F8). Saved controls still on the F5/F6/F7 defaults move over once.
+    void SwapCollabAndBlueprintKeys()
+    {
+        if (PlayerPrefs.GetInt(PrefCollabKeysSwapped, 0) != 0)
+            return;
+
+        controls.GetActionConfig(MSChartEditorInputActions.DuetToggleWindow).ReplaceKey(KeyCode.F6, KeyCode.F5);
+        controls.GetActionConfig(MSChartEditorInputActions.DuetHideChat).ReplaceKey(KeyCode.F7, KeyCode.F6);
+        controls.GetActionConfig(MSChartEditorInputActions.PatternBlueprints).ReplaceKey(KeyCode.F5, KeyCode.F7);
     }
 
     public void Save(string configFilepath, string controllerBindingsFilepath)
