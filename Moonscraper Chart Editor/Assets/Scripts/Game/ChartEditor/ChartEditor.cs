@@ -342,8 +342,36 @@ public class ChartEditor : UnitySingleton<ChartEditor>
         Debug.Log("Triggered force-quit of application");
     }
 
+    // Shutting down sometimes hung (audio, controller input, online rooms or a save that never finished), which left
+    // BetterMoonscraper running in the background with no window. Saving and closing normally take well under a
+    // second; if the process is still alive this long after quitting began, it ends itself.
+    const int QuitWatchdogMilliseconds = 10000;
+
+    void StartQuitWatchdog()
+    {
+        System.Threading.Thread watchdog = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(QuitWatchdogMilliseconds);
+            // Never in the middle of writing a chart: give a save up to another minute to finish
+            for (int waited = 0; isSaving && waited < 60000; waited += 250)
+                System.Threading.Thread.Sleep(250);
+            try
+            {
+                Debug.LogWarning("Still running " + QuitWatchdogMilliseconds / 1000 + " s after quitting, so ending the process");
+            }
+            catch { }
+            System.Diagnostics.Process.GetCurrentProcess().Kill();
+        });
+        watchdog.IsBackground = true;
+        watchdog.Name = "Quit watchdog";
+        watchdog.Start();
+    }
+
     void FinaliseQuit()
     {
+#if !UNITY_EDITOR
+        StartQuitWatchdog();
+#endif
         events.applicationShutdown.Fire();
         Application.logMessageReceived -= HandleException;      // Don't show message box on shutdown, even if we aren't shutting down smoothly. Kinda pointless....
 
