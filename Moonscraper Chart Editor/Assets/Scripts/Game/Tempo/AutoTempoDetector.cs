@@ -1428,14 +1428,152 @@ public class AutoTempoDetector
     /// The song's map: steady tempos with any sudden changes, slowdowns and speed-ups (Auto), or followed beat by
     /// beat for a tempo that wanders all through (a live drummer).
     /// </summary>
-    public Map MapAuto(int beatsPerMeasure, double chosenBpm, Mode mode)
+    // 'chartStart' is where the chart's 0 is in the audio (the song's offset)
+    public Map MapAuto(int beatsPerMeasure, double chosenBpm, Mode mode, double chartStart = 0)
     {
         Map steady = MapSong(beatsPerMeasure, chosenBpm);
         if (mode != Mode.Follow || steady.segments.Count == 0)
+        {
+            Tidy(steady, beatsPerMeasure, chartStart, true);
             return steady;
+        }
         Map followed = BestFollow(steady, beatsPerMeasure);
         followed.followed = true;
+        // Following keeps its exact tempos: they are what it's for
+        Tidy(followed, beatsPerMeasure, chartStart, false);
         return followed;
+    }
+
+    const double StartSnapSeconds = 0.05;   // A first downbeat this close to a measure line from the chart's start sits on it
+    const double WholeBpmShare = 0.7;       // A steady tempo rounds to a whole BPM when that lines up at least this well
+    const double OneTempoShare = 0.97;      // One whole BPM for the whole song, when its beat lines hit at least this well
+
+    // The map the way a charter would write it: steady tempos on whole BPMs, one marker for a song that never really
+    // changes, and no lead-in measure for music that starts right on a measure line
+    void Tidy(Map map, int beatsPerMeasure, double chartStart, bool steady)
+    {
+        if (map.segments.Count == 0)
+            return;
+        if (steady)
+        {
+            RoundSteadyTempos(map);
+            if (map.segments.Count > 1)
+                TryOneTempo(map, beatsPerMeasure);
+        }
+        SnapStart(map, beatsPerMeasure, chartStart);
+    }
+
+    void RoundSteadyTempos(Map map)
+    {
+        for (int i = 0; i < map.segments.Count; ++i)
+        {
+            Segment segment = map.segments[i];
+            if (segment.ramp || segment.beats != null)
+                continue;
+            double whole = Math.Round(segment.bpm);
+            if (whole == segment.bpm || whole < 1)
+                continue;
+            double end = i + 1 < map.segments.Count ? map.segments[i + 1].downbeat : duration;
+            int first = FrameAt(segment.downbeat - 30 / segment.bpm), last = FrameAt(end);
+            if (last - first < 8)
+                continue;
+            double phase, wholePhase;
+            double exactScore = Sharpness(segment.bpm, first, last, out phase);
+            double wholeScore = Sharpness(whole, first, last, out wholePhase);
+            if (wholeScore < exactScore * WholeBpmShare)
+                continue;       // A tempo really between two whole BPMs: rounding would drift off the beats
+
+            segment.bpm = whole;
+            // The whole BPM's beats sit best a little to one side: move the start onto them, unless the part before
+            // (a slowdown or speed-up) already ends exactly there
+            bool afterRamp = i > 0 && (map.segments[i - 1].ramp || map.segments[i - 1].beats != null);
+            if (!afterRamp)
+            {
+                double period = 60 / whole;
+                double onGrid = wholePhase + Math.Round((segment.downbeat - wholePhase) / period) * period;
+                if (Math.Abs(onGrid - segment.downbeat) < period * 0.25)
+                    segment.downbeat = onGrid;
+            }
+        }
+    }
+
+    // Changes found where the song really keeps one whole BPM (off-beat parts can look like drifting): when one tempo
+    // lines up with the beats about as well as all the markers do, keep just that one
+    void TryOneTempo(Map map, int beatsPerMeasure)
+    {
+        Segment start = map.segments[0];
+        if (start.bpm != Math.Round(start.bpm))
+            return;
+        double period = 60 / start.bpm;
+        double phase;
+        Sharpness(start.bpm, FrameAt(map.musicStart - period * 0.5), FrameAt(duration), out phase);
+        double downbeat = phase + Math.Round((start.downbeat - phase) / period) * period;
+        if (Math.Abs(downbeat - start.downbeat) > period * 0.25)
+            downbeat = start.downbeat;
+        Segment single = new Segment { downbeat = downbeat, bpm = start.bpm };
+
+        double from = Math.Max(map.musicStart, 0);
+        double mapScore = GridScore(BeatTimes(ToMarkers(map.segments, 0, beatsPerMeasure), beatsPerMeasure, duration), from);
+        double singleScore = GridScore(BeatTimes(ToMarkers(new List<Segment> { single }, 0, beatsPerMeasure), beatsPerMeasure, duration), from);
+        if (singleScore >= mapScore * OneTempoShare)
+            map.segments = new List<Segment> { single };
+    }
+
+    // How strongly the music hits right on these beat lines, on average
+    double GridScore(List<double> beats, double from)
+    {
+        double sum = 0;
+        int count = 0;
+        foreach (double t in beats)
+        {
+            if (t < from - 0.01 || t > duration - 0.05)
+                continue;
+            sum += PeakNear(m_onsets, t, 0.02);
+            ++count;
+        }
+        return count > 0 ? sum / count : 0;
+    }
+
+    // Music that starts (within a few milliseconds) on a measure line from the chart's start needs no lead-in measure:
+    // the song's own tempo from tick 0 puts it there
+    void SnapStart(Map map, int beatsPerMeasure, double chartStart)
+    {
+        Segment start = map.segments[0];
+        if (start.ramp || start.beats != null)
+            return;
+        double period = 60 / start.bpm;
+        double measure = period * beatsPerMeasure;
+        double lead = start.downbeat - chartStart;
+        int measures = Math.Max(0, (int)Math.Round(lead / measure));
+        double miss = lead - measures * measure;
+        if (Math.Abs(miss) > Math.Min(StartSnapSeconds, period / 8))
+            return;
+        start.downbeat -= miss;
+        if (map.followDownbeats != null && map.followDownbeats.Count > 0)
+            map.followDownbeats[0] -= miss;
+    }
+
+    /// <summary>When each beat falls (seconds from the chart's start) under these markers, up to 'end'.</summary>
+    public static List<double> BeatTimes(List<Marker> markers, int beatsPerMeasure, double end)
+    {
+        List<double> beats = new List<double>();
+        double time = 0;
+        for (int i = 0; i < markers.Count; ++i)
+        {
+            double position = markers[i].measure * beatsPerMeasure + markers[i].beat;
+            double next = i + 1 < markers.Count ? markers[i + 1].measure * beatsPerMeasure + markers[i + 1].beat : double.MaxValue;
+            double beatLength = 60 / markers[i].bpm;
+            for (double b = Math.Ceiling(position - 1e-9); b < next - 1e-9; ++b)
+            {
+                double at = time + (b - position) * beatLength;
+                if (at > end)
+                    return beats;
+                beats.Add(at);
+            }
+            if (next < double.MaxValue)
+                time += (next - position) * beatLength;
+        }
+        return beats;
     }
 
     Map Follow(Map steady, int beatsPerMeasure, bool throughChanges)
@@ -1623,7 +1761,9 @@ public class AutoTempoDetector
             markers.Add(new Marker { measure = 0, bpm = 60 * beatsPerMeasure * count / lead });
             measure = count;
         }
-        markers.Add(new Marker { measure = measure, bpm = segments[0].bpm });
+        // Music that comes in exactly on a later measure line: the lead-in is already at the song's tempo
+        if (markers.Count == 0 || Math.Abs(markers[0].bpm - segments[0].bpm) > 1e-6)
+            markers.Add(new Marker { measure = measure, bpm = segments[0].bpm });
         measure += firstLine;
 
         for (int i = 1; i < segments.Count; ++i)

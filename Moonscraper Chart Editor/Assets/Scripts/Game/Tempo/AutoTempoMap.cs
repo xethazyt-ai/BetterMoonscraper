@@ -210,6 +210,7 @@ public class AutoTempoMap : MonoBehaviour
         AutoTempoDetector detector = m_detector;
         int beats = m_beatsPerMeasure;
         AutoTempoDetector.Mode mode = m_mode;
+        double chartStart = song.offset;
 
         m_thread = new Thread(() =>
         {
@@ -217,7 +218,7 @@ public class AutoTempoMap : MonoBehaviour
             {
                 if (detector == null)
                     detector = new AutoTempoDetector(MixFiles(files), m_mixRate);
-                AutoTempoDetector.Map map = detector.MapAuto(beats, bpm, mode);
+                AutoTempoDetector.Map map = detector.MapAuto(beats, bpm, mode, chartStart);
                 m_detector = detector;
                 m_pendingMap = map;
             }
