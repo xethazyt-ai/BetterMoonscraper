@@ -222,31 +222,75 @@ public class WindowFitOnLaunch : MonoBehaviour
     IntPtr m_window;
     bool m_watching, m_wasZoomed;
     float m_nextCheck, m_nextKeep;
-    const float KeepLaunchSizeSeconds = 2;
+    const float KeepLaunchSizeSeconds = 0.5f;
 
-    // Unity keeps the window's size with the other saved settings, and any save writes it, so a maximised window
-    // could leave its size for the next launch while still open. Another copy opened meanwhile (two at once) then
-    // showed Unity's splash screen at that size. The saved size is kept at the launch size instead.
+    // Unity keeps the window's size with the other saved settings and writes it to the registry itself whenever the
+    // window changes (fullscreen, maximised), without going through PlayerPrefs' own copy. Another copy opened
+    // meanwhile then read that size and opened at it. So the registry values themselves are checked twice a second
+    // and put back to the launch size, windowed, as soon as Unity changes them. PlayerPrefs' copy is set to match,
+    // so a save from anywhere else in BetterMoonscraper doesn't write the old size back either.
     static void KeepLaunchSizeSaved(IntPtr window)
     {
         int width, height;
         if (window == IntPtr.Zero || !GetLaunchSize(window, out width, out height))
             return;
-        bool changed = SetPref("Screenmanager Resolution Width", width);
-        changed |= SetPref("Screenmanager Resolution Height", height);
-        changed |= SetPref("Screenmanager Resolution Use Native", 0);
-        changed |= SetPref("Screenmanager Is Fullscreen mode", 0);
-        changed |= SetPref("Screenmanager Fullscreen mode", 3);    // Windowed, for newer Unity versions
-        if (changed)
-            PlayerPrefs.Save();     // Straight away, for a copy opened right now
+
+        PlayerPrefs.SetInt("Screenmanager Resolution Width", width);
+        PlayerPrefs.SetInt("Screenmanager Resolution Height", height);
+        PlayerPrefs.SetInt("Screenmanager Resolution Use Native", 0);
+        PlayerPrefs.SetInt("Screenmanager Is Fullscreen mode", 0);
+        PlayerPrefs.SetInt("Screenmanager Fullscreen mode", 3);    // Windowed
+
+        if (!KeepRegistryLaunchSize(width, height))
+            PlayerPrefs.Save();     // Nothing in the registry yet: let PlayerPrefs write it, for a copy opened right now
     }
 
-    static bool SetPref(string key, int value)
+    static bool s_loggedRegistryFix;
+
+    // Puts Unity's saved window settings in the registry back to the launch size. False if there are none yet.
+    static bool KeepRegistryLaunchSize(int width, int height)
     {
-        if (PlayerPrefs.HasKey(key) && PlayerPrefs.GetInt(key) == value)
-            return false;
-        PlayerPrefs.SetInt(key, value);
-        return true;
+        string path = @"Software\" + Application.companyName + @"\" + Application.productName;
+        using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(path, true))
+        {
+            if (key == null)
+                return false;
+
+            bool found = false;
+            System.Text.StringBuilder fixedValues = null;
+            foreach (string name in key.GetValueNames())
+            {
+                int want;
+                if (name.StartsWith("Screenmanager Resolution Width") || name.StartsWith("Screenmanager Resolution Window Width"))
+                    want = width;
+                else if (name.StartsWith("Screenmanager Resolution Height") || name.StartsWith("Screenmanager Resolution Window Height"))
+                    want = height;
+                else if (name.StartsWith("Screenmanager Resolution Use Native") || name.StartsWith("Screenmanager Is Fullscreen mode"))
+                    want = 0;
+                else if (name.StartsWith("Screenmanager Fullscreen mode"))
+                    want = 3;   // Windowed
+                else
+                    continue;
+
+                found = true;
+                object current = key.GetValue(name);
+                if (current is int && (int)current == want)
+                    continue;
+
+                key.SetValue(name, want, Microsoft.Win32.RegistryValueKind.DWord);
+                if (fixedValues == null)
+                    fixedValues = new System.Text.StringBuilder();
+                fixedValues.AppendFormat(" {0}={1}", name, current);
+            }
+
+            // Logged the first time only: Unity rewrites them every time the window goes fullscreen or maximised
+            if (fixedValues != null && !s_loggedRegistryFix)
+            {
+                s_loggedRegistryFix = true;
+                Debug.Log(string.Format("Window fit: Unity saved a different window size, put back to {0}x{1} windowed (was{2})", width, height, fixedValues));
+            }
+            return found;
+        }
     }
 
     void Update()
