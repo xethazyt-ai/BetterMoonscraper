@@ -136,7 +136,7 @@ public class DuetPanel : MonoBehaviour
 
     public static bool IsPointerOverPanel()
     {
-        if (DuetChat.IsPointerOver() || PatternBlueprints.IsPointerOver() || AutoTempoMap.IsPointerOver() || FpsCounter.IsPointerOver() || NoteGridFixer.IsPointerOver() || s_quitPromptOpen)
+        if (DuetChat.IsPointerOver() || PatternBlueprints.IsPointerOver() || AutoTempoMap.IsPointerOver() || FpsCounter.IsPointerOver() || NoteGridFixer.IsPointerOver() || MetricModulation.IsPointerOver() || s_quitPromptOpen)
             return true;
         return IsPointerOverWindow();
     }
@@ -514,7 +514,7 @@ public class DuetPanel : MonoBehaviour
             return;
 
         HandleNameHotkeys(m_window.rect.Contains(Event.current.mousePosition)
-            || (GUIUtility.keyboardControl != 0 && !DuetChat.isTyping && !PatternBlueprints.isTyping));
+            || (GUIUtility.keyboardControl != 0 && !DuetChat.isTyping && !PatternBlueprints.isTyping && !MetricModulation.isTyping));
 
         m_window.Draw("Collab Mode", DrawWindow, scale);
         isTyping = GUIUtility.keyboardControl != 0;
