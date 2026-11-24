@@ -1,6 +1,9 @@
 // See LICENSE in project root for license information.
 
-#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+// The class is compiled in the editor too (when building for Windows), though it does nothing there: Unity makes the
+// list of [RuntimeInitializeOnLoadMethod]s for a build from the editor's own compile, so with the whole file left out
+// of the editor, Bootstrap was never in that list and none of this ever ran in a build.
+#if UNITY_STANDALONE_WIN
 
 using System;
 using System.Collections;
@@ -51,10 +54,14 @@ public class WindowFitOnLaunch : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
+#if !UNITY_EDITOR
         GameObject runner = new GameObject("Window Fit On Launch");
         DontDestroyOnLoad(runner);
         runner.AddComponent<WindowFitOnLaunch>();
         Application.quitting += RememberLaunchSize;
+        Application.quitting += StopRegistryWatcher;
+        s_registryPath = @"Software\" + Application.companyName + @"\" + Application.productName;
+#endif
     }
 
     // Unity opens the window (and shows its splash screen) at the size it saved when it last closed, which is the whole
@@ -222,31 +229,151 @@ public class WindowFitOnLaunch : MonoBehaviour
     IntPtr m_window;
     bool m_watching, m_wasZoomed;
     float m_nextCheck, m_nextKeep;
-    const float KeepLaunchSizeSeconds = 2;
+    const float KeepLaunchSizeSeconds = 0.5f;
 
-    // Unity keeps the window's size with the other saved settings, and any save writes it, so a maximised window
-    // could leave its size for the next launch while still open. Another copy opened meanwhile (two at once) then
-    // showed Unity's splash screen at that size. The saved size is kept at the launch size instead.
+    // Unity keeps the window's size with the other saved settings and writes it to the registry itself whenever the
+    // window changes (fullscreen, maximised), without going through PlayerPrefs' own copy. Another copy opened
+    // meanwhile then read that size and opened at it. So the registry values themselves are checked twice a second
+    // and put back to the launch size, windowed, as soon as Unity changes them. PlayerPrefs' copy is set to match,
+    // so a save from anywhere else in BetterMoonscraper doesn't write the old size back either.
     static void KeepLaunchSizeSaved(IntPtr window)
     {
         int width, height;
         if (window == IntPtr.Zero || !GetLaunchSize(window, out width, out height))
             return;
-        bool changed = SetPref("Screenmanager Resolution Width", width);
-        changed |= SetPref("Screenmanager Resolution Height", height);
-        changed |= SetPref("Screenmanager Resolution Use Native", 0);
-        changed |= SetPref("Screenmanager Is Fullscreen mode", 0);
-        changed |= SetPref("Screenmanager Fullscreen mode", 3);    // Windowed, for newer Unity versions
-        if (changed)
-            PlayerPrefs.Save();     // Straight away, for a copy opened right now
+
+        PlayerPrefs.SetInt("Screenmanager Resolution Width", width);
+        PlayerPrefs.SetInt("Screenmanager Resolution Height", height);
+        PlayerPrefs.SetInt("Screenmanager Resolution Use Native", 0);
+        PlayerPrefs.SetInt("Screenmanager Is Fullscreen mode", 0);
+        PlayerPrefs.SetInt("Screenmanager Fullscreen mode", 3);    // Windowed
+
+        s_keepWidth = width;
+        s_keepHeight = height;
+        if (!KeepRegistryLaunchSize(width, height))
+            PlayerPrefs.Save();     // Nothing in the registry yet: let PlayerPrefs write it, for a copy opened right now
+        StartRegistryWatcher();
     }
 
-    static bool SetPref(string key, int value)
+    // Twice a second wasn't enough: Unity writes the maximised size the moment the window loses focus, which is
+    // exactly when another copy is being opened, and that copy reads it straight away. A background thread now asks
+    // Windows to wake it as soon as anything in BetterMoonscraper's registry key changes, and puts the size back at once.
+    static string s_registryPath;
+    static volatile int s_keepWidth, s_keepHeight;
+    static volatile bool s_stopWatcher;
+    static System.Threading.Thread s_watcher;
+
+    static readonly UIntPtr HKEY_CURRENT_USER = new UIntPtr(0x80000001u);
+    const int KEY_QUERY_VALUE = 0x0001, KEY_NOTIFY = 0x0010;
+    const int REG_NOTIFY_CHANGE_LAST_SET = 0x0004;
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern int RegOpenKeyEx(UIntPtr key, string subKey, int options, int access, out IntPtr result);
+    [DllImport("advapi32.dll")] static extern int RegNotifyChangeKeyValue(IntPtr key, bool watchSubtree, int filter, IntPtr eventHandle, bool asynchronous);
+    [DllImport("advapi32.dll")] static extern int RegCloseKey(IntPtr key);
+
+    static void StartRegistryWatcher()
     {
-        if (PlayerPrefs.HasKey(key) && PlayerPrefs.GetInt(key) == value)
+        if (s_watcher != null || string.IsNullOrEmpty(s_registryPath))
+            return;
+        s_watcher = new System.Threading.Thread(WatchRegistry) { IsBackground = true, Name = "Window size keeper" };
+        s_watcher.Start();
+        Debug.Log("Window fit: watching the saved window size in HKCU\\" + s_registryPath);
+    }
+
+    static void StopRegistryWatcher()
+    {
+        s_stopWatcher = true;
+    }
+
+    static void WatchRegistry()
+    {
+        IntPtr key = IntPtr.Zero;
+        try
+        {
+            if (RegOpenKeyEx(HKEY_CURRENT_USER, s_registryPath, 0, KEY_QUERY_VALUE | KEY_NOTIFY, out key) != 0)
+            {
+                Debug.LogWarning("Window fit: couldn't open the registry key to watch the saved window size");
+                return;
+            }
+            using (System.Threading.AutoResetEvent changed = new System.Threading.AutoResetEvent(false))
+            {
+                IntPtr handle = changed.SafeWaitHandle.DangerousGetHandle();
+                while (!s_stopWatcher)
+                {
+                    // Asks again each time round: Windows signals once per request. Waits a quarter second at most so
+                    // the thread notices quitting and never holds up closing.
+                    if (RegNotifyChangeKeyValue(key, false, REG_NOTIFY_CHANGE_LAST_SET, handle, true) != 0)
+                    {
+                        Debug.LogWarning("Window fit: Windows wouldn't report changes to the saved window size");
+                        return;
+                    }
+                    changed.WaitOne(250);
+                    if (s_stopWatcher)
+                        break;
+                    int width = s_keepWidth, height = s_keepHeight;
+                    if (width > 0 && height > 0)
+                        KeepRegistryLaunchSize(width, height);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Window fit: stopped watching the saved window size. " + e.Message);
+        }
+        finally
+        {
+            if (key != IntPtr.Zero)
+                RegCloseKey(key);
+        }
+    }
+
+    static volatile bool s_loggedRegistryFix;
+
+    // Puts Unity's saved window settings in the registry back to the launch size. False if there are none yet.
+    static bool KeepRegistryLaunchSize(int width, int height)
+    {
+        if (string.IsNullOrEmpty(s_registryPath))
             return false;
-        PlayerPrefs.SetInt(key, value);
-        return true;
+        using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(s_registryPath, true))
+        {
+            if (key == null)
+                return false;
+
+            bool found = false;
+            System.Text.StringBuilder fixedValues = null;
+            foreach (string name in key.GetValueNames())
+            {
+                int want;
+                if (name.StartsWith("Screenmanager Resolution Width") || name.StartsWith("Screenmanager Resolution Window Width"))
+                    want = width;
+                else if (name.StartsWith("Screenmanager Resolution Height") || name.StartsWith("Screenmanager Resolution Window Height"))
+                    want = height;
+                else if (name.StartsWith("Screenmanager Resolution Use Native") || name.StartsWith("Screenmanager Is Fullscreen mode"))
+                    want = 0;
+                else if (name.StartsWith("Screenmanager Fullscreen mode"))
+                    want = 3;   // Windowed
+                else
+                    continue;
+
+                found = true;
+                object current = key.GetValue(name);
+                if (current is int && (int)current == want)
+                    continue;
+
+                key.SetValue(name, want, Microsoft.Win32.RegistryValueKind.DWord);
+                if (fixedValues == null)
+                    fixedValues = new System.Text.StringBuilder();
+                fixedValues.AppendFormat(" {0}={1}", name, current);
+            }
+
+            // Logged the first time only: Unity rewrites them every time the window goes fullscreen or maximised
+            if (fixedValues != null && !s_loggedRegistryFix)
+            {
+                s_loggedRegistryFix = true;
+                Debug.Log(string.Format("Window fit: Unity saved a different window size, put back to {0}x{1} windowed (was{2})", width, height, fixedValues));
+            }
+            return found;
+        }
     }
 
     void Update()
