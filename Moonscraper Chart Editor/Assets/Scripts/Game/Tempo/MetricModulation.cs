@@ -6,6 +6,7 @@ using System.Globalization;
 using MoonscraperChartEditor.Song;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Event = UnityEngine.Event;
 
 /// <summary>
 /// Tools > Metric Modulation (Ctrl+M): sets a new tempo by saying a note value of the old tempo lasts as long as a
