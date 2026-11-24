@@ -161,6 +161,8 @@ public enum MSChartEditorInputActions
     EqualSpacing,
 
     FpsCounter,
+
+    MetricModulation,
 }
 
 public static class MSChartEditorInput

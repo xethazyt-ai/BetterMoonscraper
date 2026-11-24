@@ -2520,6 +2520,30 @@
                 ],
                 "jsMaps": []
             }
+        },
+        {
+            "action": "MetricModulation",
+            "input": {
+                "kbMaps": [
+                    {
+                        "modifiers": 2,
+                        "keys": [
+                            109
+                        ]
+                    },
+                    {
+                        "modifiers": 0,
+                        "keys": []
+                    }
+                ],
+                "gpButtonMaps": [
+                    {
+                        "buttons": [],
+                        "axes": []
+                    }
+                ],
+                "jsMaps": []
+            }
         }
     ]
 }
