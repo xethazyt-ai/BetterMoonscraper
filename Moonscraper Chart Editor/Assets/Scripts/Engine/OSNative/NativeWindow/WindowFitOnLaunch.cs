@@ -1,6 +1,9 @@
 // See LICENSE in project root for license information.
 
-#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+// The class is compiled in the editor too (when building for Windows), though it does nothing there: Unity makes the
+// list of [RuntimeInitializeOnLoadMethod]s for a build from the editor's own compile, so with the whole file left out
+// of the editor, Bootstrap was never in that list and none of this ever ran in a build.
+#if UNITY_STANDALONE_WIN
 
 using System;
 using System.Collections;
@@ -51,12 +54,14 @@ public class WindowFitOnLaunch : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
+#if !UNITY_EDITOR
         GameObject runner = new GameObject("Window Fit On Launch");
         DontDestroyOnLoad(runner);
         runner.AddComponent<WindowFitOnLaunch>();
         Application.quitting += RememberLaunchSize;
         Application.quitting += StopRegistryWatcher;
         s_registryPath = @"Software\" + Application.companyName + @"\" + Application.productName;
+#endif
     }
 
     // Unity opens the window (and shows its splash screen) at the size it saved when it last closed, which is the whole
