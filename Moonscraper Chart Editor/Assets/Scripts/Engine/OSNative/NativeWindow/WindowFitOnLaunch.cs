@@ -55,6 +55,8 @@ public class WindowFitOnLaunch : MonoBehaviour
         DontDestroyOnLoad(runner);
         runner.AddComponent<WindowFitOnLaunch>();
         Application.quitting += RememberLaunchSize;
+        Application.quitting += StopRegistryWatcher;
+        s_registryPath = @"Software\" + Application.companyName + @"\" + Application.productName;
     }
 
     // Unity opens the window (and shows its splash screen) at the size it saved when it last closed, which is the whole
@@ -241,17 +243,93 @@ public class WindowFitOnLaunch : MonoBehaviour
         PlayerPrefs.SetInt("Screenmanager Is Fullscreen mode", 0);
         PlayerPrefs.SetInt("Screenmanager Fullscreen mode", 3);    // Windowed
 
+        s_keepWidth = width;
+        s_keepHeight = height;
         if (!KeepRegistryLaunchSize(width, height))
             PlayerPrefs.Save();     // Nothing in the registry yet: let PlayerPrefs write it, for a copy opened right now
+        StartRegistryWatcher();
     }
 
-    static bool s_loggedRegistryFix;
+    // Twice a second wasn't enough: Unity writes the maximised size the moment the window loses focus, which is
+    // exactly when another copy is being opened, and that copy reads it straight away. A background thread now asks
+    // Windows to wake it as soon as anything in BetterMoonscraper's registry key changes, and puts the size back at once.
+    static string s_registryPath;
+    static volatile int s_keepWidth, s_keepHeight;
+    static volatile bool s_stopWatcher;
+    static System.Threading.Thread s_watcher;
+
+    static readonly UIntPtr HKEY_CURRENT_USER = new UIntPtr(0x80000001u);
+    const int KEY_QUERY_VALUE = 0x0001, KEY_NOTIFY = 0x0010;
+    const int REG_NOTIFY_CHANGE_LAST_SET = 0x0004;
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern int RegOpenKeyEx(UIntPtr key, string subKey, int options, int access, out IntPtr result);
+    [DllImport("advapi32.dll")] static extern int RegNotifyChangeKeyValue(IntPtr key, bool watchSubtree, int filter, IntPtr eventHandle, bool asynchronous);
+    [DllImport("advapi32.dll")] static extern int RegCloseKey(IntPtr key);
+
+    static void StartRegistryWatcher()
+    {
+        if (s_watcher != null || string.IsNullOrEmpty(s_registryPath))
+            return;
+        s_watcher = new System.Threading.Thread(WatchRegistry) { IsBackground = true, Name = "Window size keeper" };
+        s_watcher.Start();
+        Debug.Log("Window fit: watching the saved window size in HKCU\\" + s_registryPath);
+    }
+
+    static void StopRegistryWatcher()
+    {
+        s_stopWatcher = true;
+    }
+
+    static void WatchRegistry()
+    {
+        IntPtr key = IntPtr.Zero;
+        try
+        {
+            if (RegOpenKeyEx(HKEY_CURRENT_USER, s_registryPath, 0, KEY_QUERY_VALUE | KEY_NOTIFY, out key) != 0)
+            {
+                Debug.LogWarning("Window fit: couldn't open the registry key to watch the saved window size");
+                return;
+            }
+            using (System.Threading.AutoResetEvent changed = new System.Threading.AutoResetEvent(false))
+            {
+                IntPtr handle = changed.SafeWaitHandle.DangerousGetHandle();
+                while (!s_stopWatcher)
+                {
+                    // Asks again each time round: Windows signals once per request. Waits a quarter second at most so
+                    // the thread notices quitting and never holds up closing.
+                    if (RegNotifyChangeKeyValue(key, false, REG_NOTIFY_CHANGE_LAST_SET, handle, true) != 0)
+                    {
+                        Debug.LogWarning("Window fit: Windows wouldn't report changes to the saved window size");
+                        return;
+                    }
+                    changed.WaitOne(250);
+                    if (s_stopWatcher)
+                        break;
+                    int width = s_keepWidth, height = s_keepHeight;
+                    if (width > 0 && height > 0)
+                        KeepRegistryLaunchSize(width, height);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Window fit: stopped watching the saved window size. " + e.Message);
+        }
+        finally
+        {
+            if (key != IntPtr.Zero)
+                RegCloseKey(key);
+        }
+    }
+
+    static volatile bool s_loggedRegistryFix;
 
     // Puts Unity's saved window settings in the registry back to the launch size. False if there are none yet.
     static bool KeepRegistryLaunchSize(int width, int height)
     {
-        string path = @"Software\" + Application.companyName + @"\" + Application.productName;
-        using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(path, true))
+        if (string.IsNullOrEmpty(s_registryPath))
+            return false;
+        using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(s_registryPath, true))
         {
             if (key == null)
                 return false;
