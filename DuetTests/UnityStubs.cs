@@ -259,6 +259,12 @@ public static class NoteGridFixer
     public static bool IsPointerOver() { return false; }
 }
 
+public static class MetricModulation
+{
+    public static bool IsPointerOver() { return false; }
+    public static bool isTyping { get { return false; } }
+}
+
 public static class PatternBlueprints
 {
     public static bool isTyping { get { return false; } }

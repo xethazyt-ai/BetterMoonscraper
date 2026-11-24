@@ -1209,6 +1209,17 @@
                 "category": 0,
                 "allowSameFrameMultiInput": false
             }
+        },
+        {
+            "mSChartEditorInputAction": "MetricModulation",
+            "properties": {
+                "displayName": "Metric Modulation",
+                "rebindable": true,
+                "hiddenInLists": false,
+                "anyDirectionAxis": false,
+                "category": 1,
+                "allowSameFrameMultiInput": false
+            }
         }
     ]
 }

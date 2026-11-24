@@ -114,6 +114,7 @@ public class AutoTempoMap : MonoBehaviour
 
             AddOption(menu, dropdown, "Auto Tempo Map", Open);
             AddOption(menu, dropdown, "Fix Broken Notes", NoteGridFixer.OpenWindow);     // Just under it
+            AddOption(menu, dropdown, "Metric Modulation", MetricModulation.OpenWindow);
 
             // The menu keeps "nothing picked" as value = the old option count, which is now this option's index, and
             // picking the value it already has does nothing. Park it past the end again, as DropDownMenu does.
